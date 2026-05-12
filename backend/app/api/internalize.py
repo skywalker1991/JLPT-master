@@ -1,4 +1,5 @@
 # backend/app/api/internalize.py
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -15,7 +16,7 @@ router = APIRouter(tags=["internalize"])
 @router.get("/internalize/queue")
 async def get_queue(
     limit: int = Query(default=20, ge=1, le=200),
-    prompt: str = Query(default="meaning"),
+    prompt: Literal['meaning', 'reading', 'example'] = Query(default="meaning"),
     tag: str | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
 ):

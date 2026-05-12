@@ -48,9 +48,16 @@ export default function CardDeck({ config, onDone }: Props) {
     })
       .then((res) => {
         setCards(res.cards)
-        setPhase('shuffle')
+        if (res.cards.length === 0) {
+          setPhase('playing') // skip shuffle, show empty state immediately
+        } else {
+          setPhase('shuffle')
+        }
       })
-      .catch(() => setPhase('done'))
+      .catch(() => {
+        setPhase('done')
+        onDone({ know: 0, unknown: 0 })
+      })
   }, [config])
 
   const handleSwipe = useCallback(
@@ -88,56 +95,58 @@ export default function CardDeck({ config, onDone }: Props) {
 
       {phase === 'playing' && (
         <>
-          {/* 进度条 */}
-          <div className="px-6 pt-4 pb-2">
-            <div className="flex items-center justify-between text-xs text-fg-subtle mb-1">
-              <span>{currentIndex} / {cards.length}</span>
-              <span>
-                <span className="text-green-600 font-medium">{results.know} 会</span>
-                {' · '}
-                <span className="text-red-500 font-medium">{results.unknown} 不会</span>
-              </span>
-            </div>
-            <div className="h-1 bg-border rounded-full overflow-hidden">
-              <motion.div
-                className="h-full bg-accent rounded-full"
-                animate={{ width: `${(currentIndex / cards.length) * 100}%` }}
-                transition={{ type: 'spring', stiffness: 200, damping: 30 }}
-              />
-            </div>
-          </div>
-
-          {/* 卡堆区域 */}
-          <div className="relative flex-1">
-            <AnimatePresence>
-              {[...visibleCards].reverse().map((card, reverseIdx) => {
-                const stackIndex = visibleCards.length - 1 - reverseIdx
-                return (
-                  <FlashCard
-                    key={card.id}
-                    card={card}
-                    stackIndex={stackIndex}
-                    promptType={config.promptType}
-                    onSwipe={(result) => handleSwipe(result, card.id)}
+          {cards.length > 0 ? (
+            <>
+              {/* 进度条 */}
+              <div className="px-6 pt-4 pb-2">
+                <div className="flex items-center justify-between text-xs text-fg-subtle mb-1">
+                  <span>{currentIndex} / {cards.length}</span>
+                  <span>
+                    <span className="text-green-600 font-medium">{results.know} 会</span>
+                    {' · '}
+                    <span className="text-red-500 font-medium">{results.unknown} 不会</span>
+                  </span>
+                </div>
+                <div className="h-1 bg-border rounded-full overflow-hidden">
+                  <motion.div
+                    className="h-full bg-accent rounded-full"
+                    animate={{ width: `${(currentIndex / cards.length) * 100}%` }}
+                    transition={{ type: 'spring', stiffness: 200, damping: 30 }}
                   />
-                )
-              })}
-            </AnimatePresence>
-          </div>
+                </div>
+              </div>
 
-          {/* 操作提示 */}
-          <div className="flex items-center justify-center gap-8 py-4 text-xs text-fg-subtle">
-            <span>← 不会</span>
-            <span>点击翻转</span>
-            <span>会 →</span>
-          </div>
+              {/* 卡堆区域 */}
+              <div className="relative flex-1">
+                <AnimatePresence mode="popLayout">
+                  {[...visibleCards].reverse().map((card, reverseIdx) => {
+                    const stackIndex = visibleCards.length - 1 - reverseIdx
+                    return (
+                      <FlashCard
+                        key={card.id}
+                        card={card}
+                        stackIndex={stackIndex}
+                        promptType={config.promptType}
+                        onSwipe={(result) => handleSwipe(result, card.id)}
+                      />
+                    )
+                  })}
+                </AnimatePresence>
+              </div>
+
+              {/* 操作提示 */}
+              <div className="flex items-center justify-center gap-8 py-4 text-xs text-fg-subtle">
+                <span>← 不会</span>
+                <span>点击翻转</span>
+                <span>会 →</span>
+              </div>
+            </>
+          ) : (
+            <div className="flex-1 flex items-center justify-center">
+              <p className="text-fg-muted">知识库暂无原子，先去分析一些内容吧</p>
+            </div>
+          )}
         </>
-      )}
-
-      {phase === 'playing' && cards.length === 0 && (
-        <div className="flex-1 flex items-center justify-center">
-          <p className="text-fg-muted">知识库暂无原子，先去分析一些内容吧</p>
-        </div>
       )}
     </div>
   )
