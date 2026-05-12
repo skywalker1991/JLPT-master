@@ -9,7 +9,7 @@ import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import analysis, atoms, dictionary, exam, tts, video
+from app.api import analysis, atoms, dictionary, exam, internalize, tts, video
 from app.config import get_settings
 from app.models.db import async_engine, Base
 from app.services.qdrant_service import qdrant_service
@@ -91,6 +91,7 @@ app.include_router(dictionary.router, prefix="/api")
 app.include_router(exam.router, prefix="/api")
 app.include_router(tts.router, prefix="/api")
 app.include_router(video.router, prefix="/api")
+app.include_router(internalize.router, prefix="/api")
 
 
 @app.get("/health")

@@ -1,11 +1,12 @@
 # backend/app/api/internalize.py
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func, case, exists, and_, Float
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.db import Atom, AtomProperty, AtomTag, Trace, get_db
+from app.services import atom_service
 from app.services.internalize_service import extract_jlpt_level
 
 router = APIRouter(tags=["internalize"])
@@ -121,3 +122,29 @@ async def get_queue(
         )
 
     return {"cards": cards}
+
+
+@router.post("/internalize/trace", status_code=201)
+async def record_trace(body: dict, db: AsyncSession = Depends(get_db)):
+    """记录一次卡牌划拨结果到 traces 表。"""
+    atom_id_str = body.get("atom_id")
+    result = body.get("result")
+    prompt_type = body.get("prompt_type", "meaning")
+
+    if result not in ("know", "unknown"):
+        raise HTTPException(status_code=422, detail="result must be 'know' or 'unknown'")
+
+    try:
+        atom_id = UUID(atom_id_str)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=422, detail="invalid atom_id")
+
+    atom = await atom_service.get_atom_by_id(db, atom_id)
+    if atom is None:
+        raise HTTPException(status_code=404, detail="Atom not found")
+
+    await atom_service.add_trace(
+        db, atom_id, "review", {"result": result, "prompt_type": prompt_type}
+    )
+    await db.commit()
+    return {"ok": True}
