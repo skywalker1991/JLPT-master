@@ -276,3 +276,30 @@ export interface QuestionAnalysisResponse {
   relations_suggested: RelationSuggestion[]
   cached: boolean
 }
+
+// Internalize
+export interface InternalizeProperty {
+  kind: string
+  value: string
+}
+
+export interface InternalizeCard {
+  id: string
+  type: 'vocabulary' | 'grammar'
+  key: string
+  jlpt_level: 'N1' | 'N2' | 'N3' | 'N4' | 'N5' | null
+  prompt_value: string | null
+  properties: InternalizeProperty[]
+}
+
+export interface InternalizeQueueResponse {
+  cards: InternalizeCard[]
+}
+
+export type SwipeResult = 'know' | 'unknown'
+
+export interface SessionConfig {
+  limit: number
+  promptType: string
+  tag: string
+}

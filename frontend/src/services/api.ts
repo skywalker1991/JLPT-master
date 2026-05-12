@@ -18,6 +18,7 @@ import {
   AccuracyStats,
   AttemptSummary,
   AttemptReviewData,
+  InternalizeQueueResponse,
 } from '../types'
 
 const BASE_URL = import.meta.env.VITE_API_URL || ''
@@ -299,4 +300,27 @@ export async function deleteAttempt(attemptId: string): Promise<void> {
 
 export async function getAttemptReview(attemptId: string): Promise<AttemptReviewData> {
   return request<AttemptReviewData>(`/api/attempts/${attemptId}/review`)
+}
+
+// ---- Internalize ----
+
+export async function getInternalizeQueue(params: {
+  limit: number
+  prompt: string
+  tag?: string
+}): Promise<InternalizeQueueResponse> {
+  const qs = new URLSearchParams({ limit: String(params.limit), prompt: params.prompt })
+  if (params.tag) qs.set('tag', params.tag)
+  return request<InternalizeQueueResponse>(`/api/internalize/queue?${qs}`)
+}
+
+export async function postInternalizeTrace(
+  atomId: string,
+  result: 'know' | 'unknown',
+  promptType: string,
+): Promise<void> {
+  await request<{ ok: boolean }>('/api/internalize/trace', {
+    method: 'POST',
+    body: JSON.stringify({ atom_id: atomId, result, prompt_type: promptType }),
+  })
 }
