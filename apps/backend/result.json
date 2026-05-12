@@ -1,0 +1,305 @@
+{
+  "sentences": [
+    "先月28日、北海道小樽市にあるスキー場のエスカレーターで事故がありました。",
+    "5歳の男の子が、降りる時に転んで、腕が機械の間に入ってしまいました。",
+    "男の子は亡くなりました。",
+    "このエスカレーターは、駐車場からスキーをするところまで動いています。",
+    "エスカレーターは、靴などが入ると止まることになっていますが、このときは止まりませんでした。",
+    "近くに安全かどうか見ている人もいませんでした。",
+    "警察は6日、スキー場の会社に関係する場所を調べました。",
+    "スキー場がどのような安全のチェックをしていたか、よく調べる予定です。"
+  ],
+  "analyses": [
+    {
+      "index": 1,
+      "jp": "先月28日、北海道小樽市にあるスキー場のエスカレーターで事故がありました。",
+      "zh": "上月28日，在北海道小樽市的一个滑雪场自动扶梯上发生了事故。",
+      "vocab": [
+        {
+          "surface": "小樽市",
+          "reading": "おたるし",
+          "meaning_zh": "小樽市（北海道地名）"
+        },
+        {
+          "surface": "スキー場",
+          "reading": "スキーじょう",
+          "meaning_zh": "滑雪场"
+        },
+        {
+          "surface": "事故",
+          "reading": "じこ",
+          "meaning_zh": "事故"
+        }
+      ],
+      "grammar": [
+        {
+          "pattern": "～にある",
+          "meaning_zh": "位于...的",
+          "explanation_zh": "表示事物（物体或场所）的存在位置。",
+          "from_text_span": [
+            12,
+            13,
+            14
+          ],
+          "example_sentences": null
+        },
+        {
+          "pattern": "～がありました",
+          "meaning_zh": "发生了/有了...",
+          "explanation_zh": "「ある」表示事件或事故的发生。",
+          "from_text_span": [
+            30,
+            31,
+            32,
+            33,
+            34,
+            35
+          ],
+          "example_sentences": null
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "jp": "5歳の男の子が、降りる時に転んで、腕が機械の間に入ってしまいました。",
+      "zh": "一名5岁的男孩在下电梯时摔倒，手臂卷入了机器的缝隙中。",
+      "vocab": [
+        {
+          "surface": "降りる",
+          "reading": "おりる",
+          "meaning_zh": "下来、走下"
+        },
+        {
+          "surface": "転んで",
+          "reading": "ころんで",
+          "meaning_zh": "摔倒（て形）"
+        },
+        {
+          "surface": "腕",
+          "reading": "うで",
+          "meaning_zh": "胳膊、手臂"
+        },
+        {
+          "surface": "機械",
+          "reading": "きかい",
+          "meaning_zh": "机器"
+        }
+      ],
+      "grammar": [
+        {
+          "pattern": "～時に",
+          "meaning_zh": "在...的时候",
+          "explanation_zh": "表示某个动作或状态发生的时间点。",
+          "from_text_span": [
+            11,
+            12
+          ],
+          "example_sentences": null
+        },
+        {
+          "pattern": "～てしまいました",
+          "meaning_zh": "（不幸）发生了.../完了",
+          "explanation_zh": "表示发生了无法挽回、令人遗憾或感到困扰的事情。",
+          "from_text_span": [
+            26,
+            27,
+            28,
+            29,
+            30,
+            31,
+            32
+          ],
+          "example_sentences": null
+        }
+      ]
+    },
+    {
+      "index": 3,
+      "jp": "男の子は亡くなりました。",
+      "zh": "男孩去世了。",
+      "vocab": [
+        {
+          "surface": "亡くなりました",
+          "reading": "なくなりました",
+          "meaning_zh": "去世、死亡（「死ぬ」的郑重说法）"
+        }
+      ],
+      "grammar": []
+    },
+    {
+      "index": 4,
+      "jp": "このエスカレーターは、駐車場からスキーをするところまで動いています。",
+      "zh": "这个自动扶梯在停车场和滑雪场之间运行。",
+      "vocab": [
+        {
+          "surface": "駐車場",
+          "reading": "ちゅうしゃじょう",
+          "meaning_zh": "停车场"
+        },
+        {
+          "surface": "動いています",
+          "reading": "うごいています",
+          "meaning_zh": "正在运行、活动"
+        }
+      ],
+      "grammar": [
+        {
+          "pattern": "～から～まで",
+          "meaning_zh": "从...到...",
+          "explanation_zh": "表示空间或时间的起止点。",
+          "from_text_span": [
+            14,
+            15,
+            25,
+            26
+          ],
+          "example_sentences": null
+        }
+      ]
+    },
+    {
+      "index": 5,
+      "jp": "エスカレーターは、靴などが入ると止まることになっていますが、このときは止まりませんでした。",
+      "zh": "自动扶梯规定在鞋子等卷入时会自动停止，但当时并没有停止。",
+      "vocab": [
+        {
+          "surface": "靴",
+          "reading": "くつ",
+          "meaning_zh": "鞋子"
+        },
+        {
+          "surface": "止まる",
+          "reading": "とまる",
+          "meaning_zh": "停止"
+        }
+      ],
+      "grammar": [
+        {
+          "pattern": "～と",
+          "meaning_zh": "一...就.../如果...",
+          "explanation_zh": "表示恒常条件、自然规律或机械联动的因果关系。",
+          "from_text_span": [
+            15
+          ],
+          "example_sentences": null
+        },
+        {
+          "pattern": "～ことになっている",
+          "meaning_zh": "规定/决定...",
+          "explanation_zh": "表示基于规则、习惯、计划等而形成的定例或社会规定。",
+          "from_text_span": [
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            27
+          ],
+          "example_sentences": null
+        }
+      ]
+    },
+    {
+      "index": 6,
+      "jp": "近くに安全かどうか見ている人もいませんでした。",
+      "zh": "附近也没有人在查看是否安全。",
+      "vocab": [
+        {
+          "surface": "近く",
+          "reading": "ちかく",
+          "meaning_zh": "附近"
+        },
+        {
+          "surface": "安全",
+          "reading": "あんぜん",
+          "meaning_zh": "安全"
+        }
+      ],
+      "grammar": [
+        {
+          "pattern": "～かどうか",
+          "meaning_zh": "是否...",
+          "explanation_zh": "用于将不带疑问词的疑问句嵌入句子中作宾语等。",
+          "from_text_span": [
+            5,
+            6,
+            7,
+            8
+          ],
+          "example_sentences": null
+        }
+      ]
+    },
+    {
+      "index": 7,
+      "jp": "警察は6日、スキー場の会社に関係する場所を調べました。",
+      "zh": "警察于6日调查了与滑雪场公司相关的场所。",
+      "vocab": [
+        {
+          "surface": "警察",
+          "reading": "けいさつ",
+          "meaning_zh": "警察"
+        },
+        {
+          "surface": "関係する",
+          "reading": "かんけいする",
+          "meaning_zh": "相关；有关联"
+        }
+      ],
+      "grammar": [
+        {
+          "pattern": "～に関係する",
+          "meaning_zh": "与……有关",
+          "explanation_zh": "表示前项与后项之间存在关联性。在句中修饰后面的名词“场所”。",
+          "from_text_span": [
+            13,
+            18
+          ],
+          "example_sentences": null
+        }
+      ]
+    },
+    {
+      "index": 8,
+      "jp": "スキー場がどのような安全のチェックをしていたか、よく調べる予定です。",
+      "zh": "警方计划详细调查滑雪场（此前）是如何进行安全检查的。",
+      "vocab": [
+        {
+          "surface": "どのような",
+          "reading": "どのような",
+          "meaning_zh": "什么样的；如何的"
+        },
+        {
+          "surface": "チェック",
+          "reading": "ちぇっく",
+          "meaning_zh": "检查"
+        }
+      ],
+      "grammar": [
+        {
+          "pattern": "（疑问词）～か",
+          "meaning_zh": "嵌入式疑问句",
+          "explanation_zh": "含有疑问词的句子作为后面动词（如“调查”）的宾语。",
+          "from_text_span": [
+            22,
+            23
+          ],
+          "example_sentences": null
+        },
+        {
+          "pattern": "～予定です",
+          "meaning_zh": "预定……；计划……",
+          "explanation_zh": "接在动词原形后，表示已经决定的计划或客观安排。",
+          "from_text_span": [
+            29,
+            33
+          ],
+          "example_sentences": null
+        }
+      ]
+    }
+  ]
+}
