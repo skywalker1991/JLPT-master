@@ -1,12 +1,11 @@
 # backend/app/api/internalize.py
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select, func, case, exists, and_, Float
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.db import Atom, AtomProperty, AtomTag, Trace, get_db
-from app.services import atom_service
 from app.services.internalize_service import extract_jlpt_level
 
 router = APIRouter(tags=["internalize"])
@@ -59,8 +58,6 @@ async def get_queue(
     query = (
         select(Atom, priority_expr.label("priority"))
         .outerjoin(review_stats, review_stats.c.atom_id == Atom.id)
-        .order_by(priority_expr.desc())
-        .limit(limit)
     )
 
     if tag:
@@ -71,6 +68,8 @@ async def get_queue(
                 )
             )
         )
+
+    query = query.order_by(priority_expr.desc()).limit(limit)
 
     result = await db.execute(query)
     rows = result.all()
