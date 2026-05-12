@@ -1,4 +1,4 @@
-import pytest
+import math
 from app.services.internalize_service import priority_score, extract_jlpt_level
 
 
@@ -19,8 +19,8 @@ def test_all_failed_recently_medium_priority():
 
 def test_all_failed_14_days_ago_high_priority():
     score = priority_score(fail_count=5, review_count=5, days_since=14)
-    # fail_rate=1 → 0.6; days_decay=1-e^{-1}≈0.632 → 0.4*0.632≈0.253
-    assert score > 0.85
+    expected = 0.6 + (1 - math.exp(-1)) * 0.4  # ≈ 0.8528
+    assert abs(score - expected) < 0.001
 
 
 def test_extract_jlpt_level_finds_n2():
@@ -29,3 +29,11 @@ def test_extract_jlpt_level_finds_n2():
 
 def test_extract_jlpt_level_returns_none_when_absent():
     assert extract_jlpt_level(["verb", "common"]) is None
+
+
+def test_extract_jlpt_level_returns_first_match():
+    assert extract_jlpt_level(["N3", "N2"]) == "N3"
+
+
+def test_extract_jlpt_level_empty_list():
+    assert extract_jlpt_level([]) is None
