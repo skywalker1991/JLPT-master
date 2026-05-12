@@ -75,7 +75,7 @@ function ShimmerOverlay() {
       animate={{ opacity: [0, 0.6, 0] }}
       transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }}
     >
-      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/50 to-transparent -translate-x-full" />
+      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/50 to-transparent animate-shimmer" />
     </motion.div>
   )
 }
