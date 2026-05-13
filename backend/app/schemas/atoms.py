@@ -1,6 +1,6 @@
 from uuid import UUID
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 class PropertyInput(BaseModel):
@@ -14,6 +14,15 @@ class CreateAtomRequest(BaseModel):
     properties: list[PropertyInput] = []
     analysis_id: UUID | None = None
     force_create: bool = False  # skip similarity check when user confirms "not the same"
+
+    @field_validator("type", mode="before")
+    @classmethod
+    def normalise_type(cls, v: str) -> str:
+        if v == "word":
+            return "vocabulary"
+        if v not in ("vocabulary", "grammar"):
+            raise ValueError(f"atom type must be 'vocabulary' or 'grammar', got {v!r}")
+        return v
 
 
 class AddPropertiesRequest(BaseModel):

@@ -58,7 +58,7 @@ _VOCAB_ITEM_SCHEMA = {
         "nuance": {"type": "string"},
         "example": {"type": "string"},
     },
-    "required": ["surface", "base", "meaning", "example"],
+    "required": ["surface", "base", "meaning", "part_of_speech", "example"],
 }
 
 _GRAMMAR_ITEM_SCHEMA = {

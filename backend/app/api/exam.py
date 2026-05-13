@@ -27,11 +27,11 @@ router = APIRouter(tags=["exam"])
 _ATOM_ITEM = {
     "type": "object",
     "properties": {
-        "type": {"type": "string", "enum": ["grammar", "word"]},
+        "type": {"type": "string", "enum": ["grammar", "vocabulary"]},
         "key": {"type": "string"},
-        "reading": {"type": "string"},        # word: 假名读音
+        "reading": {"type": "string"},        # vocabulary: 假名读音
         "meaning": {"type": "string"},        # 中文含义（必填）
-        "part_of_speech": {"type": "string"}, # word: 词性（名词/动词/形容词等）
+        "part_of_speech": {"type": "string", "description": "vocabulary 类型必填（名詞/動詞/形容詞/副詞等）；grammar 类型填 \"-\""},
         "jlpt_level": {"type": "string", "enum": ["N5", "N4", "N3", "N2", "N1"]},
         "register": {"type": "string"},       # 语体（书面/口语/正式/随意）
         "connection": {"type": "string"},     # grammar: 接续方式
@@ -39,7 +39,7 @@ _ATOM_ITEM = {
         "nuance": {"type": "string"},         # 语感特点
         "example": {"type": "string"},        # 日语例句
     },
-    "required": ["type", "key", "meaning"],
+    "required": ["type", "key", "meaning", "part_of_speech"],
 }
 
 # relation_type 枚举与 atom_service.VALID_RELATION_TYPES 保持一致
@@ -60,7 +60,7 @@ _RELATION_ITEM = {
 _STEM_NOTE_ITEM = {
     "type": "object",
     "properties": {
-        "type": {"type": "string", "enum": ["grammar", "word"]},
+        "type": {"type": "string", "enum": ["grammar", "vocabulary"]},
         "key": {"type": "string"},
         "reading": {"type": "string"},
         "note": {"type": "string"},
@@ -98,13 +98,14 @@ _RELATION_GUIDE = (
 
 _ATOM_RULES = """\
 atoms/relations 规则（所有题型共用）：
-- atom.type 只能是 "word"（词汇，基本形）或 "grammar"（语法，key 以〜开头）
+- atom.type 只能是 "vocabulary"（词汇，基本形）或 "grammar"（语法，key 以〜开头）
 - 只提取核心被考查项 + 最相似干扰项，最多4个；普通词不入
 - 若词/语法在日语中不存在，不入 atoms
 - relations 只在已提取的 atoms 之间建立（from_key/to_key 必须在 atoms 列表中）
+- part_of_speech 必填：vocabulary 类型填日语词性（名詞/動詞/形容詞/副詞 等），grammar 类型填 "-"
 - atom 字段填写要求（尽量完整，能填的都填）：
-  · word 类型：key=基本形、reading=假名读音、meaning=中文含义（精炼）、part_of_speech=词性、jlpt_level=JLPT级别（若已知）、register=语体（书面/口语/正式/随意，有明显倾向时填）、usage=使用条件（可选）、nuance=语感特点（可选）、example=日语例句（可选）
-  · grammar 类型：key=以〜开头的形式、meaning=中文含义、connection=接续方式、jlpt_level=JLPT级别（若已知）、register=语体（若有明显倾向）、usage=使用条件（可选）、nuance=语感特点（可选）、example=日语例句（可选）
+  · vocabulary 类型：key=基本形、reading=假名读音、meaning=中文含义（精炼）、part_of_speech=词性（必填）、jlpt_level=JLPT级别（若已知）、register=语体（书面/口语/正式/随意，有明显倾向时填）、usage=使用条件（可选）、nuance=语感特点（可选）、example=日语例句（可选）
+  · grammar 类型：key=以〜开头的形式、meaning=中文含义、part_of_speech="-"、connection=接续方式、jlpt_level=JLPT级别（若已知）、register=语体（若有明显倾向）、usage=使用条件（可选）、nuance=语感特点（可选）、example=日语例句（可选）
 - """ + _RELATION_GUIDE
 
 # ── 10 种题型 Schema ──────────────────────────────────────────────────────────
@@ -424,7 +425,7 @@ _PROMPTS: dict[str, str] = {
 - summary：被考查词的使用条件精要（1-2句）
 - target_word：surface/reading/meaning/usage_conditions（详细描述使用条件）
 - options_analysis 每项：explanation（用法正确/错误的理由）、violation（错误句违反了哪条规则，正确句为null）
-- atoms：仅被考查词本身（1个，type="word"）
+- atoms：仅被考查词本身（1个，type="vocabulary"）
 - relations：[]
 
 直接输出JSON：
@@ -468,7 +469,7 @@ _PROMPTS: dict[str, str] = {
 - target_word：目标词的汉字形式
 - confusion_points：易混淆的读音规律（同音字/特殊读音/音训混淆等）
 - options_analysis 每项：explanation（该读音正确/错误的原因，若读音不存在请明确说明）
-- atoms：目标词 + 形近/音近的易混词（≤3个，type="word"）
+- atoms：目标词 + 形近/音近的易混词（≤3个，type="vocabulary"）
 - relations：confusable 关系（音近/形近）
 
 直接输出JSON：
@@ -491,7 +492,7 @@ _PROMPTS: dict[str, str] = {
 - target_reading：被考查的读音
 - confusion_points：易混淆的形近字/同音字说明
 - options_analysis 每项：kanji_note（该汉字的含义及在本语境是否合适）、explanation（综合判断）
-- atoms：正确词 + 最易混淆的形近/同音词（≤3个，type="word"）
+- atoms：正确词 + 最易混淆的形近/同音词（≤3个，type="vocabulary"）
 - relations：confusable 关系（形近/同音异义）
 
 直接输出JSON：
