@@ -6,6 +6,9 @@ Grammar pattern format rules (applies to all prompts):
 - 以「〜」开头（使用全角波浪线）
 - 动词部分用基本形表示
 - 不包含具体词汇
+
+词汇 part_of_speech 格式要求：
+- 使用日文词性名称：名詞／動詞／形容詞／副詞／助詞／助動詞／接続詞／感動詞 等
 """
 
 IMAGE_ANALYSIS = """
@@ -21,6 +24,9 @@ IMAGE_ANALYSIS = """
 - 以「〜」开头（使用全角波浪线）
 - 动词部分用基本形表示
 - 不包含具体词汇
+
+词汇 part_of_speech 格式要求：
+- 使用日文词性名称：名詞／動詞／形容詞／副詞／助詞／助動詞／接続詞／感動詞 等
 
 直接输出 JSON 对象，不要 ```json 代码块，不要任何前缀或后缀文字。严格遵循以下 JSON Schema：
 {schema_json}
@@ -43,6 +49,9 @@ FREE_TEXT_ANALYSIS = """
 - 动词部分用基本形表示
 - 不包含具体词汇
 
+词汇 part_of_speech 格式要求：
+- 使用日文词性名称：名詞／動詞／形容詞／副詞／助詞／助動詞／接続詞／感動詞 等
+
 直接输出 JSON 对象，不要 ```json 代码块，不要任何前缀或后缀文字。严格遵循以下 JSON Schema：
 {schema_json}
 """
@@ -63,6 +72,9 @@ JLPT_GRAMMAR_QUIZ = """
 - 动词部分用基本形表示
 - 不包含具体词汇
 
+词汇 part_of_speech 格式要求：
+- 使用日文词性名称：名詞／動詞／形容詞／副詞／助詞／助動詞／接続詞／感動詞 等
+
 输出须严格遵循以下 JSON Schema：
 {schema_json}
 """
@@ -82,6 +94,9 @@ JLPT_ORDERING_QUIZ = """
 - 以「〜」开头（使用全角波浪线）
 - 动词部分用基本形表示
 - 不包含具体词汇
+
+词汇 part_of_speech 格式要求：
+- 使用日文词性名称：名詞／動詞／形容詞／副詞／助詞／助動詞／接続詞／感動詞 等
 
 输出须严格遵循以下 JSON Schema：
 {schema_json}
@@ -105,6 +120,9 @@ JLPT_READING = """
 - 动词部分用基本形表示
 - 不包含具体词汇
 
+词汇 part_of_speech 格式要求：
+- 使用日文词性名称：名詞／動詞／形容詞／副詞／助詞／助動詞／接続詞／感動詞 等
+
 输出须严格遵循以下 JSON Schema：
 {schema_json}
 """
@@ -123,6 +141,9 @@ JLPT_LISTENING = """
 - 以「〜」开头（使用全角波浪线）
 - 动词部分用基本形表示
 - 不包含具体词汇
+
+词汇 part_of_speech 格式要求：
+- 使用日文词性名称：名詞／動詞／形容詞／副詞／助詞／助動詞／接続詞／感動詞 等
 
 输出须严格遵循以下 JSON Schema：
 {schema_json}
@@ -145,6 +166,9 @@ FOLLOWUP_COMPARISON = """
 - 动词部分用基本形表示
 - 不包含具体词汇
 
+词汇 part_of_speech 格式要求：
+- 使用日文词性名称：名詞／動詞／形容詞／副詞／助詞／助動詞／接続詞／感動詞 等
+
 输出须严格遵循以下 JSON Schema：
 {schema_json}
 """
@@ -162,6 +186,9 @@ FOLLOWUP_USAGE = """
 - 以「〜」开头（使用全角波浪线）
 - 动词部分用基本形表示
 - 不包含具体词汇
+
+词汇 part_of_speech 格式要求：
+- 使用日文词性名称：名詞／動詞／形容詞／副詞／助詞／助動詞／接続詞／感動詞 等
 
 输出须严格遵循以下 JSON Schema：
 {schema_json}
@@ -215,6 +242,9 @@ EXAM_GRAMMAR_ANALYSIS = """
 - 动词部分用基本形表示
 - 不包含具体词汇
 
+词汇 part_of_speech 格式要求：
+- 使用日文词性名称：名詞／動詞／形容詞／副詞／助詞／助動詞／接続詞／感動詞 等
+
 直接输出 JSON 对象，不要 ```json 代码块。严格遵循以下 JSON Schema：
 {schema_json}
 """
@@ -235,6 +265,9 @@ RELATION_DISCOVERY = """
 - 以「〜」开头（使用全角波浪线）
 - 动词部分用基本形表示
 - 不包含具体词汇
+
+词汇 part_of_speech 格式要求：
+- 使用日文词性名称：名詞／動詞／形容詞／副詞／助詞／助動詞／接続詞／感動詞 等
 
 输出须严格遵循以下 JSON Schema：
 {schema_json}

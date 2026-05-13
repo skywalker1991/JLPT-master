@@ -51,7 +51,7 @@ _VOCAB_ITEM_SCHEMA = {
         "base": {"type": "string"},
         "reading": {"type": "string"},
         "meaning": {"type": "string"},
-        "part_of_speech": {"type": "string"},
+        "part_of_speech": {"type": "string", "description": "日文词性名称：名詞/動詞/形容詞/副詞/助詞/助動詞/接続詞 等"},
         "jlpt_level": {"type": "string"},
         "register": {"type": "string"},
         "usage": {"type": "string"},
