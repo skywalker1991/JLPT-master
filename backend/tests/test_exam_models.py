@@ -56,3 +56,14 @@ def test_question_analysis_is_one_to_one():
 def test_attempt_answer_fk_targets_exam_items():
     fks = {fk.column.table.name for fk in AttemptAnswer.__table__.c.item_id.foreign_keys}
     assert "exam_items" in fks
+
+
+def test_migrate_v2_table_lists_are_consistent():
+    """NEW_TABLES must include all tables that will exist after migration."""
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    from scripts.migrate_v2 import NEW_TABLES
+    required = {"exam_papers", "exam_sections", "exam_problems", "exam_items",
+                "exam_media", "exam_drafts", "question_analyses", "exam_attempts", "attempt_answers"}
+    assert required.issubset(set(NEW_TABLES)), f"Missing tables in NEW_TABLES: {required - set(NEW_TABLES)}"
