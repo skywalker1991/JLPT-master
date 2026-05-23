@@ -262,6 +262,109 @@ async def confirm_draft(draft_id: _uuid.UUID, db: AsyncSession = Depends(get_db)
     )
 
 
+# ── Import answers from answer PDF ───────────────────────────────────────────
+
+_ANSWER_PROMPT = """这是 JLPT 试卷的答案页。格式说明：
+- 主表按题号范围分组，每组是一串数字，每个数字对应一道题的答案（按题号顺序）
+  例如：「36-40: 14243」→ Q36=1, Q37=4, Q38=2, Q39=4, Q40=3
+- 排序题（文の組み立て）会在主表下方单独列出完整排列顺序，忽略该部分
+
+请将所有答案提取为以下格式，每道题单独一行：
+Q1: 2
+Q2: 4
+Q3: 1
+...（按题号从小到大，不遗漏）
+
+要求：
+- 格式严格为 `Q{题号}: {单个数字}`，不加任何其他符号
+- 数字必须与原PDF完全一致
+- 聴解各题同样按题号列出
+- 只输出 Q 行，不输出任何其他内容"""
+
+
+@router.post("/drafts/{draft_id}/import-answers", response_model=DraftDetail)
+async def import_answers(
+    draft_id: _uuid.UUID,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """Upload answer PDF → extract first page → Gemini parse → inject into draft_json."""
+    import re
+    import tempfile
+    import fitz  # PyMuPDF
+    from google import genai
+    from google.genai import types
+    from scripts.convert_exam import _parse_answers, _inject_answers
+
+    draft = await db.get(ExamDraft, draft_id)
+    if draft is None:
+        raise HTTPException(status_code=404, detail="Draft not found")
+    if not draft.draft_json:
+        raise HTTPException(status_code=400, detail="Draft has no structured data yet")
+
+    pdf_bytes = await file.read()
+    if not pdf_bytes:
+        raise HTTPException(status_code=400, detail="Empty file")
+
+    # Extract first page only
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+        tmp.write(pdf_bytes)
+        tmp_path = Path(tmp.name)
+
+    try:
+        doc = fitz.open(str(tmp_path))
+        first_page_text = doc[0].get_text() if len(doc) > 0 else ""
+        first_page_doc = fitz.open()
+        first_page_doc.insert_pdf(doc, from_page=0, to_page=0)
+        first_page_bytes = first_page_doc.tobytes()
+        doc.close()
+        first_page_doc.close()
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+    settings = get_settings()
+    client = genai.Client(api_key=settings.LLM_API_KEY)
+    try:
+        response = await client.aio.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[
+                types.Part.from_bytes(data=first_page_bytes, mime_type="application/pdf"),
+                types.Part.from_text(text=f"以下是该PDF的提取文本，供参考：\n\n{first_page_text}\n\n---\n\n{_ANSWER_PROMPT}"),
+            ],
+            config=types.GenerateContentConfig(
+                thinking_config=types.ThinkingConfig(thinking_budget=8000),
+            ),
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Gemini failed: {e}")
+
+    # Parse Q{n}: {d} lines
+    answer_lines = "\n".join(
+        line for line in response.text.splitlines()
+        if re.match(r'^Q\d+:\s*\d', line.strip())
+    )
+    pseudo_md = f"## 答案\n{answer_lines}"
+    answers = _parse_answers(pseudo_md)
+
+    if not answers:
+        raise HTTPException(status_code=422, detail="No answers could be extracted from the PDF")
+
+    data = dict(draft.draft_json)
+    _inject_answers(data, answers)
+    draft.draft_json = data
+    draft.updated_at = datetime.utcnow()
+    await db.commit()
+    await db.refresh(draft)
+
+    logger.info("Imported %d answers into draft %s", len(answers), draft_id)
+    return DraftDetail(
+        id=draft.id, filename=draft.filename,
+        markdown_raw=draft.markdown_raw, draft_json=draft.draft_json,
+        status=draft.status, paper_id=draft.paper_id,
+        created_at=draft.created_at, updated_at=draft.updated_at,
+    )
+
+
 # ── Media Upload ──────────────────────────────────────────────────────────────
 
 @router.post("/media/upload", response_model=MediaUploadResponse)

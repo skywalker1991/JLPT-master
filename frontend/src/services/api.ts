@@ -358,6 +358,20 @@ export async function uploadMedia(file: File): Promise<{ url: string }> {
   return res.json()
 }
 
+export async function importAnswers(draftId: string, file: File): Promise<DraftDetail> {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await fetch(`${BASE_URL}/api/admin/drafts/${draftId}/import-answers`, {
+    method: 'POST',
+    body: form,
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body.detail ?? `HTTP ${res.status}`)
+  }
+  return res.json()
+}
+
 // ---- Internalize ----
 
 export async function getInternalizeQueue(params: {

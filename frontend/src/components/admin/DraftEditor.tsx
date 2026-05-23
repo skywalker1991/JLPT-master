@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Loader2, Plus, Trash2 } from 'lucide-react'
-import { updateDraft, confirmDraft, uploadMedia } from '../../services/api'
+import { FileKey, Loader2, Plus, Trash2 } from 'lucide-react'
+import { updateDraft, confirmDraft, uploadMedia, importAnswers } from '../../services/api'
 import type { DraftDetail, DraftJson, DraftProblem, DraftItem } from '../../types'
 
 const PROBLEM_TYPES = [
@@ -228,7 +228,9 @@ export default function DraftEditor({
   })
   const [saving, setSaving] = useState(false)
   const [confirming, setConfirming] = useState(false)
+  const [importing, setImporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const answerFileRef = useRef<HTMLInputElement>(null)
 
   function setMeta<K extends keyof DraftJson>(key: K, val: DraftJson[K]) {
     setJson(j => ({ ...j, [key]: val }))
@@ -261,6 +263,20 @@ export default function DraftEditor({
   const handleImagePaste = useCallback((_secIdx: number, _probIdx: number, _prob: DraftProblem, url: string) => {
     alert(`图片已上传：${url}\n（确认入库后可在后台关联至题目）`)
   }, [])
+
+  async function handleImportAnswers(file: File) {
+    setImporting(true)
+    setError(null)
+    try {
+      const updated = await importAnswers(draft.id, file)
+      setJson(updated.draft_json ?? json)
+      onSaved(updated)
+    } catch (e) {
+      setError(`导入答案失败：${(e as Error).message}`)
+    } finally {
+      setImporting(false)
+    }
+  }
 
   async function handleSave() {
     setSaving(true)
@@ -315,6 +331,26 @@ export default function DraftEditor({
           onChange={e => setMeta('source', e.target.value)}
           placeholder="出典（例：2023年07月）"
           className="w-44 border border-border rounded-lg px-3 py-1.5 text-sm bg-bg"
+        />
+        <button
+          onClick={() => answerFileRef.current?.click()}
+          disabled={importing}
+          title="上传答案 PDF（第一页）自动填入正确答案"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs border border-border text-fg-muted hover:border-accent/50 hover:text-accent transition-colors disabled:opacity-40 shrink-0"
+        >
+          {importing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileKey className="w-3.5 h-3.5" />}
+          {importing ? '导入中…' : '导入答案'}
+        </button>
+        <input
+          ref={answerFileRef}
+          type="file"
+          accept="application/pdf"
+          className="hidden"
+          onChange={e => {
+            const f = e.target.files?.[0]
+            if (f) handleImportAnswers(f)
+            e.target.value = ''
+          }}
         />
       </div>
 
