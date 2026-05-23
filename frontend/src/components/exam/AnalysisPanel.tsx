@@ -276,19 +276,19 @@ function SentenceOrderAnalysis({ data }: { data: SD }) {
   }>
   return (
     <div className="space-y-3">
-      {(data.correct_order || data.star_answer) && (
+      {!!(data.correct_order || data.star_answer) && (
         <div className="bg-accent/5 border border-accent/20 rounded-xl px-3 py-2.5 space-y-1">
-          {data.correct_order && (
+          {!!data.correct_order && (
             <p className="text-sm font-semibold text-fg">{data.correct_order as string}</p>
           )}
-          {data.star_answer && (
+          {!!data.star_answer && (
             <p className="text-xs text-fg-muted">
               ★ <span className="text-fg font-medium">{data.star_answer as string}</span>
             </p>
           )}
         </div>
       )}
-      {data.order_logic && (
+      {!!data.order_logic && (
         <p className="text-xs text-fg leading-relaxed bg-surface border border-border rounded-lg px-3 py-2">
           {data.order_logic as string}
         </p>
@@ -309,7 +309,7 @@ function PassageFillAnalysis({ data }: { data: SD }) {
   }>
   return (
     <div className="space-y-3">
-      {data.context_reason && (
+      {!!data.context_reason && (
         <div className="bg-accent/5 border border-accent/20 rounded-xl px-3 py-2.5 text-xs text-fg leading-relaxed">
           <span className="font-semibold text-accent mr-1.5">上下文</span>
           {data.context_reason as string}
@@ -334,7 +334,7 @@ function ReadingCompAnalysis({ data }: { data: SD }) {
   }>
   return (
     <div className="space-y-3">
-      {data.key_sentence && (
+      {!!data.key_sentence && (
         <p className="text-xs text-fg-muted italic bg-bg border border-border rounded-lg px-3 py-2 leading-relaxed">
           关键句：「{data.key_sentence as string}」
         </p>

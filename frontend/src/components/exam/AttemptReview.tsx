@@ -266,7 +266,7 @@ export default function AttemptReview({
       ))}
 
       {analysisItemId && (
-        <AnalysisPanel itemId={analysisItemId} onClose={() => setAnalysisItemId(null)} />
+        <AnalysisPanel itemId={analysisItemId} />
       )}
     </div>
   )
