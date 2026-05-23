@@ -15,7 +15,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from sqlalchemy import select
-from app.models.db import async_session_factory, async_engine, Base, ExamPaper, ExamSection, ExamQuestion, ExamAnswerKey
+from app.models.db import (
+    async_session_factory, async_engine, Base,
+    ExamPaper, ExamSection, ExamProblem, ExamItem,
+)
 
 
 async def seed(path: str) -> None:
@@ -57,27 +60,35 @@ async def seed(path: str) -> None:
             db.add(section)
             await db.flush()
 
-            for q_data in sec_data.get("questions", []):
-                question = ExamQuestion(
+            for prob_idx, prob_data in enumerate(sec_data.get("problems", [])):
+                problem = ExamProblem(
                     section_id=section.id,
-                    type=q_data["type"],
-                    stem=q_data.get("stem", ""),
-                    passage=q_data.get("passage"),
-                    options=q_data.get("options", {}),
-                    meta=q_data.get("meta"),
-                    seq=q_data.get("seq", 0),
+                    seq=prob_idx + 1,
+                    name=prob_data["name"],
+                    type=prob_data["type"],
+                    instruction=prob_data.get("instruction"),
+                    passage=prob_data.get("passage"),
+                    transcript=prob_data.get("transcript"),
                 )
-                db.add(question)
+                db.add(problem)
                 await db.flush()
 
-                correct = q_data.get("correct_answer", "").strip()
-                if correct:
-                    db.add(ExamAnswerKey(question_id=question.id, correct_answer=correct))
+                for item_data in prob_data.get("items", []):
+                    db.add(ExamItem(
+                        problem_id=problem.id,
+                        seq=item_data.get("seq", 0),
+                        num=item_data.get("num"),
+                        stem=item_data.get("stem", ""),
+                        options=item_data.get("options", {}),
+                        correct_answer=item_data.get("correct_answer"),
+                        meta=item_data.get("meta"),
+                    ))
 
         await db.commit()
         print(f"Imported: {title} ({level})")
         for sec in data.get("sections", []):
-            print(f"  [{sec['name']}] {len(sec.get('questions', []))} questions")
+            total_items = sum(len(p.get("items", [])) for p in sec.get("problems", []))
+            print(f"  [{sec['name']}] {len(sec.get('problems', []))} problems, {total_items} items")
 
 
 if __name__ == "__main__":

@@ -113,3 +113,11 @@ def test_validate_raises_on_missing_problems():
     data = {"title": "T", "level": "N1", "sections": [{"name": "S"}]}
     with pytest.raises(AssertionError, match="missing problems"):
         _validate(data)
+
+
+def test_seed_exam_imports_correctly():
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    from scripts.seed_exam import seed  # should import without error
+    assert callable(seed)
