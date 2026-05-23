@@ -58,7 +58,9 @@ async def update_draft(draft_id: _uuid.UUID, body: dict, db: AsyncSession = Depe
     if draft is None:
         raise HTTPException(status_code=404, detail="Draft not found")
     if "draft_json" in body:
+        from sqlalchemy.orm.attributes import flag_modified
         draft.draft_json = body["draft_json"]
+        flag_modified(draft, "draft_json")
     draft.updated_at = datetime.utcnow()
     await db.commit()
     return DraftDetail(
@@ -315,10 +317,14 @@ async def import_answers(
 ):
     """Upload answer PDF → extract first page → Gemini parse → inject into draft_json."""
     import re
+    import sys
+    import copy
     import tempfile
     import fitz  # PyMuPDF
     from google import genai
     from google.genai import types
+    from sqlalchemy.orm.attributes import flag_modified
+    sys.path.insert(0, str(Path(__file__).parent.parent.parent))
     from scripts.convert_exam import _parse_answers, _inject_answers
 
     draft = await db.get(ExamDraft, draft_id)
@@ -374,9 +380,10 @@ async def import_answers(
     if not answers:
         raise HTTPException(status_code=422, detail="No answers could be extracted from the PDF")
 
-    data = dict(draft.draft_json)
+    data = copy.deepcopy(draft.draft_json)
     _inject_answers(data, answers)
     draft.draft_json = data
+    flag_modified(draft, "draft_json")
     draft.updated_at = datetime.utcnow()
     await db.commit()
     await db.refresh(draft)
