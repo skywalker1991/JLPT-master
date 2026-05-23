@@ -1,41 +1,30 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Brain, CheckCircle, ChevronLeft, ChevronRight, Loader2, X, XCircle } from 'lucide-react'
 import { submitAnswer, submitSection, completeAttempt } from '../../services/api'
-import type { ExamPaperDetail, QuestionItem, SectionDetail } from '../../types'
+import type { ExamPaperDetail, ProblemDetail, ItemSchema, SectionDetail } from '../../types'
 import AnalysisPanel from './AnalysisPanel'
 
-// ─── Quiz unit ────────────────────────────────────────────────────────────────
+// ─── Quiz unit (one per Problem) ──────────────────────────────────────────────
 
 interface QuizUnit {
   sectionId: string
   sectionName: string
-  passage: string | null
-  questions: QuestionItem[]
+  problem: ProblemDetail
 }
 
 function buildUnits(sections: SectionDetail[], sectionIds: string[]): QuizUnit[] {
   const units: QuizUnit[] = []
   for (const sec of sections) {
     if (!sectionIds.includes(sec.id)) continue
-    const passageMap = new Map<string, number>()
-    for (const q of sec.questions) {
-      const key = q.meta?.passage_group as string | undefined
-      const isPassage = q.type === 'passage_fill' || q.type === 'reading_comp'
-      if (isPassage && key && passageMap.has(key)) {
-        units[passageMap.get(key)!].questions.push(q)
-      } else if (isPassage && key) {
-        passageMap.set(key, units.length)
-        units.push({ sectionId: sec.id, sectionName: sec.name, passage: q.passage ?? null, questions: [q] })
-      } else {
-        units.push({ sectionId: sec.id, sectionName: sec.name, passage: null, questions: [q] })
-      }
+    for (const prob of sec.problems) {
+      units.push({ sectionId: sec.id, sectionName: sec.name, problem: prob })
     }
   }
   return units
 }
 
 function formatTime(s: number) {
-  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
+  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '00')}`
 }
 
 // ─── Question navigation grid ─────────────────────────────────────────────────
@@ -69,13 +58,14 @@ function QuestionNav({
           <div className="flex flex-wrap gap-1">
             {sec.indices.map(idx => {
               const u = units[idx]
+              const items = u.problem.items
+              const gradedItems = items.filter(i => Object.keys(i.options).length > 0)
               const isCurrent = idx === unitIdx
               let colorClass: string
               if (reviewMode) {
-                const gradedQs = u.questions.filter(q => Object.keys(q.options).length > 0)
-                const answered = gradedQs.every(q => answers[q.id])
-                const allCorrect = answered && gradedQs.every(q => isCorrectMap?.[q.id] === true)
-                const anyWrong = gradedQs.some(q => isCorrectMap?.[q.id] === false)
+                const answered = gradedItems.every(i => answers[i.id])
+                const allCorrect = answered && gradedItems.every(i => isCorrectMap?.[i.id] === true)
+                const anyWrong = gradedItems.some(i => isCorrectMap?.[i.id] === false)
                 colorClass = isCurrent
                   ? 'bg-accent text-white shadow-sm ring-2 ring-accent/30'
                   : !answered
@@ -86,7 +76,7 @@ function QuestionNav({
                   ? 'bg-success/15 text-success-fg border border-success/30'
                   : 'bg-border/50 text-fg-muted'
               } else {
-                const isAnswered = u.questions.every(q => Object.keys(q.options).length === 0 || answers[q.id])
+                const isAnswered = gradedItems.every(i => answers[i.id])
                 const isDone = submitted.has(u.sectionId)
                 colorClass = isCurrent
                   ? 'bg-accent text-white shadow-sm ring-2 ring-accent/30'
@@ -102,6 +92,7 @@ function QuestionNav({
                 <button
                   key={idx}
                   onClick={() => onSelect(idx)}
+                  title={u.problem.name}
                   className={`w-8 h-8 text-xs font-semibold rounded-lg transition-all ${colorClass}`}
                 >
                   {idx + 1}
@@ -115,14 +106,14 @@ function QuestionNav({
   )
 }
 
-// ─── Single question display ──────────────────────────────────────────────────
+// ─── Single item display ──────────────────────────────────────────────────────
 
 const OPTS = ['1', '2', '3', '4'] as const
 
-function QuestionDisplay({
-  q, selected, onSelect, reviewMode, correctAnswer, isCorrect,
+function ItemDisplay({
+  item, selected, onSelect, reviewMode, correctAnswer, isCorrect,
 }: {
-  q: QuestionItem
+  item: ItemSchema
   selected: string | null
   onSelect: (a: string) => void
   reviewMode?: boolean
@@ -131,15 +122,15 @@ function QuestionDisplay({
 }) {
   return (
     <div className="space-y-3">
-      {q.stem && (
+      {item.stem && (
         <p className="text-base text-fg leading-relaxed">
-          <span className="text-xs text-fg-muted mr-1">Q{q.seq}.</span>
-          {q.stem}
+          {item.num != null && <span className="text-xs text-fg-muted mr-1">Q{item.num}.</span>}
+          {item.stem}
         </p>
       )}
-      {Object.keys(q.options).length > 0 ? (
+      {Object.keys(item.options).length > 0 ? (
         <div className="space-y-2">
-          {OPTS.filter(k => k in q.options).map(k => {
+          {OPTS.filter(k => k in item.options).map(k => {
             const isCorrectOpt = reviewMode && k === correctAnswer
             const isWrongUser = reviewMode && k === selected && isCorrect === false
             const isSelected = !reviewMode && selected === k
@@ -160,7 +151,7 @@ function QuestionDisplay({
                 ].join(' ')}
               >
                 <span className="shrink-0 font-bold text-xs mt-0.5 w-4">{k}</span>
-                <span>{q.options[k]}</span>
+                <span>{item.options[k]}</span>
                 {isCorrectOpt && <CheckCircle className="w-4 h-4 ml-auto shrink-0 mt-0.5 text-success" />}
                 {isWrongUser && <XCircle className="w-4 h-4 ml-auto shrink-0 mt-0.5 text-danger" />}
                 {isSelected && <CheckCircle className="w-4 h-4 ml-auto shrink-0 mt-0.5 text-accent" />}
@@ -205,7 +196,7 @@ export default function ExamSession({
   const startIdx = useMemo(() => {
     if (reviewMode || !initialAnswers) return 0
     const firstUnanswered = units.findIndex(u =>
-      u.questions.some(q => Object.keys(q.options).length > 0 && !initialAnswers[q.id]),
+      u.problem.items.some(i => Object.keys(i.options).length > 0 && !initialAnswers[i.id]),
     )
     return firstUnanswered >= 0 ? firstUnanswered : 0
   }, [units, initialAnswers, reviewMode])
@@ -217,7 +208,7 @@ export default function ExamSession({
   )
   const [elapsed, setElapsed] = useState(0)
   const [submitting, setSubmitting] = useState(false)
-  const [analysisQid, setAnalysisQid] = useState<string | null>(null)
+  const [analysisItemId, setAnalysisItemId] = useState<string | null>(null)
 
   useEffect(() => {
     if (reviewMode) return
@@ -226,27 +217,26 @@ export default function ExamSession({
   }, [reviewMode])
 
   const unit = units[unitIdx]
+  const prob = unit.problem
 
   const currentSectionUnits = useMemo(
     () => units.filter(u => u.sectionId === unit.sectionId),
     [units, unit.sectionId],
   )
-  const currentSectionAnswered = currentSectionUnits.every(u =>
-    u.questions.every(q => Object.keys(q.options).length === 0 || answers[q.id]),
-  )
   const answeredInSection = currentSectionUnits.reduce(
-    (n, u) => n + u.questions.filter(q => Object.keys(q.options).length > 0 && answers[q.id]).length, 0,
+    (n, u) => n + u.problem.items.filter(i => Object.keys(i.options).length > 0 && answers[i.id]).length, 0,
   )
   const totalInSection = currentSectionUnits.reduce(
-    (n, u) => n + u.questions.filter(q => Object.keys(q.options).length > 0).length, 0,
+    (n, u) => n + u.problem.items.filter(i => Object.keys(i.options).length > 0).length, 0,
   )
+  const currentSectionAnswered = answeredInSection === totalInSection
 
   const sectionAlreadySubmitted = submitted.has(unit.sectionId)
 
-  async function handleSelect(questionId: string, answer: string) {
+  async function handleSelect(itemId: string, answer: string) {
     if (sectionAlreadySubmitted || reviewMode) return
-    setAnswers(prev => ({ ...prev, [questionId]: answer }))
-    await submitAnswer(attemptId, questionId, answer).catch(() => {})
+    setAnswers(prev => ({ ...prev, [itemId]: answer }))
+    await submitAnswer(attemptId, itemId, answer).catch(() => {})
   }
 
   async function handleSubmitSection() {
@@ -258,7 +248,6 @@ export default function ExamSession({
       await submitSection(attemptId, unit.sectionId)
       const newSubmitted = new Set([...submitted, unit.sectionId])
       setSubmitted(newSubmitted)
-
       if (sectionIds.every(id => newSubmitted.has(id))) {
         await completeAttempt(attemptId)
         onComplete()
@@ -275,18 +264,15 @@ export default function ExamSession({
         <button onClick={onCancel} className="text-fg-muted hover:text-fg transition-colors">
           <X className="w-4 h-4" />
         </button>
-
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-fg truncate">{unit.sectionName}</p>
           <p className="text-xs text-fg-muted">
             {reviewMode ? '查看结果' : `${answeredInSection}/${totalInSection} 已作答`}
           </p>
         </div>
-
         {!reviewMode && (
           <span className="text-sm font-mono text-fg-muted shrink-0">{formatTime(elapsed)}</span>
         )}
-
         {!reviewMode && !sectionAlreadySubmitted && (
           <button
             onClick={handleSubmitSection}
@@ -307,7 +293,7 @@ export default function ExamSession({
         )}
       </div>
 
-      {/* Question navigation */}
+      {/* Problem navigation */}
       <QuestionNav
         units={units}
         unitIdx={unitIdx}
@@ -318,35 +304,64 @@ export default function ExamSession({
         isCorrectMap={isCorrectMap}
       />
 
-      {/* Unit content */}
+      {/* Problem content */}
       <div className="flex-1 overflow-y-auto px-6 py-6 space-y-5">
-        {unit.passage && (
+        {/* Problem header */}
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-fg-muted bg-border/40 px-2 py-0.5 rounded">
+            {prob.name}
+          </span>
+          {prob.instruction && (
+            <p className="text-xs text-fg-muted">{prob.instruction}</p>
+          )}
+        </div>
+
+        {/* Passage (reading) */}
+        {prob.passage && (
           <div className="bg-bg border border-border rounded-xl p-4 text-sm text-fg leading-relaxed whitespace-pre-wrap max-h-56 overflow-y-auto">
-            {unit.passage}
+            {prob.passage}
           </div>
         )}
 
-        {unit.questions.map(q => (
-          <div key={q.id} className="space-y-2">
-            <QuestionDisplay
-              q={q}
-              selected={answers[q.id] ?? null}
-              onSelect={ans => handleSelect(q.id, ans)}
+        {/* Transcript (listening) */}
+        {prob.transcript && (
+          <div className="bg-bg border border-border rounded-xl p-4 text-sm text-fg leading-relaxed whitespace-pre-wrap max-h-40 overflow-y-auto">
+            <p className="text-[10px] font-semibold text-fg-muted mb-2 uppercase tracking-wide">聴解原文</p>
+            {prob.transcript}
+          </div>
+        )}
+
+        {/* Media images */}
+        {prob.media.length > 0 && (
+          <div className="flex flex-wrap gap-3">
+            {prob.media.map(m => (
+              <img key={m.id} src={m.url} alt={m.caption ?? ''} className="max-h-48 rounded-lg border border-border" />
+            ))}
+          </div>
+        )}
+
+        {/* Items */}
+        {prob.items.map(item => (
+          <div key={item.id} className="space-y-2">
+            <ItemDisplay
+              item={item}
+              selected={answers[item.id] ?? null}
+              onSelect={ans => handleSelect(item.id, ans)}
               reviewMode={reviewMode}
-              correctAnswer={correctAnswers?.[q.id]}
-              isCorrect={isCorrectMap?.[q.id]}
+              correctAnswer={correctAnswers?.[item.id]}
+              isCorrect={isCorrectMap?.[item.id]}
             />
-            {reviewMode && Object.keys(q.options).length > 0 && (
+            {reviewMode && Object.keys(item.options).length > 0 && (
               <button
-                onClick={() => setAnalysisQid(analysisQid === q.id ? null : q.id)}
+                onClick={() => setAnalysisItemId(analysisItemId === item.id ? null : item.id)}
                 className="flex items-center gap-1.5 text-xs text-accent hover:text-accent-hover transition-colors"
               >
                 <Brain className="w-3.5 h-3.5" />
-                {analysisQid === q.id ? '收起解析' : 'AI 解析'}
+                {analysisItemId === item.id ? '收起解析' : 'AI 解析'}
               </button>
             )}
-            {reviewMode && analysisQid === q.id && (
-              <AnalysisPanel questionId={q.id} />
+            {reviewMode && analysisItemId === item.id && (
+              <AnalysisPanel itemId={item.id} />
             )}
           </div>
         ))}
@@ -362,11 +377,7 @@ export default function ExamSession({
           <ChevronLeft className="w-4 h-4" />
           上一题
         </button>
-
-        <span className="text-xs text-fg-muted">
-          {unitIdx + 1} / {units.length}
-        </span>
-
+        <span className="text-xs text-fg-muted">{unitIdx + 1} / {units.length}</span>
         <button
           onClick={() => setUnitIdx(i => Math.min(units.length - 1, i + 1))}
           disabled={unitIdx === units.length - 1}
