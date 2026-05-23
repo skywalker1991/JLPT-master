@@ -9,7 +9,9 @@ import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api import admin as admin_api
 from app.api import analysis, atoms, dictionary, exam, internalize, tts, video
+from fastapi.staticfiles import StaticFiles
 from app.config import get_settings
 from app.models.db import async_engine, Base
 from app.services.qdrant_service import qdrant_service
@@ -92,6 +94,11 @@ app.include_router(exam.router, prefix="/api")
 app.include_router(tts.router, prefix="/api")
 app.include_router(video.router, prefix="/api")
 app.include_router(internalize.router, prefix="/api")
+app.include_router(admin_api.router, prefix="/api")
+
+_media_dir = Path(__file__).parent.parent / "media"
+_media_dir.mkdir(exist_ok=True)
+app.mount("/media", StaticFiles(directory=str(_media_dir)), name="media")
 
 
 @app.get("/health")
