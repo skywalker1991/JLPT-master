@@ -159,6 +159,7 @@ class ExamPaper(Base):
 
     sections = relationship("ExamSection", back_populates="paper", cascade="all, delete-orphan",
                             order_by="ExamSection.seq")
+    attempts = relationship("ExamAttempt", back_populates="paper", cascade="all, delete-orphan")
 
     __table_args__ = (
         UniqueConstraint("title", "level", name="uq_exam_papers_title_level"),
@@ -181,6 +182,7 @@ class ExamSection(Base):
 
     __table_args__ = (
         Index("ix_exam_sections_paper_id", "paper_id"),
+        UniqueConstraint("paper_id", "seq", name="uq_exam_sections_paper_seq"),
     )
 
 
@@ -207,6 +209,7 @@ class ExamProblem(Base):
     __table_args__ = (
         Index("ix_exam_problems_section_id", "section_id"),
         Index("ix_exam_problems_type", "type"),
+        UniqueConstraint("section_id", "seq", name="uq_exam_problems_section_seq"),
     )
 
 
@@ -230,6 +233,7 @@ class ExamItem(Base):
 
     __table_args__ = (
         Index("ix_exam_items_problem_id", "problem_id"),
+        UniqueConstraint("problem_id", "num", name="uq_exam_items_problem_num"),
     )
 
 
@@ -264,7 +268,7 @@ class ExamDraft(Base):
                       nullable=True)
     status = Column(String(20), nullable=False, server_default=text("'pending'"))
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
-    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"), onupdate=datetime.utcnow)
 
     __table_args__ = (
         Index("ix_exam_drafts_status", "status"),
@@ -294,7 +298,7 @@ class ExamAttempt(Base):
     started_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
     completed_at = Column(DateTime(timezone=True), nullable=True)
 
-    paper = relationship("ExamPaper")
+    paper = relationship("ExamPaper", back_populates="attempts")
     answers = relationship("AttemptAnswer", back_populates="attempt", cascade="all, delete-orphan")
 
     __table_args__ = (
