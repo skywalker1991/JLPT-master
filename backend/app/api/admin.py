@@ -91,6 +91,7 @@ async def create_draft_from_pdf(
     try:
         markdown_raw = await _run_pdf_to_md(tmp_path, settings.LLM_API_KEY)
         draft_json = await _run_convert_exam(markdown_raw, settings.LLM_API_KEY)
+        _strip_answers(draft_json)
         _inject_metadata_from_md(draft_json, markdown_raw)
     except Exception as e:
         logger.error("Ingestion failed for %s: %s", file.filename, e)
@@ -185,7 +186,7 @@ async def _run_convert_exam(markdown: str, api_key: str) -> dict:
     """Call Gemini to parse Markdown → structured 4-layer JSON."""
     import sys
     sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-    from scripts.convert_exam import PROMPT_HEADER, _parse_answers, _inject_answers, _validate
+    from scripts.convert_exam import PROMPT_HEADER, _parse_answers, _inject_answers, _strip_answers, _validate
 
     from google import genai
     from google.genai import types

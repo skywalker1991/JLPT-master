@@ -104,8 +104,11 @@ PROMPT_HEADER = """\
   passage_fill/reading_comp: 設問の文（例: "筆者の考えに合うのはどれか。"）
   listening（選択肢あり）: 番号のみ（例: "1番"）
   listening（音声のみ）: ""
-■ options: {"1":…,"2":…,"3":…,"4":…}、[音声のみ]は{}
-■ correct_answer: 答案表から取得（"1"/"2"/"3"/"4"）、不明なら null
+■ options:
+  通常: {"1":…,"2":…,"3":…,"4":…}
+  sentence_order: 並べ替える4つの語句を {"1":…,"2":…,"3":…,"4":…} に設定する（★位置に入る語句を選ぶための選択肢）
+  [音声のみ]: {}
+■ correct_answer: 常に null（答案は別途インポートする）
 ■ meta:
   kanji_reading/kanji_writing/synonym: {"target": "対象語"}
   sentence_order: {"star_position": N}（[_N★_] の N、整数）
@@ -130,6 +133,14 @@ def _parse_answers(markdown: str) -> dict[int, str]:
             if m:
                 answers[int(m.group(1))] = m.group(2)
     return answers
+
+
+def _strip_answers(data: dict) -> None:
+    """Set all correct_answer to null — answers must be imported separately."""
+    for section in data.get("sections", []):
+        for problem in section.get("problems", []):
+            for item in problem.get("items", []):
+                item["correct_answer"] = None
 
 
 def _inject_answers(data: dict, answers: dict[int, str]) -> None:
