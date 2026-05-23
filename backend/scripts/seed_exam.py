@@ -73,16 +73,17 @@ async def seed(path: str) -> None:
                 db.add(problem)
                 await db.flush()
 
-                for item_data in prob_data.get("items", []):
+                for item_idx, item_data in enumerate(prob_data.get("items", []), start=1):
                     db.add(ExamItem(
                         problem_id=problem.id,
-                        seq=item_data.get("seq", 0),
+                        seq=item_data.get("seq") or item_idx,
                         num=item_data.get("num"),
                         stem=item_data.get("stem", ""),
                         options=item_data.get("options", {}),
                         correct_answer=item_data.get("correct_answer"),
                         meta=item_data.get("meta"),
                     ))
+                await db.flush()
 
         await db.commit()
         print(f"Imported: {title} ({level})")

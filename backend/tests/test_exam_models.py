@@ -71,8 +71,12 @@ def test_migrate_v2_table_lists_are_consistent():
 
 def test_migrate_v2_old_tables_covers_v2_tables_for_idempotency():
     from scripts.migrate_v2 import OLD_TABLES
+    # New v2 tables must be present so re-runs are idempotent
     for table in ("exam_drafts", "exam_media", "exam_items", "exam_problems"):
         assert table in OLD_TABLES, f"{table} missing from OLD_TABLES"
+    # Legacy tables that get dropped must also be listed
+    for table in ("exam_questions", "exam_answer_keys"):
+        assert table in OLD_TABLES, f"legacy table {table} missing from OLD_TABLES"
 
 
 def test_inject_answers_into_items():
@@ -120,9 +124,24 @@ def test_validate_raises_on_missing_problems():
         _validate(data)
 
 
-def test_seed_exam_imports_correctly():
+def test_seed_exam_uses_four_layer_models():
+    """seed_exam must reference ExamProblem/ExamItem, not the removed ExamQuestion."""
     import sys
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).parent.parent))
-    from scripts.seed_exam import seed  # should import without error
-    assert callable(seed)
+    import scripts.seed_exam as seed_mod
+    assert callable(seed_mod.seed)
+    src = Path(seed_mod.__file__).read_text(encoding="utf-8")
+    assert "ExamProblem" in src
+    assert "ExamItem" in src
+    assert "ExamQuestion" not in src
+    assert "ExamAnswerKey" not in src
+
+
+def test_seed_exam_item_seq_fallback():
+    """seq should fall back to enumerate position when missing from item data."""
+    from pathlib import Path
+    src = Path(__file__).parent.parent.joinpath("scripts/seed_exam.py").read_text()
+    # Verify the enumerate pattern is used (not the old seq=0 fallback)
+    assert "enumerate(prob_data.get" in src
+    assert 'item_data.get("seq") or item_idx' in src
