@@ -26,6 +26,10 @@ OLD_TABLES = [
     "question_analyses",
     "exam_answer_keys",
     "exam_questions",
+    "exam_media",
+    "exam_drafts",
+    "exam_items",
+    "exam_problems",
     "exam_sections",
     "exam_papers",
 ]
@@ -51,8 +55,17 @@ async def migrate() -> None:
             print(f"  dropped: {table}")
 
     print("Creating new tables from models...")
+    from app.models.db import (
+        ExamPaper, ExamSection, ExamProblem, ExamItem,
+        ExamMedia, ExamDraft, QuestionAnalysis, ExamAttempt, AttemptAnswer,
+    )
+    exam_models = [
+        ExamPaper, ExamSection, ExamProblem, ExamItem,
+        ExamMedia, ExamDraft, QuestionAnalysis, ExamAttempt, AttemptAnswer,
+    ]
+    exam_tables = [m.__table__ for m in exam_models]
     async with async_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(Base.metadata.create_all, tables=exam_tables)
 
     print("Verifying new tables exist...")
     async with async_engine.connect() as conn:
@@ -60,12 +73,21 @@ async def migrate() -> None:
             "SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename"
         ))
         existing = {row[0] for row in result}
+        missing = [t for t in NEW_TABLES if t not in existing]
         for table in NEW_TABLES:
             status = "✓" if table in existing else "✗ MISSING"
             print(f"  {status} {table}")
+        if missing:
+            print(f"\nERROR: {len(missing)} table(s) missing after migration.")
+            sys.exit(1)
 
     print("\nMigration complete. Re-ingest exam papers via /admin/ingest.")
 
 
 if __name__ == "__main__":
+    if "--yes" not in sys.argv:
+        confirm = input("This will DELETE all exam data. Type 'yes' to continue: ")
+        if confirm.strip() != "yes":
+            print("Aborted.")
+            sys.exit(0)
     asyncio.run(migrate())

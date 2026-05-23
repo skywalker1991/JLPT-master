@@ -67,3 +67,9 @@ def test_migrate_v2_table_lists_are_consistent():
     required = {"exam_papers", "exam_sections", "exam_problems", "exam_items",
                 "exam_media", "exam_drafts", "question_analyses", "exam_attempts", "attempt_answers"}
     assert required.issubset(set(NEW_TABLES)), f"Missing tables in NEW_TABLES: {required - set(NEW_TABLES)}"
+
+
+def test_migrate_v2_old_tables_includes_new_exam_tables():
+    from scripts.migrate_v2 import OLD_TABLES
+    for table in ("exam_drafts", "exam_media", "exam_items", "exam_problems"):
+        assert table in OLD_TABLES, f"{table} missing from OLD_TABLES"
