@@ -69,7 +69,7 @@ def test_migrate_v2_table_lists_are_consistent():
     assert required.issubset(set(NEW_TABLES)), f"Missing tables in NEW_TABLES: {required - set(NEW_TABLES)}"
 
 
-def test_migrate_v2_old_tables_includes_new_exam_tables():
+def test_migrate_v2_old_tables_covers_v2_tables_for_idempotency():
     from scripts.migrate_v2 import OLD_TABLES
     for table in ("exam_drafts", "exam_media", "exam_items", "exam_problems"):
         assert table in OLD_TABLES, f"{table} missing from OLD_TABLES"
@@ -94,6 +94,11 @@ def test_inject_answers_into_items():
     items = data["sections"][0]["problems"][0]["items"]
     assert items[0]["correct_answer"] == "3"
     assert items[1]["correct_answer"] == "1"
+
+    # Overwrite case: pre-existing correct_answer gets replaced
+    data["sections"][0]["problems"][0]["items"][0]["correct_answer"] = "1"
+    _inject_answers(data, {1: "4"})
+    assert data["sections"][0]["problems"][0]["items"][0]["correct_answer"] == "4"
 
 
 def test_validate_passes_valid_structure():

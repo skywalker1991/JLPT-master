@@ -131,13 +131,26 @@ def _parse_answers(markdown: str) -> dict[int, str]:
 
 
 def _inject_answers(data: dict, answers: dict[int, str]) -> None:
-    """Assign correct_answer to each item using the num field."""
+    """Assign correct_answer to each item using the num field. Overwrites any existing value."""
     for section in data.get("sections", []):
         for problem in section.get("problems", []):
             for item in problem.get("items", []):
                 num = item.get("num")
                 if num is not None and num in answers:
                     item["correct_answer"] = answers[num]
+
+
+def _validate(data: dict) -> None:
+    assert "title" in data, "missing title"
+    assert "level" in data, "missing level"
+    assert isinstance(data.get("sections"), list), "sections must be a list"
+    for s in data["sections"]:
+        assert "name" in s, f"section missing name: {s}"
+        assert isinstance(s.get("problems"), list), f"section missing problems list: {s}"
+        for p in s["problems"]:
+            assert "name" in p, f"problem missing name: {p}"
+            assert "type" in p, f"problem missing type: {p}"
+            assert isinstance(p.get("items"), list), f"items must be a list in problem: {p}"
 
 
 def _infer_level_source(md_path: str) -> tuple[str, str]:
@@ -209,19 +222,6 @@ async def convert(md_path: str, out_path: str) -> None:
     )
     Path(out_path).write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"Done. {len(data['sections'])} sections, {total} items, {answered} with answers → {out_path}")
-
-
-def _validate(data: dict) -> None:
-    assert "title" in data, "missing title"
-    assert "level" in data, "missing level"
-    assert "sections" in data, "missing sections"
-    for s in data["sections"]:
-        assert "name" in s, f"section missing name: {s}"
-        assert "problems" in s, f"section missing problems: {s}"
-        for p in s["problems"]:
-            assert "name" in p, f"problem missing name: {p}"
-            assert "type" in p, f"problem missing type: {p}"
-            assert "items" in p, f"problem missing items: {p}"
 
 
 if __name__ == "__main__":
