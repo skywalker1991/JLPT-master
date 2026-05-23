@@ -22,17 +22,28 @@ function emptyProblem(): DraftProblem {
 // ─── Item editor row ──────────────────────────────────────────────────────────
 
 function ItemRow({
-  item, onChange, onDelete,
+  item, onChange, onDelete, problemType,
 }: {
   item: DraftItem
   onChange: (updated: DraftItem) => void
   onDelete: () => void
+  problemType?: string
 }) {
+  const isSentenceOrder = problemType === 'sentence_order'
+  const starPos = (item.meta as Record<string, unknown> | null)?.star_position as number | undefined
+
   function set<K extends keyof DraftItem>(key: K, value: DraftItem[K]) {
     onChange({ ...item, [key]: value })
   }
   function setOpt(k: string, v: string) {
     onChange({ ...item, options: { ...item.options, [k]: v } })
+  }
+  function setStarPos(pos: number) {
+    // Rebuild stem: replace old [_N★_] with [_N_], set new position to [_N★_]
+    const newStem = item.stem
+      .replace(/\[_(\d+)★_\]/g, '[_$1_]')
+      .replace(new RegExp(`\\[_${pos}_\\]`), `[_${pos}★_]`)
+    onChange({ ...item, stem: newStem, meta: { ...(item.meta ?? {}), star_position: pos } })
   }
 
   return (
@@ -77,6 +88,25 @@ function ItemRow({
           </div>
         ))}
       </div>
+      {isSentenceOrder && (
+        <div className="flex items-center gap-2 pl-8 pt-1">
+          <span className="text-xs text-fg-muted shrink-0">★ 位置：</span>
+          {[1, 2, 3, 4].map(n => (
+            <button
+              key={n}
+              onClick={() => setStarPos(n)}
+              className={[
+                'w-7 h-7 rounded text-xs font-bold transition-all',
+                starPos === n
+                  ? 'bg-accent text-white'
+                  : 'bg-border/50 text-fg-muted hover:bg-border',
+              ].join(' ')}
+            >
+              {starPos === n ? '★' : n}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -191,6 +221,7 @@ function ProblemBlock({
               item={item}
               onChange={updated => updateItem(idx, updated)}
               onDelete={() => deleteItem(idx)}
+              problemType={prob.type}
             />
           ))}
           <button
