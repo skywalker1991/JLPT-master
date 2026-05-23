@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { FileText, BookMarked, Video, BookOpen, Brain } from 'lucide-react'
+import { FileText, BookMarked, Video, BookOpen, Brain, Settings } from 'lucide-react'
 import clsx from 'clsx'
 import { useSettings } from '../../context/SettingsContext'
 
@@ -25,6 +25,7 @@ const NAV = [
   { to: '/video',       end: false, icon: Video,      label: '实时视频' },
   { to: '/kb',          end: false, icon: BookOpen,   label: '知识库' },
   { to: '/internalize', end: false, icon: Brain,      label: '内化学习' },
+  { to: '/admin/ingest', end: false, icon: Settings,  label: '管理' },
 ]
 
 export default function TopNav() {
@@ -34,12 +35,8 @@ export default function TopNav() {
     <header className="sticky top-0 z-50 bg-surface shadow-topbar h-14 flex items-center px-6 gap-4">
       {/* Logo */}
       <div className="flex items-center gap-2 shrink-0">
-        <div className="w-7 h-7 rounded-lg bg-accent flex items-center justify-center shadow-sm">
-          <span className="text-white font-bold text-xs leading-none">日</span>
-        </div>
-        <span className="font-semibold text-fg text-sm hidden sm:block tracking-tight">
-          JLPT Master
-        </span>
+        <img src="/image.png" alt="日本語 Master" className="w-11 h-11 object-contain rounded-xl" />
+        <span className="font-semibold text-fg text-sm tracking-tight hidden sm:block">日本語 Master</span>
       </div>
 
       {/* Tab nav */}
