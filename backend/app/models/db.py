@@ -176,62 +176,112 @@ class ExamSection(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
 
     paper = relationship("ExamPaper", back_populates="sections")
-    questions = relationship("ExamQuestion", back_populates="section", cascade="all, delete-orphan",
-                             order_by="ExamQuestion.seq")
+    problems = relationship("ExamProblem", back_populates="section", cascade="all, delete-orphan",
+                            order_by="ExamProblem.seq")
 
     __table_args__ = (
         Index("ix_exam_sections_paper_id", "paper_id"),
     )
 
 
-class ExamQuestion(Base):
-    __tablename__ = "exam_questions"
+class ExamProblem(Base):
+    """問題N — a named group of items sharing one type, instruction, and optional passage."""
+    __tablename__ = "exam_problems"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     section_id = Column(UUID(as_uuid=True), ForeignKey("exam_sections.id", ondelete="CASCADE"), nullable=False)
-    # kanji_reading|kanji_writing|word_formation|vocab_fill|synonym|usage|
-    # grammar_fill|sentence_order|passage_fill|reading_comp|listening
-    type = Column(String(30), nullable=False)
-    stem = Column(Text, nullable=False)
-    passage = Column(Text, nullable=True)   # 読解・文章内穴埋め的原文
-    options = Column(JSONB, nullable=False) # {"1": "...", "2": "...", "3": "...", "4": "..."}
-    meta = Column(JSONB, nullable=True)     # 题型附加数据，如 target、star_position、passage_group
     seq = Column(Integer, nullable=False)
+    name = Column(String(20), nullable=False)
+    type = Column(String(30), nullable=False)
+    instruction = Column(Text, nullable=True)
+    passage = Column(Text, nullable=True)
+    transcript = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
 
-    section = relationship("ExamSection", back_populates="questions")
-    answer_key = relationship("ExamAnswerKey", back_populates="question", uselist=False,
-                              cascade="all, delete-orphan")
-    analysis = relationship("QuestionAnalysis", back_populates="question", uselist=False,
-                            cascade="all, delete-orphan")
+    section = relationship("ExamSection", back_populates="problems")
+    items = relationship("ExamItem", back_populates="problem", cascade="all, delete-orphan",
+                         order_by="ExamItem.seq")
+    media = relationship("ExamMedia", back_populates="problem", cascade="all, delete-orphan",
+                         order_by="ExamMedia.seq")
 
     __table_args__ = (
-        Index("ix_exam_questions_section_id", "section_id"),
-        Index("ix_exam_questions_type", "type"),
+        Index("ix_exam_problems_section_id", "section_id"),
+        Index("ix_exam_problems_type", "type"),
     )
 
 
-class ExamAnswerKey(Base):
-    __tablename__ = "exam_answer_keys"
+class ExamItem(Base):
+    """Single question within a Problem."""
+    __tablename__ = "exam_items"
 
-    question_id = Column(UUID(as_uuid=True), ForeignKey("exam_questions.id", ondelete="CASCADE"),
-                         primary_key=True)
-    correct_answer = Column(String(1), nullable=False)  # "1"|"2"|"3"|"4"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    problem_id = Column(UUID(as_uuid=True), ForeignKey("exam_problems.id", ondelete="CASCADE"), nullable=False)
+    seq = Column(Integer, nullable=False)
+    num = Column(Integer, nullable=True)
+    stem = Column(Text, nullable=False, server_default=text("''"))
+    options = Column(JSONB, nullable=False, server_default=text("'{}'"))
+    correct_answer = Column(String(1), nullable=True)
+    meta = Column(JSONB, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
 
-    question = relationship("ExamQuestion", back_populates="answer_key")
+    problem = relationship("ExamProblem", back_populates="items")
+    analysis = relationship("QuestionAnalysis", back_populates="item", uselist=False,
+                            cascade="all, delete-orphan")
+
+    __table_args__ = (
+        Index("ix_exam_items_problem_id", "problem_id"),
+    )
+
+
+class ExamMedia(Base):
+    """Image attachments for a Problem."""
+    __tablename__ = "exam_media"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    problem_id = Column(UUID(as_uuid=True), ForeignKey("exam_problems.id", ondelete="CASCADE"), nullable=False)
+    media_type = Column(String(10), nullable=False, server_default=text("'image'"))
+    url = Column(Text, nullable=False)
+    caption = Column(Text, nullable=True)
+    seq = Column(Integer, nullable=False, server_default=text("0"))
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+
+    problem = relationship("ExamProblem", back_populates="media")
+
+    __table_args__ = (
+        Index("ix_exam_media_problem_id", "problem_id"),
+    )
+
+
+class ExamDraft(Base):
+    """Temporary ingestion state: AI-generated draft pending human review."""
+    __tablename__ = "exam_drafts"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    filename = Column(Text, nullable=True)
+    markdown_raw = Column(Text, nullable=True)
+    draft_json = Column(JSONB, nullable=True)
+    paper_id = Column(UUID(as_uuid=True), ForeignKey("exam_papers.id", ondelete="SET NULL"),
+                      nullable=True)
+    status = Column(String(20), nullable=False, server_default=text("'pending'"))
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+
+    __table_args__ = (
+        Index("ix_exam_drafts_status", "status"),
+    )
 
 
 class QuestionAnalysis(Base):
     __tablename__ = "question_analyses"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    question_id = Column(UUID(as_uuid=True), ForeignKey("exam_questions.id", ondelete="CASCADE"),
-                         nullable=False, unique=True)
+    item_id = Column(UUID(as_uuid=True), ForeignKey("exam_items.id", ondelete="CASCADE"),
+                     nullable=False, unique=True)
     session_data = Column(JSONB, nullable=True)
     relations_suggested = Column(JSONB, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
 
-    question = relationship("ExamQuestion", back_populates="analysis")
+    item = relationship("ExamItem", back_populates="analysis")
 
 
 class ExamAttempt(Base):
@@ -240,7 +290,7 @@ class ExamAttempt(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     paper_id = Column(UUID(as_uuid=True), ForeignKey("exam_papers.id", ondelete="CASCADE"), nullable=False)
     status = Column(String(20), nullable=False, server_default=text("'in_progress'"))
-    score = Column(JSONB, nullable=True)  # {"文法": {"correct": 8, "total": 13}, ...}
+    score = Column(JSONB, nullable=True)
     started_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
     completed_at = Column(DateTime(timezone=True), nullable=True)
 
@@ -258,13 +308,13 @@ class AttemptAnswer(Base):
 
     attempt_id = Column(UUID(as_uuid=True), ForeignKey("exam_attempts.id", ondelete="CASCADE"),
                         primary_key=True)
-    question_id = Column(UUID(as_uuid=True), ForeignKey("exam_questions.id", ondelete="CASCADE"),
-                         primary_key=True)
+    item_id = Column(UUID(as_uuid=True), ForeignKey("exam_items.id", ondelete="CASCADE"),
+                     primary_key=True)
     user_answer = Column(String(1), nullable=False)
     is_correct = Column(Boolean, nullable=False)
 
     attempt = relationship("ExamAttempt", back_populates="answers")
-    question = relationship("ExamQuestion")
+    item = relationship("ExamItem")
 
     __table_args__ = (
         Index("ix_attempt_answers_attempt_id", "attempt_id"),
