@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import * as d3 from 'd3'
 import { CheckCircle, Loader2, XCircle } from 'lucide-react'
-import { getQuestionAnalysis, followupAnalysis, createAtom, createRelation } from '../../services/api'
+import { getItemAnalysis, followupAnalysis, createAtom, createRelation } from '../../services/api'
 import type { QuestionAnalysisResponse, VocabItem, GrammarItem } from '../../types'
 import VocabChip from '../analysis/VocabChip'
 import GrammarKBCard from '../analysis/GrammarCard'
@@ -51,7 +51,7 @@ function toGrammarItem(a: ExamAtom): GrammarItem {
 
 function AtomsSection({ atoms }: { atoms: ExamAtom[] }) {
   if (!atoms?.length) return null
-  const words = atoms.filter(a => a.type === 'word')
+  const words = atoms.filter(a => a.type === 'vocabulary' || a.type === 'word')
   const grammars = atoms.filter(a => a.type === 'grammar')
   return (
     <div className="space-y-2">
@@ -534,7 +534,7 @@ function RelationGraph({
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function AnalysisPanel({ questionId }: { questionId: string }) {
+export default function AnalysisPanel({ itemId }: { itemId: string }) {
   const [data, setData] = useState<QuestionAnalysisResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [followupText, setFollowupText] = useState('')
@@ -546,11 +546,11 @@ export default function AnalysisPanel({ questionId }: { questionId: string }) {
     setLoading(true)
     setData(null)
     setSaved(null)
-    getQuestionAnalysis(questionId)
+    getItemAnalysis(itemId)
       .then(setData)
       .catch(() => setData(null))
       .finally(() => setLoading(false))
-  }, [questionId])
+  }, [itemId])
 
   async function saveToKB() {
     if (!sd) return
@@ -561,8 +561,15 @@ export default function AnalysisPanel({ questionId }: { questionId: string }) {
       const atomIdMap = new Map<string, string>()
       for (const atom of allAtoms) {
         const props = [
-          atom.reading && { kind: 'reading', value: atom.reading, source_type: 'ai' },
-          atom.meaning && { kind: 'meaning', value: atom.meaning, source_type: 'ai' },
+          atom.reading        && { kind: 'reading',        value: atom.reading,        source_type: 'ai' },
+          atom.meaning        && { kind: 'meaning',        value: atom.meaning,        source_type: 'ai' },
+          atom.part_of_speech && { kind: 'part_of_speech', value: atom.part_of_speech, source_type: 'ai' },
+          atom.jlpt_level     && { kind: 'jlpt_level',     value: atom.jlpt_level,     source_type: 'ai' },
+          atom.register       && { kind: 'register',       value: atom.register,       source_type: 'ai' },
+          atom.connection     && { kind: 'connection',     value: atom.connection,     source_type: 'ai' },
+          atom.usage          && { kind: 'usage',          value: atom.usage,          source_type: 'ai' },
+          atom.nuance         && { kind: 'nuance',         value: atom.nuance,         source_type: 'ai' },
+          atom.example        && { kind: 'example',        value: atom.example,        source_type: 'ai' },
         ].filter(Boolean) as { kind: string; value: string; source_type: string }[]
         const res = await createAtom({
           type: atom.type === 'grammar' ? 'grammar' : 'vocabulary',
@@ -594,7 +601,7 @@ export default function AnalysisPanel({ questionId }: { questionId: string }) {
     if (!followupText.trim() || !data) return
     setSending(true)
     try {
-      const res = await followupAnalysis(questionId, followupText.trim())
+      const res = await followupAnalysis(itemId, followupText.trim())
       setData(prev => {
         if (!prev?.session_data) return prev
         const followups = [
