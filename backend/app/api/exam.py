@@ -7,15 +7,16 @@ from sqlalchemy import delete, select, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.db import (
-    ExamPaper, ExamSection, ExamQuestion, ExamAnswerKey,
+    ExamPaper, ExamSection, ExamProblem, ExamItem, ExamMedia,
     QuestionAnalysis, ExamAttempt, AttemptAnswer, get_db,
 )
 from app.schemas.exam import (
-    ExamPaperList, ExamPaperDetail, SectionDetail, QuestionItem,
+    ExamPaperList, ExamPaperDetail, SectionDetail, ProblemDetail,
+    ItemSchema, ExamMediaItem,
     StartAttemptResponse, SubmitAnswerRequest, SubmitAnswerResponse,
     SectionScore, SectionAnswerDetail, SubmitSectionResponse,
     AttemptStatus, RelationSuggestion, QuestionAnalysisResponse, AccuracyStats,
-    AttemptSummary, AttemptReview, ReviewSection, ReviewQuestion,
+    AttemptSummary, AttemptReview, ReviewSection, ReviewProblem, ReviewItem,
 )
 from app.services.llm.factory import get_llm_client
 
@@ -602,10 +603,11 @@ async def list_exams(db: AsyncSession = Depends(get_db)):
         select(
             ExamPaper,
             func.count(ExamSection.id.distinct()).label("section_count"),
-            func.count(ExamQuestion.id).label("question_count"),
+            func.count(ExamItem.id).label("item_count"),
         )
         .outerjoin(ExamSection, ExamSection.paper_id == ExamPaper.id)
-        .outerjoin(ExamQuestion, ExamQuestion.section_id == ExamSection.id)
+        .outerjoin(ExamProblem, ExamProblem.section_id == ExamSection.id)
+        .outerjoin(ExamItem, ExamItem.problem_id == ExamProblem.id)
         .group_by(ExamPaper.id)
         .order_by(ExamPaper.created_at.desc())
     )
@@ -613,10 +615,10 @@ async def list_exams(db: AsyncSession = Depends(get_db)):
     return [
         ExamPaperList(
             id=paper.id, title=paper.title, level=paper.level,
-            source=paper.source, section_count=sc, question_count=qc,
+            source=paper.source, section_count=sc, item_count=ic,
             created_at=paper.created_at,
         )
-        for paper, sc, qc in rows
+        for paper, sc, ic in rows
     ]
 
 
@@ -634,20 +636,28 @@ async def get_exam(paper_id: UUID, db: AsyncSession = Depends(get_db)):
 
     section_details = []
     for sec in sections:
-        questions = (await db.execute(
-            select(ExamQuestion)
-            .where(ExamQuestion.section_id == sec.id)
-            .order_by(ExamQuestion.seq)
+        problems = (await db.execute(
+            select(ExamProblem).where(ExamProblem.section_id == sec.id).order_by(ExamProblem.seq)
         )).scalars().all()
+
+        problem_details = []
+        for prob in problems:
+            items = (await db.execute(
+                select(ExamItem).where(ExamItem.problem_id == prob.id).order_by(ExamItem.seq)
+            )).scalars().all()
+            media = (await db.execute(
+                select(ExamMedia).where(ExamMedia.problem_id == prob.id).order_by(ExamMedia.seq)
+            )).scalars().all()
+            problem_details.append(ProblemDetail(
+                id=prob.id, seq=prob.seq, name=prob.name, type=prob.type,
+                instruction=prob.instruction, passage=prob.passage, transcript=prob.transcript,
+                media=[ExamMediaItem(id=m.id, url=m.url, caption=m.caption, seq=m.seq) for m in media],
+                items=[ItemSchema(id=i.id, seq=i.seq, num=i.num, stem=i.stem,
+                                  options=i.options, meta=i.meta) for i in items],
+            ))
+
         section_details.append(SectionDetail(
-            id=sec.id, name=sec.name, seq=sec.seq,
-            questions=[
-                QuestionItem(
-                    id=q.id, type=q.type, stem=q.stem, passage=q.passage,
-                    options=q.options, meta=q.meta, seq=q.seq,
-                )
-                for q in questions
-            ],
+            id=sec.id, name=sec.name, seq=sec.seq, problems=problem_details,
         ))
 
     return ExamPaperDetail(
@@ -677,11 +687,11 @@ async def get_attempt(attempt_id: UUID, db: AsyncSession = Depends(get_db)):
     if attempt is None:
         raise HTTPException(status_code=404, detail="Attempt not found")
     answered = (await db.execute(
-        select(AttemptAnswer.question_id).where(AttemptAnswer.attempt_id == attempt_id)
+        select(AttemptAnswer.item_id).where(AttemptAnswer.attempt_id == attempt_id)
     )).scalars().all()
     return AttemptStatus(
         attempt_id=attempt.id, paper_id=attempt.paper_id,
-        status=attempt.status, score=attempt.score, answered_question_ids=list(answered),
+        status=attempt.status, score=attempt.score, answered_item_ids=list(answered),
     )
 
 
@@ -694,17 +704,16 @@ async def submit_answer(
     if not await db.get(ExamAttempt, attempt_id):
         raise HTTPException(status_code=404, detail="Attempt not found")
 
-    question = await db.get(ExamQuestion, req.question_id)
-    if question is None:
-        raise HTTPException(status_code=404, detail="Question not found")
+    item = await db.get(ExamItem, req.item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Item not found")
 
-    answer_key = await db.get(ExamAnswerKey, req.question_id)
-    is_correct = (answer_key.correct_answer == req.answer) if answer_key else None
+    is_correct = (item.correct_answer == req.answer) if item.correct_answer else None
 
     existing = (await db.execute(
         select(AttemptAnswer).where(
             AttemptAnswer.attempt_id == attempt_id,
-            AttemptAnswer.question_id == req.question_id,
+            AttemptAnswer.item_id == req.item_id,
         )
     )).scalar_one_or_none()
 
@@ -713,12 +722,12 @@ async def submit_answer(
         existing.is_correct = bool(is_correct)
     else:
         db.add(AttemptAnswer(
-            attempt_id=attempt_id, question_id=req.question_id,
+            attempt_id=attempt_id, item_id=req.item_id,
             user_answer=req.answer, is_correct=bool(is_correct),
         ))
 
     await db.commit()
-    return SubmitAnswerResponse(question_id=req.question_id, is_correct=is_correct)
+    return SubmitAnswerResponse(item_id=req.item_id, is_correct=is_correct)
 
 
 # ── 提交本节并算分 ────────────────────────────────────────────────────────────
@@ -735,30 +744,28 @@ async def submit_section(
     if section is None:
         raise HTTPException(status_code=404, detail="Section not found")
 
-    questions = (await db.execute(
-        select(ExamQuestion).where(ExamQuestion.section_id == section_id).order_by(ExamQuestion.seq)
+    problems = (await db.execute(
+        select(ExamProblem).where(ExamProblem.section_id == section_id)
     )).scalars().all()
-    q_ids = [q.id for q in questions]
+    prob_ids = [p.id for p in problems]
+
+    items = (await db.execute(
+        select(ExamItem).where(ExamItem.problem_id.in_(prob_ids)).order_by(ExamItem.seq)
+    )).scalars().all()
+    item_ids = [i.id for i in items]
 
     answers = {
-        a.question_id: a
+        a.item_id: a
         for a in (await db.execute(
             select(AttemptAnswer).where(
                 AttemptAnswer.attempt_id == attempt_id,
-                AttemptAnswer.question_id.in_(q_ids),
+                AttemptAnswer.item_id.in_(item_ids),
             )
         )).scalars().all()
     }
 
-    answer_keys = {
-        ak.question_id: ak
-        for ak in (await db.execute(
-            select(ExamAnswerKey).where(ExamAnswerKey.question_id.in_(q_ids))
-        )).scalars().all()
-    }
-
     correct_count = sum(1 for a in answers.values() if a.is_correct)
-    total = len(questions)
+    total = len([i for i in items if i.options])
 
     score = attempt.score or {}
     score[section.name] = {"correct": correct_count, "total": total}
@@ -774,12 +781,12 @@ async def submit_section(
 
     answer_details = [
         SectionAnswerDetail(
-            question_id=str(q.id),
-            user_answer=answers[q.id].user_answer if q.id in answers else None,
-            is_correct=answers[q.id].is_correct if q.id in answers else False,
-            correct_answer=answer_keys[q.id].correct_answer if q.id in answer_keys else None,
+            item_id=str(i.id),
+            user_answer=answers[i.id].user_answer if i.id in answers else None,
+            is_correct=answers[i.id].is_correct if i.id in answers else False,
+            correct_answer=i.correct_answer,
         )
-        for q in questions
+        for i in items
     ]
 
     return SubmitSectionResponse(
@@ -791,37 +798,38 @@ async def submit_section(
 
 # ── AI 分析（懒生成+缓存）────────────────────────────────────────────────────
 
-@router.get("/questions/{question_id}/analysis", response_model=QuestionAnalysisResponse)
-async def get_question_analysis(question_id: UUID, db: AsyncSession = Depends(get_db)):
-    question = await db.get(ExamQuestion, question_id)
-    if question is None:
-        raise HTTPException(status_code=404, detail="Question not found")
+@router.get("/items/{item_id}/analysis", response_model=QuestionAnalysisResponse)
+async def get_item_analysis(item_id: UUID, db: AsyncSession = Depends(get_db)):
+    item = await db.get(ExamItem, item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Item not found")
+
+    problem = await db.get(ExamProblem, item.problem_id)
 
     cached = (await db.execute(
-        select(QuestionAnalysis).where(QuestionAnalysis.question_id == question_id)
+        select(QuestionAnalysis).where(QuestionAnalysis.item_id == item_id)
     )).scalar_one_or_none()
     if cached and cached.session_data:
         return QuestionAnalysisResponse(
-            question_id=question_id, session_data=cached.session_data,
+            item_id=item_id, session_data=cached.session_data,
             relations_suggested=[], cached=True,
         )
 
-    schema = _SCHEMAS.get(question.type)
-    prompt_tpl = _PROMPTS.get(question.type)
+    schema = _SCHEMAS.get(problem.type)
+    prompt_tpl = _PROMPTS.get(problem.type)
     if schema is None or prompt_tpl is None:
         return QuestionAnalysisResponse(
-            question_id=question_id, session_data=None, relations_suggested=[], cached=False,
+            item_id=item_id, session_data=None, relations_suggested=[], cached=False,
         )
 
-    opts_text = "\n".join(f"{k}. {v}" for k, v in sorted(question.options.items()))
-    answer_key = await db.get(ExamAnswerKey, question_id)
-    correct = answer_key.correct_answer if answer_key else "不明"
-    target = (question.meta or {}).get("target", question.stem or "")
+    opts_text = "\n".join(f"{k}. {v}" for k, v in sorted(item.options.items()))
+    correct = item.correct_answer or "不明"
+    target = (item.meta or {}).get("target", item.stem or "")
 
     _LANG = "重要：所有 explanation、summary、meaning、connection、usage、example 等文字字段必须使用中文输出。\n\n"
     prompt = _LANG + prompt_tpl.format(
-        stem=question.stem or "",
-        passage=question.passage or "",
+        stem=item.stem or "",
+        passage=problem.passage or "",
         options=opts_text,
         correct=correct,
         target=target,
@@ -834,7 +842,7 @@ async def get_question_analysis(question_id: UUID, db: AsyncSession = Depends(ge
         raw = await llm.analyze(prompt, schema)
         result_data = json.loads(raw) if isinstance(raw, str) else raw
     except Exception as e:
-        logger.error("LLM analysis failed for question %s: %s", question_id, e)
+        logger.error("LLM analysis failed for item %s: %s", item_id, e)
         raise HTTPException(status_code=502, detail="AI analysis failed")
 
     if cached:
@@ -842,24 +850,24 @@ async def get_question_analysis(question_id: UUID, db: AsyncSession = Depends(ge
         cached.relations_suggested = []
     else:
         db.add(QuestionAnalysis(
-            question_id=question_id,
+            item_id=item_id,
             session_data=result_data,
             relations_suggested=[],
         ))
     await db.commit()
 
     return QuestionAnalysisResponse(
-        question_id=question_id, session_data=result_data,
+        item_id=item_id, session_data=result_data,
         relations_suggested=[], cached=False,
     )
 
 
 # ── 追问 ──────────────────────────────────────────────────────────────────────
 
-@router.post("/questions/{question_id}/analysis/followup")
-async def followup_analysis(question_id: UUID, body: dict, db: AsyncSession = Depends(get_db)):
+@router.post("/items/{item_id}/analysis/followup")
+async def followup_analysis(item_id: UUID, body: dict, db: AsyncSession = Depends(get_db)):
     cached = (await db.execute(
-        select(QuestionAnalysis).where(QuestionAnalysis.question_id == question_id)
+        select(QuestionAnalysis).where(QuestionAnalysis.item_id == item_id)
     )).scalar_one_or_none()
     if cached is None:
         raise HTTPException(status_code=404, detail="No analysis yet. Call GET first.")
@@ -878,7 +886,7 @@ async def followup_analysis(question_id: UUID, body: dict, db: AsyncSession = De
 
     await db.execute(
         update(QuestionAnalysis)
-        .where(QuestionAnalysis.question_id == question_id)
+        .where(QuestionAnalysis.item_id == item_id)
         .values(session_data=session)
     )
     await db.commit()
@@ -896,8 +904,9 @@ _LISTENING_TYPES = {"listening"}
 @router.get("/stats/accuracy", response_model=AccuracyStats)
 async def get_accuracy_stats(db: AsyncSession = Depends(get_db)):
     rows = (await db.execute(
-        select(AttemptAnswer.is_correct, ExamQuestion.type)
-        .join(ExamQuestion, AttemptAnswer.question_id == ExamQuestion.id)
+        select(AttemptAnswer.is_correct, ExamProblem.type)
+        .join(ExamItem, AttemptAnswer.item_id == ExamItem.id)
+        .join(ExamProblem, ExamItem.problem_id == ExamProblem.id)
     )).all()
 
     counts: dict[str, dict[str, int]] = {
@@ -941,8 +950,9 @@ async def list_paper_attempts(paper_id: UUID, db: AsyncSession = Depends(get_db)
     attempt_ids = [r.id for r in rows]
     sec_rows = (await db.execute(
         select(AttemptAnswer.attempt_id, ExamSection.name, ExamSection.seq)
-        .join(ExamQuestion, AttemptAnswer.question_id == ExamQuestion.id)
-        .join(ExamSection, ExamQuestion.section_id == ExamSection.id)
+        .join(ExamItem, AttemptAnswer.item_id == ExamItem.id)
+        .join(ExamProblem, ExamItem.problem_id == ExamProblem.id)
+        .join(ExamSection, ExamProblem.section_id == ExamSection.id)
         .where(AttemptAnswer.attempt_id.in_(attempt_ids))
         .distinct()
         .order_by(ExamSection.seq)
@@ -1004,60 +1014,59 @@ async def get_attempt_review(attempt_id: UUID, db: AsyncSession = Depends(get_db
         .order_by(ExamSection.seq)
     )).scalars().all()
 
-    all_qs = (await db.execute(
-        select(ExamQuestion)
-        .where(ExamQuestion.section_id.in_([s.id for s in sections]))
-        .order_by(ExamQuestion.seq)
-    )).scalars().all()
-
-    q_ids = [q.id for q in all_qs]
-
-    answers = {
-        a.question_id: a for a in (await db.execute(
-            select(AttemptAnswer).where(
-                AttemptAnswer.attempt_id == attempt_id,
-                AttemptAnswer.question_id.in_(q_ids),
-            )
-        )).scalars().all()
-    }
-    keys = {
-        k.question_id: k for k in (await db.execute(
-            select(ExamAnswerKey).where(ExamAnswerKey.question_id.in_(q_ids))
-        )).scalars().all()
-    }
-
-    qs_by_sec: dict = {}
-    for q in all_qs:
-        qs_by_sec.setdefault(q.section_id, []).append(q)
-
-    # Sections that were submitted (score recorded) — only these reveal correct answers
     score_names = set((attempt.score or {}).keys()) - {"total"}
     submitted_section_ids = {s.id for s in sections if s.name in score_names}
 
-    # Only include sections that were part of this attempt
-    active_section_ids = {q.section_id for q in all_qs if q.id in answers}
-    active_section_ids |= submitted_section_ids
+    answers_rows = (await db.execute(
+        select(AttemptAnswer).where(AttemptAnswer.attempt_id == attempt_id)
+    )).scalars().all()
+    answers = {a.item_id: a for a in answers_rows}
+    active_item_ids = set(answers.keys())
+
+    result_sections = []
+    for sec in sections:
+        problems = (await db.execute(
+            select(ExamProblem).where(ExamProblem.section_id == sec.id).order_by(ExamProblem.seq)
+        )).scalars().all()
+
+        review_problems = []
+        sec_has_activity = False
+        for prob in problems:
+            items = (await db.execute(
+                select(ExamItem).where(ExamItem.problem_id == prob.id).order_by(ExamItem.seq)
+            )).scalars().all()
+            media = (await db.execute(
+                select(ExamMedia).where(ExamMedia.problem_id == prob.id).order_by(ExamMedia.seq)
+            )).scalars().all()
+
+            reveal = sec.id in submitted_section_ids
+            review_items = [
+                ReviewItem(
+                    id=i.id, seq=i.seq, num=i.num, stem=i.stem,
+                    options=i.options, meta=i.meta,
+                    user_answer=answers[i.id].user_answer if i.id in answers else None,
+                    correct_answer=i.correct_answer if reveal else None,
+                    is_correct=answers[i.id].is_correct if i.id in answers and reveal else None,
+                )
+                for i in items
+            ]
+            if any(i.id in active_item_ids for i in items) or sec.id in submitted_section_ids:
+                sec_has_activity = True
+            review_problems.append(ReviewProblem(
+                id=prob.id, seq=prob.seq, name=prob.name, type=prob.type,
+                instruction=prob.instruction, passage=prob.passage, transcript=prob.transcript,
+                media=[ExamMediaItem(id=m.id, url=m.url, caption=m.caption, seq=m.seq) for m in media],
+                items=review_items,
+            ))
+
+        if sec_has_activity:
+            result_sections.append(ReviewSection(
+                id=sec.id, name=sec.name, seq=sec.seq, problems=review_problems,
+            ))
 
     return AttemptReview(
         attempt_id=attempt.id, paper_id=attempt.paper_id,
         status=attempt.status, score=attempt.score,
         started_at=attempt.started_at, completed_at=attempt.completed_at,
-        sections=[
-            ReviewSection(
-                id=s.id, name=s.name, seq=s.seq,
-                questions=[
-                    ReviewQuestion(
-                        id=q.id, type=q.type, stem=q.stem, passage=q.passage,
-                        options=q.options, meta=q.meta, seq=q.seq,
-                        user_answer=answers[q.id].user_answer if q.id in answers else None,
-                        # Correct answer and is_correct only revealed after section is submitted
-                        correct_answer=keys[q.id].correct_answer if q.id in keys and s.id in submitted_section_ids else None,
-                        is_correct=answers[q.id].is_correct if q.id in answers and s.id in submitted_section_ids else None,
-                    )
-                    for q in qs_by_sec.get(s.id, [])
-                ],
-            )
-            for s in sections
-            if s.id in active_section_ids
-        ],
+        sections=result_sections,
     )
