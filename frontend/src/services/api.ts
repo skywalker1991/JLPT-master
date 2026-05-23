@@ -18,7 +18,10 @@ import {
   AccuracyStats,
   AttemptSummary,
   AttemptReviewData,
+  DraftSummary,
+  DraftDetail,
   InternalizeQueueResponse,
+  AtomGraphResponse,
 } from '../types'
 
 const BASE_URL = import.meta.env.VITE_API_URL || ''
@@ -195,6 +198,10 @@ export async function deleteAtom(id: string): Promise<void> {
   await request<void>(`/api/atoms/${id}`, { method: 'DELETE' })
 }
 
+export async function getAtomGraph(): Promise<AtomGraphResponse> {
+  return request<AtomGraphResponse>('/api/atoms/graph')
+}
+
 // ---- Dictionary ----
 
 export interface DictSense {
@@ -249,12 +256,12 @@ export async function startAttempt(paperId: string): Promise<AttemptStatus> {
 
 export async function submitAnswer(
   attemptId: string,
-  questionId: string,
+  itemId: string,
   answer: string,
-): Promise<{ question_id: string; is_correct: boolean | null }> {
+): Promise<{ item_id: string; is_correct: boolean | null }> {
   return request(`/api/attempts/${attemptId}/answers`, {
     method: 'PUT',
-    body: JSON.stringify({ question_id: questionId, answer }),
+    body: JSON.stringify({ item_id: itemId, answer }),
   })
 }
 
@@ -268,15 +275,15 @@ export async function submitSection(
   )
 }
 
-export async function getQuestionAnalysis(questionId: string): Promise<QuestionAnalysisResponse> {
-  return request<QuestionAnalysisResponse>(`/api/questions/${questionId}/analysis`)
+export async function getItemAnalysis(itemId: string): Promise<QuestionAnalysisResponse> {
+  return request<QuestionAnalysisResponse>(`/api/items/${itemId}/analysis`)
 }
 
 export async function followupAnalysis(
-  questionId: string,
+  itemId: string,
   prompt: string,
 ): Promise<{ response: string }> {
-  return request<{ response: string }>(`/api/questions/${questionId}/analysis/followup`, {
+  return request<{ response: string }>(`/api/items/${itemId}/analysis/followup`, {
     method: 'POST',
     body: JSON.stringify({ prompt }),
   })
@@ -300,6 +307,55 @@ export async function deleteAttempt(attemptId: string): Promise<void> {
 
 export async function getAttemptReview(attemptId: string): Promise<AttemptReviewData> {
   return request<AttemptReviewData>(`/api/attempts/${attemptId}/review`)
+}
+
+// ---- Admin (exam ingestion) ----
+
+export async function listDrafts(): Promise<DraftSummary[]> {
+  return request<DraftSummary[]>('/api/admin/drafts')
+}
+
+export async function getDraft(draftId: string): Promise<DraftDetail> {
+  return request<DraftDetail>(`/api/admin/drafts/${draftId}`)
+}
+
+export async function updateDraft(draftId: string, draftJson: object): Promise<DraftDetail> {
+  return request<DraftDetail>(`/api/admin/drafts/${draftId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ draft_json: draftJson }),
+  })
+}
+
+export async function createDraftFromPdf(file: File): Promise<DraftDetail> {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await fetch(`${BASE_URL}/api/admin/drafts`, {
+    method: 'POST',
+    body: form,
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body.detail ?? `HTTP ${res.status}`)
+  }
+  return res.json()
+}
+
+export async function confirmDraft(draftId: string): Promise<DraftDetail> {
+  return request<DraftDetail>(`/api/admin/drafts/${draftId}/confirm`, { method: 'POST' })
+}
+
+export async function uploadMedia(file: File): Promise<{ url: string }> {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await fetch(`${BASE_URL}/api/admin/media/upload`, {
+    method: 'POST',
+    body: form,
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body.detail ?? `HTTP ${res.status}`)
+  }
+  return res.json()
 }
 
 // ---- Internalize ----
