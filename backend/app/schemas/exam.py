@@ -3,33 +3,53 @@ from datetime import datetime
 from pydantic import BaseModel
 
 
+# ── Exam paper list / detail ──────────────────────────────────────────────────
+
 class ExamPaperList(BaseModel):
     id: UUID
     title: str
     level: str
     source: str | None
     section_count: int
-    question_count: int
+    item_count: int
     created_at: datetime
 
     model_config = {"from_attributes": True}
 
 
-class QuestionItem(BaseModel):
+class ExamMediaItem(BaseModel):
     id: UUID
-    type: str
+    url: str
+    caption: str | None
+    seq: int
+
+
+class ItemSchema(BaseModel):
+    id: UUID
+    seq: int
+    num: int | None
     stem: str
-    passage: str | None
     options: dict
     meta: dict | None
+
+
+class ProblemDetail(BaseModel):
+    id: UUID
     seq: int
+    name: str
+    type: str
+    instruction: str | None
+    passage: str | None
+    transcript: str | None
+    media: list[ExamMediaItem]
+    items: list[ItemSchema]
 
 
 class SectionDetail(BaseModel):
     id: UUID
     name: str
     seq: int
-    questions: list[QuestionItem]
+    problems: list[ProblemDetail]
 
 
 class ExamPaperDetail(BaseModel):
@@ -41,6 +61,8 @@ class ExamPaperDetail(BaseModel):
     created_at: datetime
 
 
+# ── Attempt ───────────────────────────────────────────────────────────────────
+
 class StartAttemptResponse(BaseModel):
     attempt_id: UUID
     paper_id: UUID
@@ -48,13 +70,13 @@ class StartAttemptResponse(BaseModel):
 
 
 class SubmitAnswerRequest(BaseModel):
-    question_id: UUID
+    item_id: UUID
     answer: str  # "1"|"2"|"3"|"4"
 
 
 class SubmitAnswerResponse(BaseModel):
-    question_id: UUID
-    is_correct: bool | None  # None if no answer key exists
+    item_id: UUID
+    is_correct: bool | None
 
 
 class SectionScore(BaseModel):
@@ -63,10 +85,10 @@ class SectionScore(BaseModel):
 
 
 class SectionAnswerDetail(BaseModel):
-    question_id: str
+    item_id: str
     user_answer: str | None
     is_correct: bool
-    correct_answer: str | None  # revealed after submit
+    correct_answer: str | None
 
 
 class SubmitSectionResponse(BaseModel):
@@ -80,8 +102,10 @@ class AttemptStatus(BaseModel):
     paper_id: UUID
     status: str
     score: dict | None
-    answered_question_ids: list[UUID]
+    answered_item_ids: list[UUID]
 
+
+# ── Analysis ──────────────────────────────────────────────────────────────────
 
 class RelationSuggestion(BaseModel):
     from_key: str
@@ -91,11 +115,13 @@ class RelationSuggestion(BaseModel):
 
 
 class QuestionAnalysisResponse(BaseModel):
-    question_id: UUID
+    item_id: UUID
     session_data: dict | None
     relations_suggested: list[RelationSuggestion]
     cached: bool
 
+
+# ── Stats ─────────────────────────────────────────────────────────────────────
 
 class CategoryAccuracy(BaseModel):
     correct: int
@@ -109,6 +135,8 @@ class AccuracyStats(BaseModel):
     listening: CategoryAccuracy
 
 
+# ── Attempt history ───────────────────────────────────────────────────────────
+
 class AttemptSummary(BaseModel):
     attempt_id: UUID
     paper_id: UUID
@@ -119,24 +147,35 @@ class AttemptSummary(BaseModel):
     section_names: list[str] = []
 
 
-class ReviewQuestion(BaseModel):
+class ReviewItem(BaseModel):
     id: UUID
-    type: str
+    seq: int
+    num: int | None
     stem: str
-    passage: str | None
     options: dict
     meta: dict | None
-    seq: int
     user_answer: str | None
     correct_answer: str | None
     is_correct: bool | None
+
+
+class ReviewProblem(BaseModel):
+    id: UUID
+    seq: int
+    name: str
+    type: str
+    instruction: str | None
+    passage: str | None
+    transcript: str | None
+    media: list[ExamMediaItem]
+    items: list[ReviewItem]
 
 
 class ReviewSection(BaseModel):
     id: UUID
     name: str
     seq: int
-    questions: list[ReviewQuestion]
+    problems: list[ReviewProblem]
 
 
 class AttemptReview(BaseModel):
@@ -147,3 +186,29 @@ class AttemptReview(BaseModel):
     started_at: datetime
     completed_at: datetime | None
     sections: list[ReviewSection]
+
+
+# ── Admin: Draft ──────────────────────────────────────────────────────────────
+
+class DraftSummary(BaseModel):
+    id: UUID
+    filename: str | None
+    status: str
+    paper_id: UUID | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class DraftDetail(BaseModel):
+    id: UUID
+    filename: str | None
+    markdown_raw: str | None
+    draft_json: dict | None
+    status: str
+    paper_id: UUID | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class MediaUploadResponse(BaseModel):
+    url: str
