@@ -81,6 +81,13 @@ export interface AtomListItem {
   relation_count: number
   maturity: number
   created_at: string
+  reading?: string | null
+  meaning?: string | null
+  part_of_speech?: string | null
+  example?: string | null
+  usage?: string | null
+  jlpt_level?: string | null
+  tags?: string[]
 }
 
 export interface AtomDetail {
@@ -140,32 +147,51 @@ export const INPUT_TYPE_LABELS: Record<InputType, string> = {
   jlpt_listening: 'JLPT听力',
 }
 
-// Exam
-export interface ExamPaperList {
+// Exam — 4-layer schema: Paper → Section → Problem → Item
+
+export interface ExamMediaItem {
   id: string
-  title: string
-  level: string
-  source: string | null
-  section_count: number
-  question_count: number
-  created_at: string
+  url: string
+  caption: string | null
+  seq: number
 }
 
-export interface QuestionItem {
+export interface ItemSchema {
   id: string
-  type: string
+  seq: number
+  num: number | null
   stem: string
-  passage: string | null
   options: Record<string, string>
   meta: Record<string, unknown> | null
+}
+
+export interface ProblemDetail {
+  id: string
   seq: number
+  name: string
+  type: string
+  instruction: string | null
+  passage: string | null
+  transcript: string | null
+  media: ExamMediaItem[]
+  items: ItemSchema[]
 }
 
 export interface SectionDetail {
   id: string
   name: string
   seq: number
-  questions: QuestionItem[]
+  problems: ProblemDetail[]
+}
+
+export interface ExamPaperList {
+  id: string
+  title: string
+  level: string
+  source: string | null
+  section_count: number
+  item_count: number
+  created_at: string
 }
 
 export interface ExamPaperDetail {
@@ -182,11 +208,11 @@ export interface AttemptStatus {
   paper_id: string
   status: string
   score: Record<string, { correct: number; total: number }> | null
-  answered_question_ids: string[]
+  answered_item_ids: string[]
 }
 
 export interface SectionAnswerDetail {
-  question_id: string
+  item_id: string
   user_answer: string | null
   is_correct: boolean
   correct_answer: string | null
@@ -198,19 +224,6 @@ export interface SubmitSectionResponse {
   answers: SectionAnswerDetail[]
 }
 
-export interface GrammarAnalysisOption {
-  option: string
-  is_correct: boolean
-  explanation: string
-  grammar: {
-    pattern: string
-    meaning: string
-    connection: string | null
-    usage: string
-    example: string
-  }
-}
-
 export interface RelationSuggestion {
   from_key: string
   to_key: string
@@ -218,44 +231,11 @@ export interface RelationSuggestion {
   note: string
 }
 
-export interface AttemptSummary {
-  attempt_id: string
-  paper_id: string
-  status: string
-  score: Record<string, { correct: number; total: number }> | null
-  started_at: string
-  completed_at: string | null
-  section_names: string[]
-}
-
-export interface ReviewQuestion {
-  id: string
-  type: string
-  stem: string
-  passage: string | null
-  options: Record<string, string>
-  meta: Record<string, unknown> | null
-  seq: number
-  user_answer: string | null
-  correct_answer: string | null
-  is_correct: boolean | null
-}
-
-export interface ReviewSection {
-  id: string
-  name: string
-  seq: number
-  questions: ReviewQuestion[]
-}
-
-export interface AttemptReviewData {
-  attempt_id: string
-  paper_id: string
-  status: string
-  score: Record<string, { correct: number; total: number }> | null
-  started_at: string
-  completed_at: string | null
-  sections: ReviewSection[]
+export interface QuestionAnalysisResponse {
+  item_id: string
+  session_data: Record<string, unknown> | null
+  relations_suggested: RelationSuggestion[]
+  cached: boolean
 }
 
 export interface CategoryAccuracy {
@@ -270,11 +250,107 @@ export interface AccuracyStats {
   listening: CategoryAccuracy
 }
 
-export interface QuestionAnalysisResponse {
-  question_id: string
-  session_data: Record<string, unknown> | null
-  relations_suggested: RelationSuggestion[]
-  cached: boolean
+export interface AttemptSummary {
+  attempt_id: string
+  paper_id: string
+  status: string
+  score: Record<string, { correct: number; total: number }> | null
+  started_at: string
+  completed_at: string | null
+  section_names: string[]
+}
+
+// Review types (returned after section submit + getAttemptReview)
+export interface ReviewItem {
+  id: string
+  seq: number
+  num: number | null
+  stem: string
+  options: Record<string, string>
+  meta: Record<string, unknown> | null
+  user_answer: string | null
+  correct_answer: string | null
+  is_correct: boolean | null
+}
+
+export interface ReviewProblem {
+  id: string
+  seq: number
+  name: string
+  type: string
+  instruction: string | null
+  passage: string | null
+  transcript: string | null
+  media: ExamMediaItem[]
+  items: ReviewItem[]
+}
+
+export interface ReviewSection {
+  id: string
+  name: string
+  seq: number
+  problems: ReviewProblem[]
+}
+
+export interface AttemptReviewData {
+  attempt_id: string
+  paper_id: string
+  status: string
+  score: Record<string, { correct: number; total: number }> | null
+  started_at: string
+  completed_at: string | null
+  sections: ReviewSection[]
+}
+
+// Admin draft types
+export interface DraftItem {
+  num: number | null
+  seq: number
+  stem: string
+  options: Record<string, string>
+  correct_answer: string | null
+  meta: Record<string, unknown> | null
+}
+
+export interface DraftProblem {
+  name: string
+  type: string
+  instruction: string | null
+  passage: string | null
+  transcript: string | null
+  items: DraftItem[]
+}
+
+export interface DraftSection {
+  name: string
+  problems: DraftProblem[]
+}
+
+export interface DraftJson {
+  title: string
+  level: string
+  source: string
+  sections: DraftSection[]
+}
+
+export interface DraftSummary {
+  id: string
+  filename: string | null
+  status: string
+  paper_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface DraftDetail {
+  id: string
+  filename: string | null
+  markdown_raw: string | null
+  draft_json: DraftJson | null
+  status: string
+  paper_id: string | null
+  created_at: string
+  updated_at: string
 }
 
 // Internalize
@@ -302,4 +378,24 @@ export interface SessionConfig {
   limit: number
   promptType: string
   tag: string
+}
+
+// Knowledge graph
+export interface GraphNode {
+  id: string
+  key: string
+  type: string
+  jlpt: string | null
+  pos: string | null
+}
+
+export interface GraphEdge {
+  from_id: string
+  to_id: string
+  type: string
+}
+
+export interface AtomGraphResponse {
+  nodes: GraphNode[]
+  edges: GraphEdge[]
 }
