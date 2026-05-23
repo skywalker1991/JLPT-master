@@ -91,6 +91,7 @@ async def create_draft_from_pdf(
     try:
         markdown_raw = await _run_pdf_to_md(tmp_path, settings.LLM_API_KEY)
         draft_json = await _run_convert_exam(markdown_raw, settings.LLM_API_KEY)
+        _inject_metadata_from_md(draft_json, markdown_raw)
     except Exception as e:
         logger.error("Ingestion failed for %s: %s", file.filename, e)
         raise HTTPException(status_code=502, detail=f"AI parsing failed: {e}")
@@ -115,6 +116,19 @@ async def create_draft_from_pdf(
     )
 
 
+def _inject_metadata_from_md(draft_json: dict, markdown: str) -> None:
+    """Parse level/source from the metadata block at the top of the markdown and inject."""
+    import re
+    for line in markdown.splitlines()[:15]:
+        m = re.match(r'^level:\s*(N[1-5])\s*$', line.strip())
+        if m:
+            draft_json["level"] = m.group(1)
+            draft_json["title"] = f"日本語能力試験{m.group(1)}"
+        m = re.match(r'^source:\s*(\d{4}年\d{2}月)\s*$', line.strip())
+        if m:
+            draft_json["source"] = m.group(1)
+
+
 async def _run_pdf_to_md(pdf_path: Path, api_key: str) -> str:
     """Call Gemini to convert PDF → Markdown."""
     from google import genai
@@ -122,8 +136,15 @@ async def _run_pdf_to_md(pdf_path: Path, api_key: str) -> str:
 
     PROMPT = """請将这份 JLPT 试卷 PDF 的全部内容转换为 Markdown 文本。
 
+首先，在 Markdown 最顶部输出以下元数据块（从封面或页眉提取，找不到就留空）：
+```
+level: N1
+source: 2023年07月
+```
+level 只填 N1/N2/N3/N4/N5 之一，source 格式为「YYYY年MM月」。
+
 要求：
-- 跳过封面、考试注意事项、页眉页脚的重复标题，从第一个大节直接开始
+- 元数据块之后，跳过封面正文、考试注意事项、页眉页脚的重复标题，从第一个大节直接开始
 - 完整保留所有题目和选项文字，不遗漏
 - 用 ## 标记大节（文字・語彙 / 文法・読解 / 聴解）
 - 用 ### 标记每个問題（問題1、問題2 …）
