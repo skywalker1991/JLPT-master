@@ -89,6 +89,9 @@ async def create_draft_from_pdf(
         tmp_path = Path(tmp.name)
 
     try:
+        import sys as _sys
+        _sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+        from scripts.convert_exam import _strip_answers
         markdown_raw = await _run_pdf_to_md(tmp_path, settings.LLM_API_KEY)
         draft_json = await _run_convert_exam(markdown_raw, settings.LLM_API_KEY)
         _strip_answers(draft_json)
