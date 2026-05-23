@@ -154,7 +154,7 @@ function ExamBank({ papers, onSelect }: { papers: ExamPaperList[]; onSelect: (p:
                   >
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-fg text-sm truncate">{p.title}</p>
-                      <p className="text-xs text-fg-muted mt-0.5">{p.source} · {p.section_count} 节 · {p.question_count} 题</p>
+                      <p className="text-xs text-fg-muted mt-0.5">{p.source} · {p.section_count} 节 · {p.item_count} 题</p>
                     </div>
                     <span className="text-accent text-sm font-medium opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
                       进入 →
@@ -334,7 +334,7 @@ function ExamConfigPanel({
               />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-fg">{s.name}</p>
-                <p className="text-xs text-fg-muted">{s.questions.length} 题</p>
+                <p className="text-xs text-fg-muted">{s.problems.reduce((n, p) => n + p.items.length, 0)} 题</p>
               </div>
             </label>
           ))}
@@ -413,10 +413,12 @@ function ExamDetailView({ paper, onBack }: { paper: ExamPaperList; onBack: () =>
     const correctAnswers: Record<string, string> = {}
     const isCorrectMap: Record<string, boolean | null> = {}
     for (const sec of review.sections) {
-      for (const q of sec.questions) {
-        if (q.user_answer) initialAnswers[q.id] = q.user_answer
-        if (q.correct_answer) correctAnswers[q.id] = q.correct_answer
-        isCorrectMap[q.id] = q.is_correct
+      for (const prob of sec.problems) {
+        for (const item of prob.items) {
+          if (item.user_answer) initialAnswers[item.id] = item.user_answer
+          if (item.correct_answer) correctAnswers[item.id] = item.correct_answer
+          isCorrectMap[item.id] = item.is_correct
+        }
       }
     }
     setMode({ type: 'session', attemptId, sectionIds, initialAnswers, reviewMode: true, correctAnswers, isCorrectMap })
@@ -425,15 +427,17 @@ function ExamDetailView({ paper, onBack }: { paper: ExamPaperList; onBack: () =>
   const handleContinue = useCallback(async (attemptId: string) => {
     const review = await getAttemptReview(attemptId)
     let sectionIds = review.sections
-      .filter(s => s.questions.some(q => q.user_answer !== null))
+      .filter(s => s.problems.some(p => p.items.some(i => i.user_answer !== null)))
       .map(s => s.id)
     if (sectionIds.length === 0) {
       sectionIds = detail?.sections.map(s => s.id) ?? []
     }
     const initialAnswers: Record<string, string> = {}
     for (const sec of review.sections) {
-      for (const q of sec.questions) {
-        if (q.user_answer) initialAnswers[q.id] = q.user_answer
+      for (const prob of sec.problems) {
+        for (const item of prob.items) {
+          if (item.user_answer) initialAnswers[item.id] = item.user_answer
+        }
       }
     }
     const scoreNames = Object.keys(review.score ?? {}).filter(k => k !== 'total')
