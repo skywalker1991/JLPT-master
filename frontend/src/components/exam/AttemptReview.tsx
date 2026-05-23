@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Brain, CheckCircle, ChevronDown, Loader2, XCircle } from 'lucide-react'
 import { getAttemptReview } from '../../services/api'
-import type { AttemptReviewData, ReviewQuestion, ReviewSection } from '../../types'
+import type { AttemptReviewData, ReviewItem, ReviewProblem, ReviewSection } from '../../types'
 import AnalysisPanel from './AnalysisPanel'
 
 // ─── Score summary ────────────────────────────────────────────────────────────
@@ -48,38 +48,22 @@ function ScoreSummary({ score }: { score: AttemptReviewData['score'] }) {
   )
 }
 
-// ─── Question review card ─────────────────────────────────────────────────────
-
-function groupByPassage(questions: ReviewQuestion[]) {
-  const groups: { passage: string | null; questions: ReviewQuestion[] }[] = []
-  const seen = new Map<string, number>()
-  for (const q of questions) {
-    const key = q.meta?.passage_group as string | undefined
-    if (key && seen.has(key)) {
-      groups[seen.get(key)!].questions.push(q)
-    } else {
-      const idx = groups.length
-      groups.push({ passage: q.passage ?? null, questions: [q] })
-      if (key) seen.set(key, idx)
-    }
-  }
-  return groups
-}
+// ─── Item review card ─────────────────────────────────────────────────────────
 
 const OPTS = ['1', '2', '3', '4'] as const
 
-function QuestionReviewCard({
-  q, onAnalyze,
+function ItemReviewCard({
+  item, onAnalyze,
 }: {
-  q: ReviewQuestion
+  item: ReviewItem
   onAnalyze: () => void
 }) {
   const [open, setOpen] = useState(false)
 
   function optClass(k: string) {
     const base = 'flex items-start gap-2 px-3 py-2 rounded-lg border text-sm transition-colors'
-    if (k === q.correct_answer) return `${base} border-success bg-success-light text-success-fg font-medium`
-    if (k === q.user_answer && !q.is_correct) return `${base} border-danger bg-danger-light text-danger-fg`
+    if (k === item.correct_answer) return `${base} border-success bg-success-light text-success-fg font-medium`
+    if (k === item.user_answer && !item.is_correct) return `${base} border-danger bg-danger-light text-danger-fg`
     return `${base} border-border text-fg-muted`
   }
 
@@ -90,14 +74,14 @@ function QuestionReviewCard({
         className="w-full flex items-center gap-3 px-4 py-3 hover:bg-bg transition-colors text-left"
         onClick={() => setOpen(o => !o)}
       >
-        {q.is_correct === true && <CheckCircle className="w-4 h-4 text-success shrink-0" />}
-        {q.is_correct === false && <XCircle className="w-4 h-4 text-danger shrink-0" />}
-        {q.is_correct === null && <div className="w-4 h-4 rounded-full border-2 border-border shrink-0" />}
-        <span className="text-xs text-fg-muted shrink-0">Q{q.seq}</span>
-        <p className="text-sm text-fg truncate flex-1">{q.stem || '（无题干）'}</p>
-        {q.user_answer && (
-          <span className={`text-xs font-bold shrink-0 ${q.is_correct ? 'text-success-fg' : 'text-danger-fg'}`}>
-            选 {q.user_answer}
+        {item.is_correct === true && <CheckCircle className="w-4 h-4 text-success shrink-0" />}
+        {item.is_correct === false && <XCircle className="w-4 h-4 text-danger shrink-0" />}
+        {item.is_correct === null && <div className="w-4 h-4 rounded-full border-2 border-border shrink-0" />}
+        <span className="text-xs text-fg-muted shrink-0">Q{item.seq}</span>
+        <p className="text-sm text-fg truncate flex-1">{item.stem || '（无题干）'}</p>
+        {item.user_answer && (
+          <span className={`text-xs font-bold shrink-0 ${item.is_correct ? 'text-success-fg' : 'text-danger-fg'}`}>
+            选 {item.user_answer}
           </span>
         )}
       </button>
@@ -105,24 +89,24 @@ function QuestionReviewCard({
       {/* Expanded detail */}
       {open && (
         <div className="border-t border-border px-4 pb-4 pt-3 bg-bg space-y-3">
-          {Object.keys(q.options).length > 0 && (
+          {Object.keys(item.options).length > 0 && (
             <div className="space-y-1.5">
-              {OPTS.filter(k => k in q.options).map(k => (
+              {OPTS.filter(k => k in item.options).map(k => (
                 <div key={k} className={optClass(k)}>
                   <span className="shrink-0 font-semibold text-xs mt-0.5 w-4">{k}</span>
-                  <span className="flex-1">{q.options[k]}</span>
-                  {k === q.correct_answer && <CheckCircle className="w-4 h-4 shrink-0 text-success" />}
-                  {k === q.user_answer && !q.is_correct && <XCircle className="w-4 h-4 shrink-0 text-danger" />}
+                  <span className="flex-1">{item.options[k]}</span>
+                  {k === item.correct_answer && <CheckCircle className="w-4 h-4 shrink-0 text-success" />}
+                  {k === item.user_answer && !item.is_correct && <XCircle className="w-4 h-4 shrink-0 text-danger" />}
                 </div>
               ))}
             </div>
           )}
 
-          {!q.user_answer && (
+          {!item.user_answer && (
             <p className="text-xs text-fg-muted italic">未作答</p>
           )}
 
-          {q.type === 'grammar_fill' && (
+          {Object.keys(item.options).length > 0 && (
             <button
               onClick={onAnalyze}
               className="flex items-center gap-1.5 text-xs text-accent hover:text-accent-hover font-medium transition-colors"
@@ -143,20 +127,19 @@ function SectionReview({
   section, onAnalyze,
 }: {
   section: ReviewSection
-  onAnalyze: (qid: string) => void
+  onAnalyze: (itemId: string) => void
 }) {
   const [open, setOpen] = useState(false)
-  const groups = useMemo(() => groupByPassage(section.questions), [section.questions])
 
-  const answered = section.questions.filter(q => q.user_answer !== null).length
-  const submitted = section.questions.some(q => q.is_correct !== null)
-  const correct = section.questions.filter(q => q.is_correct === true).length
-  const total = section.questions.filter(q => q.correct_answer !== null).length
+  const allItems = section.problems.flatMap(p => p.items)
+  const answered = allItems.filter(i => i.user_answer !== null).length
+  const submitted = allItems.some(i => i.is_correct !== null)
+  const correct = allItems.filter(i => i.is_correct === true).length
+  const total = allItems.filter(i => i.correct_answer !== null).length
   const pct = total > 0 ? correct / total : null
 
   return (
     <div className="border border-border rounded-xl overflow-hidden">
-      {/* Section header — always visible */}
       <button
         className="w-full flex items-center gap-3 px-4 py-3 hover:bg-bg transition-colors text-left"
         onClick={() => setOpen(o => !o)}
@@ -170,7 +153,7 @@ function SectionReview({
               </span>
             )}
             {!submitted && (
-              <span className="text-xs text-fg-muted">{answered}/{section.questions.length} 已作答</span>
+              <span className="text-xs text-fg-muted">{answered}/{allItems.length} 已作答</span>
             )}
           </div>
           {submitted && total > 0 && (
@@ -191,18 +174,31 @@ function SectionReview({
         <ChevronDown className={`w-4 h-4 text-fg-muted shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
-      {/* Questions — only when expanded */}
       {open && (
-        <div className="border-t border-border px-4 py-3 bg-bg space-y-3">
-          {groups.map((g, gi) => (
-            <div key={gi} className="space-y-2">
-              {g.passage && (
+        <div className="border-t border-border px-4 py-3 bg-bg space-y-4">
+          {section.problems.map(prob => (
+            <div key={prob.id} className="space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-fg-muted bg-border/40 px-2 py-0.5 rounded">
+                  {prob.name}
+                </span>
+                {prob.instruction && (
+                  <span className="text-xs text-fg-muted truncate">{prob.instruction}</span>
+                )}
+              </div>
+              {prob.passage && (
                 <div className="bg-surface border border-border rounded-xl p-4 text-sm text-fg leading-relaxed whitespace-pre-wrap max-h-40 overflow-y-auto">
-                  {g.passage}
+                  {prob.passage}
                 </div>
               )}
-              {g.questions.map(q => (
-                <QuestionReviewCard key={q.id} q={q} onAnalyze={() => onAnalyze(q.id)} />
+              {prob.transcript && (
+                <div className="bg-surface border border-border rounded-xl p-3 text-sm text-fg leading-relaxed whitespace-pre-wrap max-h-32 overflow-y-auto">
+                  <p className="text-[10px] font-semibold text-fg-muted mb-1 uppercase">聴解原文</p>
+                  {prob.transcript}
+                </div>
+              )}
+              {prob.items.map(item => (
+                <ItemReviewCard key={item.id} item={item} onAnalyze={() => onAnalyze(item.id)} />
               ))}
             </div>
           ))}
@@ -221,7 +217,7 @@ export default function AttemptReview({
 }) {
   const [review, setReview] = useState<AttemptReviewData | null>(null)
   const [loading, setLoading] = useState(true)
-  const [analysisQid, setAnalysisQid] = useState<string | null>(null)
+  const [analysisItemId, setAnalysisItemId] = useState<string | null>(null)
 
   useEffect(() => {
     setLoading(true)
@@ -243,8 +239,8 @@ export default function AttemptReview({
   )
 
   const answeredCount = review.sections
-    .flatMap(s => s.questions)
-    .filter(q => q.user_answer !== null).length
+    .flatMap(s => s.problems.flatMap((p: ReviewProblem) => p.items))
+    .filter(i => i.user_answer !== null).length
 
   return (
     <div className="h-full overflow-y-auto px-6 py-5 space-y-6">
@@ -266,11 +262,11 @@ export default function AttemptReview({
       <ScoreSummary score={review.score} />
 
       {review.sections.map(sec => (
-        <SectionReview key={sec.id} section={sec} onAnalyze={setAnalysisQid} />
+        <SectionReview key={sec.id} section={sec} onAnalyze={setAnalysisItemId} />
       ))}
 
-      {analysisQid && (
-        <AnalysisPanel questionId={analysisQid} onClose={() => setAnalysisQid(null)} />
+      {analysisItemId && (
+        <AnalysisPanel itemId={analysisItemId} onClose={() => setAnalysisItemId(null)} />
       )}
     </div>
   )
