@@ -22,52 +22,7 @@ from app.config import get_settings
 
 PROMPT_HEADER = """\
 あなたは JLPT 試験の構造化パーサーです。
-以下の日本語能力試験の Markdown ファイルを読み込み、指定の JSON 形式に変換してください。
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-【題型の判定ルール（問題番号ではなく内容で判断）】
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-kanji_reading  : 問題文に __対象語__ があり、選択肢がひらがな読み
-kanji_writing  : 問題文に __ひらがな__ があり、選択肢が漢字表記
-word_formation : （　）に接辞1文字を補う問題（選択肢が接頭辞・接尾辞）
-vocab_fill     : 文中の（　）に適切な語を選ぶ（選択肢が単語・フレーズ）
-synonym        : 問題文に __対象語__ があり、「最も近い意味」を選ぶ
-usage          : 対象語の正しい使い方の文を4つの完全な文から選ぶ
-grammar_fill   : 文中の（　）に文法形式を補う（文法・機能語の選択）
-sentence_order : [_1_][_2_][_N★_][_4_] のマークアップがある並び替え問題
-passage_fill   : 長文中に (41)(42)… のような番号付き空欄が複数ある問題
-reading_comp   : 長文を読んで設問に答える読解問題
-listening      : 聴解セクションの問題
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-【フィールドのルール】
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-■ num
-  Markdown 中の問題番号（試験全体での通し番号）。整数。
-
-■ options
-  選択肢番号は 1・2・3・4 のまま使用。
-  例: {"1": "うんしん", "2": "うんちん", "3": "うんにん", "4": "うんりん"}
-  [音声のみ] の聴解問題は {}.
-
-■ stem
-  kanji_reading/kanji_writing/synonym: __対象語__ のマークアップを保持した文。
-  word_formation/vocab_fill/grammar_fill: （　）プレースホルダーを含む文。
-  usage: 対象語そのもの（例: "早期"）。
-  sentence_order: [_1_][_2_][_N★_][_4_] マークアップを保持した完全な文。
-  passage_fill/reading_comp: 問いの文（例: "筆者の考えに合うのはどれか。"）。
-  listening（選択肢あり）: 番号のみ（例: "1番"）。
-  listening（音声のみ）: ""。
-
-■ passage
-  passage_fill と reading_comp にのみ設定。同じ文章を共有する複数問には同一テキストを格納。
-  その他は null。
-
-■ meta
-  kanji_reading / kanji_writing / synonym: {"target": "対象語"}  ← __word__ から抽出
-  sentence_order: {"star_position": N}  ← [_N★_] の N（整数）
-  passage_fill / reading_comp: {"passage_group": "一意の文字列"}  ← 同文章を共有する問題に同じ値
-  その他は null。
+以下の Markdown 化された試験を読み込み、指定の JSON 形式に変換してください。
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 【出力 JSON 構造】
@@ -77,28 +32,82 @@ listening      : 聴解セクションの問題
   "level": "N1",
   "source": "出典",
   "sections": [
-    {"name": "言語知識（文字・語彙）", "questions": [...]},
-    {"name": "言語知識（文法）",       "questions": [...]},
-    {"name": "読解",                  "questions": [...]},
-    {"name": "聴解",                  "questions": [...]}
+    {
+      "name": "言語知識（文字・語彙）",
+      "problems": [
+        {
+          "name": "問題1",
+          "type": "kanji_reading",
+          "instruction": "次の言葉の読み方として...",
+          "passage": null,
+          "transcript": null,
+          "items": [
+            {
+              "num": 1,
+              "seq": 1,
+              "stem": "__運賃__を払う",
+              "options": {"1": "うんちん", "2": "うんどう", "3": "うんにん", "4": "うんりん"},
+              "correct_answer": "2",
+              "meta": {"target": "運賃"}
+            }
+          ]
+        }
+      ]
+    }
   ]
 }
-
-各 question のフィールド: num, seq, type, stem, options, passage, meta
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 【セクション分割ルール】
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-必ず 4 セクションに分割（実際の冊子構成に関わらず）：
+必ず 4 セクションに分割：
 1. 言語知識（文字・語彙）: kanji_reading/kanji_writing/word_formation/vocab_fill/synonym/usage
-2. 言語知識（文法）:       grammar_fill/sentence_order/passage_fill
-3. 読解:                  reading_comp
-4. 聴解:                  listening
+2. 言語知識（文法）: grammar_fill/sentence_order/passage_fill
+3. 読解: reading_comp
+4. 聴解: listening
 
-注意:
-- seq は各 section 内での連番（1始まり）
-- [音声のみ] と明記された聴解問題は stem="" options={}
-- JSON のみ出力。説明文・コードブロック不要。
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+【Problem（問題N）のルール】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+■ name: Markdown の ### 見出し（"問題1"、"問題2"…）
+■ type: 問題グループ全体の題型（問題番号ではなく内容で判断）
+  kanji_reading  : __対象語__ あり、選択肢がひらがな
+  kanji_writing  : __ひらがな__ あり、選択肢が漢字
+  word_formation : （　）に接辞1文字を補う
+  vocab_fill     : 文中（　）に語を選ぶ
+  synonym        : __対象語__ あり、最も近い意味を選ぶ
+  usage          : 対象語の正しい使い方を選ぶ
+  grammar_fill   : 文中（　）に文法形式を補う
+  sentence_order : [_1_][_2_][_N★_][_4_] マークアップがある
+  passage_fill   : 長文中に複数の番号付き空欄
+  reading_comp   : 長文を読んで設問に答える
+  listening      : 聴解セクション
+■ instruction: 問題冒頭の指示語（例：「次の文の（　）に入れるのに最もよいものを…」）
+■ passage: reading_comp / passage_fill の場合のみ設定（同じ文章を共有する items はこの problem にまとめる）
+■ transcript: listening の場合のみ設定（[音声のみ] 問題には "" を入れる）
+
+同一 ### 見出し内に複数の独立した文章がある場合（例：問題13 に短文が3つ）は、
+同じ name を持つ複数の problem に分割してください。
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+【Item（各設問）のルール】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+■ num: 試験全体での通し番号（整数）
+■ seq: problem 内での連番（1始まり）
+■ stem:
+  kanji_reading/kanji_writing/synonym: __対象語__ マークアップを保持した文
+  word_formation/vocab_fill/grammar_fill: （　）プレースホルダーを含む文
+  usage: 対象語そのもの（例: "早期"）
+  sentence_order: [_1_][_2_][_N★_][_4_] マークアップを保持した完全な文
+  passage_fill/reading_comp: 設問の文（例: "筆者の考えに合うのはどれか。"）
+  listening（選択肢あり）: 番号のみ（例: "1番"）
+  listening（音声のみ）: ""
+■ options: {"1":…,"2":…,"3":…,"4":…}、[音声のみ]は{}
+■ correct_answer: 答案表から取得（"1"/"2"/"3"/"4"）、不明なら null
+■ meta:
+  kanji_reading/kanji_writing/synonym: {"target": "対象語"}
+  sentence_order: {"star_position": N}（[_N★_] の N、整数）
+  その他: null
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 【試験 Markdown】
@@ -122,12 +131,13 @@ def _parse_answers(markdown: str) -> dict[int, str]:
 
 
 def _inject_answers(data: dict, answers: dict[int, str]) -> None:
-    """Assign correct_answer to each question using the num field."""
+    """Assign correct_answer to each item using the num field."""
     for section in data.get("sections", []):
-        for q in section.get("questions", []):
-            num = q.get("num")
-            if num is not None and num in answers:
-                q["correct_answer"] = answers[num]
+        for problem in section.get("problems", []):
+            for item in problem.get("items", []):
+                num = item.get("num")
+                if num is not None and num in answers:
+                    item["correct_answer"] = answers[num]
 
 
 def _infer_level_source(md_path: str) -> tuple[str, str]:
@@ -185,12 +195,20 @@ async def convert(md_path: str, out_path: str) -> None:
     if source:
         data["source"] = source
 
-    total = sum(len(s["questions"]) for s in data["sections"])
+    total = sum(
+        len(p["items"])
+        for s in data["sections"]
+        for p in s["problems"]
+    )
     answered = sum(
-        1 for s in data["sections"] for q in s["questions"] if q.get("correct_answer")
+        1
+        for s in data["sections"]
+        for p in s["problems"]
+        for item in p["items"]
+        if item.get("correct_answer")
     )
     Path(out_path).write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"Done. {len(data['sections'])} sections, {total} questions, {answered} with answers → {out_path}")
+    print(f"Done. {len(data['sections'])} sections, {total} items, {answered} with answers → {out_path}")
 
 
 def _validate(data: dict) -> None:
@@ -199,9 +217,11 @@ def _validate(data: dict) -> None:
     assert "sections" in data, "missing sections"
     for s in data["sections"]:
         assert "name" in s, f"section missing name: {s}"
-        for q in s.get("questions", []):
-            assert "type" in q, f"question missing type: {q}"
-            assert "options" in q, f"question missing options: {q}"
+        assert "problems" in s, f"section missing problems: {s}"
+        for p in s["problems"]:
+            assert "name" in p, f"problem missing name: {p}"
+            assert "type" in p, f"problem missing type: {p}"
+            assert "items" in p, f"problem missing items: {p}"
 
 
 if __name__ == "__main__":

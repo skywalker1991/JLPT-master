@@ -73,3 +73,43 @@ def test_migrate_v2_old_tables_includes_new_exam_tables():
     from scripts.migrate_v2 import OLD_TABLES
     for table in ("exam_drafts", "exam_media", "exam_items", "exam_problems"):
         assert table in OLD_TABLES, f"{table} missing from OLD_TABLES"
+
+
+def test_inject_answers_into_items():
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    from scripts.convert_exam import _inject_answers, _validate
+
+    data = {
+        "title": "Test", "level": "N1",
+        "sections": [{"name": "語彙", "problems": [
+            {"name": "問題1", "type": "kanji_reading", "items": [
+                {"num": 1, "seq": 1, "stem": "test", "options": {}, "correct_answer": None, "meta": None},
+                {"num": 2, "seq": 2, "stem": "test2", "options": {}, "correct_answer": None, "meta": None},
+            ]}
+        ]}]
+    }
+    _inject_answers(data, {1: "3", 2: "1"})
+    items = data["sections"][0]["problems"][0]["items"]
+    assert items[0]["correct_answer"] == "3"
+    assert items[1]["correct_answer"] == "1"
+
+
+def test_validate_passes_valid_structure():
+    from scripts.convert_exam import _validate
+    data = {
+        "title": "T", "level": "N1",
+        "sections": [{"name": "S", "problems": [
+            {"name": "問題1", "type": "vocab_fill", "items": []}
+        ]}]
+    }
+    _validate(data)  # should not raise
+
+
+def test_validate_raises_on_missing_problems():
+    import pytest
+    from scripts.convert_exam import _validate
+    data = {"title": "T", "level": "N1", "sections": [{"name": "S"}]}
+    with pytest.raises(AssertionError, match="missing problems"):
+        _validate(data)
