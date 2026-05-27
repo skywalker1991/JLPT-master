@@ -25,6 +25,7 @@ class Atom(Base):
     properties = relationship("AtomProperty", back_populates="atom", cascade="all, delete-orphan")
     tags = relationship("AtomTag", back_populates="atom", cascade="all, delete-orphan")
     traces = relationship("Trace", back_populates="atom", cascade="all, delete-orphan")
+    srs_state = relationship("AtomSrsState", back_populates="atom", uselist=False, cascade="all, delete-orphan")
     relations_from = relationship("AtomRelation", foreign_keys="AtomRelation.from_id", back_populates="from_atom", cascade="all, delete-orphan")
     relations_to = relationship("AtomRelation", foreign_keys="AtomRelation.to_id", back_populates="to_atom", cascade="all, delete-orphan")
     analysis_atoms = relationship("AnalysisAtom", back_populates="atom", cascade="all, delete-orphan")
@@ -109,6 +110,21 @@ class Trace(Base):
         Index("ix_traces_atom_id", "atom_id"),
         Index("ix_traces_action", "action"),
         Index("ix_traces_created_at", "created_at"),
+    )
+
+
+class AtomSrsState(Base):
+    __tablename__ = "atom_srs_states"
+
+    atom_id    = Column(UUID(as_uuid=True), ForeignKey("atoms.id", ondelete="CASCADE"), primary_key=True)
+    box_level  = Column(Integer, nullable=False, default=0)
+    next_review = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    updated_at  = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+
+    atom = relationship("Atom", back_populates="srs_state")
+
+    __table_args__ = (
+        Index("ix_atom_srs_states_next_review", "next_review"),
     )
 
 
@@ -222,6 +238,7 @@ class ExamItem(Base):
     seq = Column(Integer, nullable=False)
     num = Column(Integer, nullable=True)
     stem = Column(Text, nullable=False, server_default=text("''"))
+    transcript = Column(Text, nullable=True)
     options = Column(JSONB, nullable=False, server_default=text("'{}'"))
     correct_answer = Column(String(1), nullable=True)
     meta = Column(JSONB, nullable=True)
