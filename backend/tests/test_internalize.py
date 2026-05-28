@@ -37,3 +37,39 @@ def test_extract_jlpt_level_returns_first_match():
 
 def test_extract_jlpt_level_empty_list():
     assert extract_jlpt_level([]) is None
+
+
+from datetime import datetime, timezone, timedelta
+from app.services.internalize_service import (
+    next_review_after_know,
+    next_review_after_unknown,
+)
+
+def test_know_from_box0_goes_to_box1():
+    new_box, next_review = next_review_after_know(0)
+    assert new_box == 1
+    assert next_review > datetime.now(timezone.utc)
+
+def test_know_from_box5_stays_at_box5():
+    new_box, _ = next_review_after_know(5)
+    assert new_box == 5
+
+def test_know_box1_interval_is_1_hour():
+    _, next_review = next_review_after_know(0)  # box 0 → box 1, interval = 1h
+    delta = next_review - datetime.now(timezone.utc)
+    assert timedelta(minutes=55) < delta < timedelta(minutes=65)
+
+def test_know_box4_interval_is_7_days():
+    _, next_review = next_review_after_know(3)  # box 3 → box 4, interval = 7d
+    delta = next_review - datetime.now(timezone.utc)
+    assert timedelta(days=6, hours=23) < delta < timedelta(days=7, hours=1)
+
+def test_unknown_always_goes_to_box1():
+    for box in range(6):
+        new_box, _ = next_review_after_unknown(box)
+        assert new_box == 1
+
+def test_unknown_next_review_is_10_minutes():
+    _, next_review = next_review_after_unknown(3)
+    delta = next_review - datetime.now(timezone.utc)
+    assert timedelta(minutes=9) < delta < timedelta(minutes=11)
