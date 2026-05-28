@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from sqlalchemy import (
     Column, String, Text, DateTime, ForeignKey, UniqueConstraint,
-    CheckConstraint, Index, Integer, Boolean, text
+    CheckConstraint, Index, Integer, SmallInteger, Boolean, text
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
@@ -117,9 +117,9 @@ class AtomSrsState(Base):
     __tablename__ = "atom_srs_states"
 
     atom_id    = Column(UUID(as_uuid=True), ForeignKey("atoms.id", ondelete="CASCADE"), primary_key=True)
-    box_level  = Column(Integer, nullable=False, default=0)
+    box_level  = Column(SmallInteger, nullable=False, default=0)
     next_review = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
-    updated_at  = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    updated_at  = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"), onupdate=datetime.utcnow)
 
     atom = relationship("Atom", back_populates="srs_state")
 
