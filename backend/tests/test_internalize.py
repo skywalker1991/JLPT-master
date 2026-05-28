@@ -1,5 +1,11 @@
 import math
-from app.services.internalize_service import priority_score, extract_jlpt_level
+from datetime import datetime, timezone, timedelta
+from app.services.internalize_service import (
+    priority_score,
+    extract_jlpt_level,
+    next_review_after_know,
+    next_review_after_unknown,
+)
 
 
 def test_never_reviewed_atom_has_high_priority():
@@ -38,12 +44,6 @@ def test_extract_jlpt_level_returns_first_match():
 def test_extract_jlpt_level_empty_list():
     assert extract_jlpt_level([]) is None
 
-
-from datetime import datetime, timezone, timedelta
-from app.services.internalize_service import (
-    next_review_after_know,
-    next_review_after_unknown,
-)
 
 def test_know_from_box0_goes_to_box1():
     new_box, next_review = next_review_after_know(0)
