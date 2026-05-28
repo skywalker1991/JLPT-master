@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import (
     Column, String, Text, DateTime, ForeignKey, UniqueConstraint,
     CheckConstraint, Index, Integer, SmallInteger, Boolean, text
@@ -119,7 +119,7 @@ class AtomSrsState(Base):
     atom_id    = Column(UUID(as_uuid=True), ForeignKey("atoms.id", ondelete="CASCADE"), primary_key=True)
     box_level  = Column(SmallInteger, nullable=False, default=0)
     next_review = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
-    updated_at  = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"), onupdate=datetime.utcnow)
+    updated_at  = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"), onupdate=lambda: datetime.now(timezone.utc))
 
     atom = relationship("Atom", back_populates="srs_state")
 
@@ -285,7 +285,7 @@ class ExamDraft(Base):
                       nullable=True)
     status = Column(String(20), nullable=False, server_default=text("'pending'"))
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
-    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"), onupdate=datetime.utcnow)
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"), onupdate=lambda: datetime.now(timezone.utc))
 
     __table_args__ = (
         Index("ix_exam_drafts_status", "status"),

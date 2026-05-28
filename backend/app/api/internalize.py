@@ -141,7 +141,6 @@ async def record_trace(body: dict, db: AsyncSession = Depends(get_db)):
         srs.next_review = next_review
         srs.updated_at = datetime.now(timezone.utc)
 
-    await db.commit()
     return {"ok": True}
 
 
