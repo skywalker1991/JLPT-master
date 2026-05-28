@@ -143,3 +143,48 @@ async def record_trace(body: dict, db: AsyncSession = Depends(get_db)):
 
     await db.commit()
     return {"ok": True}
+
+
+@router.get("/internalize/stats")
+async def get_stats(db: AsyncSession = Depends(get_db)):
+    """Returns today's and all-time review stats plus box-level distribution."""
+    today_start = datetime.now(timezone.utc).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+
+    today_row = (await db.execute(
+        select(
+            func.sum(case((Trace.detail["result"].astext == "know", 1), else_=0)).label("know"),
+            func.sum(case((Trace.detail["result"].astext == "unknown", 1), else_=0)).label("unknown"),
+        ).where(Trace.action == "review", Trace.created_at >= today_start)
+    )).one()
+
+    total_row = (await db.execute(
+        select(
+            func.sum(case((Trace.detail["result"].astext == "know", 1), else_=0)).label("know"),
+            func.sum(case((Trace.detail["result"].astext == "unknown", 1), else_=0)).label("unknown"),
+        ).where(Trace.action == "review")
+    )).one()
+
+    dist_rows = (await db.execute(
+        select(AtomSrsState.box_level, func.count().label("cnt"))
+        .group_by(AtomSrsState.box_level)
+    )).all()
+
+    distribution = {f"box{row.box_level}": row.cnt for row in dist_rows}
+    total_in_state = sum(distribution.values())
+    mastery_pct = round(distribution.get("box5", 0) / max(total_in_state, 1) * 100)
+
+    return {
+        "today": {
+            "know": today_row.know or 0,
+            "unknown": today_row.unknown or 0,
+            "total": (today_row.know or 0) + (today_row.unknown or 0),
+        },
+        "total": {
+            "know": total_row.know or 0,
+            "unknown": total_row.unknown or 0,
+            "mastery_pct": mastery_pct,
+        },
+        "distribution": {f"box{i}": distribution.get(f"box{i}", 0) for i in range(6)},
+    }
