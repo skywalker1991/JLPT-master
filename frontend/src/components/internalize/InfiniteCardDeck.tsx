@@ -96,7 +96,7 @@ export default function InfiniteCardDeck({ config, onSwipe }: Props) {
       )}
 
       {phase === 'playing' && (
-        queue.length === 0 ? (
+        queue.length - head === 0 ? (
           <div className="flex-1 flex items-center justify-center">
             <p className="text-fg-muted text-sm">知识库暂无原子，先去分析一些内容吧</p>
           </div>
