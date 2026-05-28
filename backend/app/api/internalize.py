@@ -1,14 +1,19 @@
 # backend/app/api/internalize.py
+from datetime import datetime, timezone
 from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, func, case, exists, and_, Float
+from sqlalchemy import select, func, case, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.db import Atom, AtomProperty, AtomTag, Trace, get_db
+from app.models.db import Atom, AtomProperty, AtomTag, AtomSrsState, Trace, get_db
 from app.services import atom_service
-from app.services.internalize_service import extract_jlpt_level
+from app.services.internalize_service import (
+    extract_jlpt_level,
+    next_review_after_know,
+    next_review_after_unknown,
+)
 
 router = APIRouter(tags=["internalize"])
 
@@ -127,7 +132,7 @@ async def get_queue(
 
 @router.post("/internalize/trace", status_code=201)
 async def record_trace(body: dict, db: AsyncSession = Depends(get_db)):
-    """记录一次卡牌划拨结果到 traces 表。"""
+    """Records a card swipe result and updates the atom's SRS state."""
     atom_id_str = body.get("atom_id")
     result = body.get("result")
     prompt_type = body.get("prompt_type", "meaning")
@@ -144,8 +149,29 @@ async def record_trace(body: dict, db: AsyncSession = Depends(get_db)):
     if atom is None:
         raise HTTPException(status_code=404, detail="Atom not found")
 
+    # Record trace
     await atom_service.add_trace(
         db, atom_id, "review", {"result": result, "prompt_type": prompt_type}
     )
+
+    # Update SRS state
+    srs_result = await db.execute(
+        select(AtomSrsState).where(AtomSrsState.atom_id == atom_id)
+    )
+    srs = srs_result.scalar_one_or_none()
+    current_box = srs.box_level if srs else 0
+
+    if result == "know":
+        new_box, next_review = next_review_after_know(current_box)
+    else:
+        new_box, next_review = next_review_after_unknown(current_box)
+
+    if srs is None:
+        db.add(AtomSrsState(atom_id=atom_id, box_level=new_box, next_review=next_review))
+    else:
+        srs.box_level = new_box
+        srs.next_review = next_review
+        srs.updated_at = datetime.now(timezone.utc)
+
     await db.commit()
     return {"ok": True}
