@@ -21,73 +21,47 @@ router = APIRouter(tags=["internalize"])
 @router.get("/internalize/queue")
 async def get_queue(
     limit: int = Query(default=20, ge=1, le=200),
-    prompt: Literal['meaning', 'reading', 'example'] = Query(default="meaning"),
-    tag: str | None = Query(default=None),
+    prompt: Literal['meaning', 'reading'] = Query(default="meaning"),
+    levels: list[str] = Query(default=[]),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    返回按优先级排序的原子复习队列。
-    优先级 = fail_rate * 0.6 + days_decay * 0.4
-    从未复习的原子具有最高优先级（days_since=999）。
+    Returns atoms ordered by SRS due-date.
+    New atoms (no SRS state) appear first (coalesced to epoch), then
+    overdue atoms, then future atoms.
     """
-    # 评审统计子查询
-    review_stats = (
-        select(
-            Trace.atom_id,
-            func.count().label("review_count"),
-            func.sum(
-                case(
-                    (Trace.detail["result"].astext == "unknown", 1),
-                    else_=0,
-                )
-            ).label("fail_count"),
-            func.max(Trace.created_at).label("last_review"),
-        )
-        .where(Trace.action == "review")
-        .group_by(Trace.atom_id)
-        .subquery("review_stats")
-    )
+    from sqlalchemy import and_, exists as sa_exists
 
-    days_since_expr = func.coalesce(
-        func.extract("epoch", func.now() - review_stats.c.last_review) / 86400.0,
-        999.0,
-    )
-    fail_rate_expr = func.coalesce(
-        func.cast(review_stats.c.fail_count, Float)
-        / func.greatest(func.cast(review_stats.c.review_count, Float), 1.0),
-        0.0,
-    )
-    priority_expr = (
-        fail_rate_expr * 0.6
-        + (1 - func.exp(-days_since_expr / 14.0)) * 0.4
-    )
+    order_expr = func.coalesce(
+        AtomSrsState.next_review,
+        text("'1970-01-01 00:00:00+00'::timestamptz"),
+    ).asc()
 
     query = (
-        select(Atom, priority_expr.label("priority"))
-        .outerjoin(review_stats, review_stats.c.atom_id == Atom.id)
+        select(Atom)
+        .outerjoin(AtomSrsState, AtomSrsState.atom_id == Atom.id)
+        .order_by(order_expr)
+        .limit(limit)
     )
 
-    if tag:
+    if levels:
         query = query.where(
-            exists(
+            sa_exists(
                 select(AtomTag.atom_id).where(
-                    and_(AtomTag.atom_id == Atom.id, AtomTag.tag == tag)
+                    and_(AtomTag.atom_id == Atom.id, AtomTag.tag.in_(levels))
                 )
             )
         )
 
-    query = query.order_by(priority_expr.desc()).limit(limit)
-
     result = await db.execute(query)
-    rows = result.all()
+    atoms = result.scalars().all()
 
-    if not rows:
+    if not atoms:
         return {"cards": []}
 
-    atom_ids = [row.Atom.id for row in rows]
-    atoms_map = {row.Atom.id: row.Atom for row in rows}
+    atom_ids = [a.id for a in atoms]
+    atoms_map = {a.id: a for a in atoms}
 
-    # 一次查询所有 properties
     props_result = await db.execute(
         select(AtomProperty)
         .where(AtomProperty.atom_id.in_(atom_ids))
@@ -97,7 +71,6 @@ async def get_queue(
     for p in props_result.scalars().all():
         props_by_atom.setdefault(p.atom_id, []).append(p)
 
-    # 一次查询所有 tags
     tags_result = await db.execute(
         select(AtomTag).where(AtomTag.atom_id.in_(atom_ids))
     )
@@ -110,22 +83,17 @@ async def get_queue(
         atom = atoms_map[atom_id]
         props = props_by_atom.get(atom_id, [])
         tags = tags_by_atom.get(atom_id, [])
-
         jlpt_level = extract_jlpt_level(tags)
         prompt_value = next((p.value for p in props if p.kind == prompt), None)
 
-        cards.append(
-            {
-                "id": str(atom_id),
-                "type": atom.type,
-                "key": atom.key,
-                "jlpt_level": jlpt_level,
-                "prompt_value": prompt_value,
-                "properties": [
-                    {"kind": p.kind, "value": p.value} for p in props
-                ],
-            }
-        )
+        cards.append({
+            "id": str(atom_id),
+            "type": atom.type,
+            "key": atom.key,
+            "jlpt_level": jlpt_level,
+            "prompt_value": prompt_value,
+            "properties": [{"kind": p.kind, "value": p.value} for p in props],
+        })
 
     return {"cards": cards}
 
