@@ -21,6 +21,7 @@ import {
   DraftSummary,
   DraftDetail,
   InternalizeQueueResponse,
+  InternalizeStats,
   AtomGraphResponse,
 } from '../types'
 
@@ -340,6 +341,10 @@ export async function createDraftFromPdf(file: File): Promise<DraftDetail> {
   return res.json()
 }
 
+export async function deleteDraft(draftId: string): Promise<void> {
+  await request<void>(`/api/admin/drafts/${draftId}`, { method: 'DELETE' })
+}
+
 export async function confirmDraft(draftId: string): Promise<DraftDetail> {
   return request<DraftDetail>(`/api/admin/drafts/${draftId}/confirm`, { method: 'POST' })
 }
@@ -376,11 +381,11 @@ export async function importAnswers(draftId: string, file: File): Promise<DraftD
 
 export async function getInternalizeQueue(params: {
   limit: number
-  prompt: string
-  tag?: string
+  prompt: 'meaning' | 'reading'
+  levels?: string[]
 }): Promise<InternalizeQueueResponse> {
   const qs = new URLSearchParams({ limit: String(params.limit), prompt: params.prompt })
-  if (params.tag) qs.set('tag', params.tag)
+  params.levels?.forEach(l => qs.append('levels', l))
   return request<InternalizeQueueResponse>(`/api/internalize/queue?${qs}`)
 }
 
@@ -393,4 +398,8 @@ export async function postInternalizeTrace(
     method: 'POST',
     body: JSON.stringify({ atom_id: atomId, result, prompt_type: promptType }),
   })
+}
+
+export async function getInternalizeStats(): Promise<InternalizeStats> {
+  return request<InternalizeStats>('/api/internalize/stats')
 }

@@ -161,6 +161,7 @@ export interface ItemSchema {
   seq: number
   num: number | null
   stem: string
+  transcript: string | null
   options: Record<string, string>
   meta: Record<string, unknown> | null
 }
@@ -307,6 +308,7 @@ export interface DraftItem {
   num: number | null
   seq: number
   stem: string
+  transcript: string | null
   options: Record<string, string>
   correct_answer: string | null
   meta: Record<string, unknown> | null
@@ -374,10 +376,18 @@ export interface InternalizeQueueResponse {
 
 export type SwipeResult = 'know' | 'unknown'
 
-export interface SessionConfig {
-  limit: number
-  promptType: string
-  tag: string
+export interface InfiniteConfig {
+  promptMode: 'meaning' | 'reading'
+  levels: string[]  // empty = all levels
+}
+
+export interface InternalizeStats {
+  today: { know: number; unknown: number; total: number }
+  total: { know: number; unknown: number; mastery_pct: number }
+  distribution: {
+    box0: number; box1: number; box2: number
+    box3: number; box4: number; box5: number
+  }
 }
 
 // Knowledge graph
