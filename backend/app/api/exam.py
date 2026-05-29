@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.db import (
     ExamPaper, ExamSection, ExamProblem, ExamItem, ExamMedia,
-    QuestionAnalysis, ExamAttempt, AttemptAnswer, get_db,
+    QuestionAnalysis, ProblemAnalysis, ExamAttempt, AttemptAnswer, get_db,
 )
 from app.schemas.exam import (
     ExamPaperList, ExamPaperDetail, SectionDetail, ProblemDetail,
@@ -23,91 +23,16 @@ from app.services.llm.factory import get_llm_client
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["exam"])
 
-# ── 分析 JSON Schema ──────────────────────────────────────────────────────────
+# ── 分析 JSON Schema（定义来自 prompts/atoms.py）────────────────────────────
 
-_ATOM_ITEM = {
-    "type": "object",
-    "properties": {
-        "type": {"type": "string", "enum": ["grammar", "vocabulary"]},
-        "key": {"type": "string"},
-        "reading": {"type": "string"},        # vocabulary: 假名读音
-        "meaning": {"type": "string"},        # 中文含义（必填）
-        "part_of_speech": {"type": "string", "description": "vocabulary 类型必填（名詞/動詞/形容詞/副詞等）；grammar 类型填 \"-\""},
-        "jlpt_level": {"type": "string", "enum": ["N5", "N4", "N3", "N2", "N1"]},
-        "register": {"type": "string"},       # 语体（书面/口语/正式/随意）
-        "connection": {"type": "string"},     # grammar: 接续方式
-        "usage": {"type": "string"},          # 使用条件/场合
-        "nuance": {"type": "string"},         # 语感特点
-        "example": {"type": "string"},        # 日语例句
-    },
-    "required": ["type", "key", "meaning", "part_of_speech"],
-}
-
-# relation_type 枚举与 atom_service.VALID_RELATION_TYPES 保持一致
-_RELATION_ITEM = {
-    "type": "object",
-    "properties": {
-        "from_key": {"type": "string"},
-        "to_key": {"type": "string"},
-        "relation_type": {
-            "type": "string",
-            "enum": ["synonym", "formal_casual", "derivative", "contrast", "nuance", "confusable"],
-        },
-        "note": {"type": "string"},
-    },
-    "required": ["from_key", "to_key", "relation_type"],
-}
-
-_STEM_NOTE_ITEM = {
-    "type": "object",
-    "properties": {
-        "type": {"type": "string", "enum": ["grammar", "vocabulary"]},
-        "key": {"type": "string"},
-        "reading": {"type": "string"},
-        "note": {"type": "string"},
-    },
-    "required": ["type", "key", "note"],
-}
-
-_WORD_DETAIL = {
-    "type": "object",
-    "properties": {
-        "surface": {"type": "string"},
-        "reading": {"type": "string"},
-        "meaning": {"type": "string"},
-        "usage_condition": {"type": "string"},
-    },
-    "required": ["surface", "reading", "meaning"],
-}
-
-_GRAMMAR_DETAIL = {
-    "type": "object",
-    "properties": {
-        "pattern": {"type": "string"},
-        "meaning": {"type": "string"},
-        "connection": {"type": "string"},
-        "example": {"type": "string"},
-    },
-    "required": ["pattern", "meaning"],
-}
-
-_RELATION_GUIDE = (
-    "relation_type 枚举（只能用这6种）：\n"
-    "  synonym=同义  formal_casual=语体差异  derivative=派生形式\n"
-    "  contrast=对比/反义  nuance=细微语义差别  confusable=易混淆（汉字音近/形近）"
+from app.prompts.atoms import (
+    ATOM_ITEM as _ATOM_ITEM,
+    RELATION_ITEM as _RELATION_ITEM,
+    STEM_NOTE_ITEM as _STEM_NOTE_ITEM,
+    WORD_DETAIL as _WORD_DETAIL,
+    GRAMMAR_DETAIL as _GRAMMAR_DETAIL,
+    ATOM_RULES as _ATOM_RULES,
 )
-
-_ATOM_RULES = """\
-atoms/relations 规则（所有题型共用）：
-- atom.type 只能是 "vocabulary"（词汇，基本形）或 "grammar"（语法，key 以〜开头）
-- 只提取核心被考查项 + 最相似干扰项，最多4个；普通词不入
-- 若词/语法在日语中不存在，不入 atoms
-- relations 只在已提取的 atoms 之间建立（from_key/to_key 必须在 atoms 列表中）
-- part_of_speech 必填：vocabulary 类型填日语词性（名詞/動詞/形容詞/副詞 等），grammar 类型填 "-"
-- atom 字段填写要求（尽量完整，能填的都填）：
-  · vocabulary 类型：key=基本形、reading=假名读音、meaning=中文含义（精炼）、part_of_speech=词性（必填）、jlpt_level=JLPT级别（若已知）、register=语体（书面/口语/正式/随意，有明显倾向时填）、usage=使用条件（可选）、nuance=语感特点（可选）、example=日语例句（可选）
-  · grammar 类型：key=以〜开头的形式、meaning=中文含义、part_of_speech="-"、connection=接续方式、jlpt_level=JLPT级别（若已知）、register=语体（若有明显倾向）、usage=使用条件（可选）、nuance=语感特点（可选）、example=日语例句（可选）
-- """ + _RELATION_GUIDE
 
 # ── 10 种题型 Schema ──────────────────────────────────────────────────────────
 
@@ -285,25 +210,30 @@ _SENTENCE_ORDER_SCHEMA = {
     "type": "object",
     "properties": {
         "analysis_type": {"type": "string"},
-        "summary": {"type": "string"},
+        "correct_sequence": {"type": "string"},
         "correct_order": {"type": "string"},
-        "star_answer": {"type": "string"},
-        "order_logic": {"type": "string"},
-        "stem_notes": {"type": "array", "items": _STEM_NOTE_ITEM},
-        "options_analysis": {"type": "array", "items": {
+        "translation": {"type": "string"},
+        "grammar": {"type": "array", "items": {
             "type": "object",
             "properties": {
-                "option": {"type": "string"},
-                "role": {"type": "string"},
-                "explanation": {"type": "string"},
+                "pattern": {"type": "string"},
+                "meaning": {"type": "string"},
+                "example": {"type": "string"},
             },
-            "required": ["option", "role", "explanation"],
+            "required": ["pattern", "meaning"],
         }},
-        "atoms": {"type": "array", "items": _ATOM_ITEM},
-        "relations": {"type": "array", "items": _RELATION_ITEM},
+        "vocabulary": {"type": "array", "items": {
+            "type": "object",
+            "properties": {
+                "word": {"type": "string"},
+                "reading": {"type": "string"},
+                "meaning": {"type": "string"},
+                "part_of_speech": {"type": "string"},
+            },
+            "required": ["word", "reading", "meaning", "part_of_speech"],
+        }},
     },
-    "required": ["analysis_type", "summary", "correct_order", "star_answer",
-                 "order_logic", "options_analysis", "atoms", "relations"],
+    "required": ["analysis_type", "correct_sequence", "correct_order", "translation", "grammar", "vocabulary"],
 }
 
 _PASSAGE_FILL_SCHEMA = {
@@ -351,6 +281,68 @@ _READING_COMP_SCHEMA = {
     "required": ["analysis_type", "summary", "key_sentence", "options_analysis", "atoms", "relations"],
 }
 
+_LISTENING_VOCAB_ITEM = {
+    "type": "object",
+    "properties": {
+        "surface": {"type": "string"},
+        "base": {"type": "string"},
+        "reading": {"type": "string"},
+        "meaning": {"type": "string"},
+        "part_of_speech": {"type": "string"},
+        "jlpt_level": {"type": "string"},
+        "register": {"type": "string"},
+        "usage": {"type": "string"},
+        "nuance": {"type": "string"},
+        "example": {"type": "string"},
+    },
+    "required": ["surface", "base", "meaning", "part_of_speech", "example"],
+}
+
+_LISTENING_GRAMMAR_ITEM = {
+    "type": "object",
+    "properties": {
+        "pattern": {"type": "string"},
+        "meaning": {"type": "string"},
+        "connection": {"type": "string"},
+        "jlpt_level": {"type": "string"},
+        "register": {"type": "string"},
+        "usage": {"type": "string"},
+        "nuance": {"type": "string"},
+        "example": {"type": "string"},
+    },
+    "required": ["pattern", "meaning", "usage", "example"],
+}
+
+_LISTENING_SENTENCE_ITEM = {
+    "type": "object",
+    "properties": {
+        "index": {"type": "integer"},
+        "text": {"type": "string"},
+        "translation": {"type": "string"},
+        "vocab": {"type": "array", "items": _LISTENING_VOCAB_ITEM},
+        "grammar": {"type": "array", "items": _LISTENING_GRAMMAR_ITEM},
+    },
+    "required": ["index", "text", "translation"],
+}
+
+_LISTENING_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "analysis_type": {"type": "string"},
+        "options_analysis": {"type": "array", "items": {
+            "type": "object",
+            "properties": {
+                "option": {"type": "string"},
+                "is_correct": {"type": "boolean"},
+                "explanation": {"type": "string"},
+            },
+            "required": ["option", "is_correct", "explanation"],
+        }},
+        "sentences": {"type": "array", "items": _LISTENING_SENTENCE_ITEM},
+    },
+    "required": ["analysis_type", "options_analysis", "sentences"],
+}
+
 _SCHEMAS: dict[str, dict] = {
     "vocab_fill":     _VOCAB_FILL_SCHEMA,
     "synonym":        _SYNONYM_SCHEMA,
@@ -362,6 +354,7 @@ _SCHEMAS: dict[str, dict] = {
     "sentence_order": _SENTENCE_ORDER_SCHEMA,
     "passage_fill":   _PASSAGE_FILL_SCHEMA,
     "reading_comp":   _READING_COMP_SCHEMA,
+    "listening":      _LISTENING_SCHEMA,
 }
 
 # ── 10 种题型 Prompt ──────────────────────────────────────────────────────────
@@ -521,25 +514,21 @@ _PROMPTS: dict[str, str] = {
 {schema_json}""",
 
 "sentence_order": """\
-你是日语语法专家。分析JLPT整序题，说明各词组的排列逻辑及★位置。
+你是日语语法专家。分析JLPT整序题，给出排列后的完整句子及语言解析。
 
-题目（含★位置标记）：{stem}
-词组：
+题目：{stem}
+词组选项：
 {options}
-正确答案（★处词组编号）：{correct}
-
-{atom_rules}
+★位置：第{star_position}格
+★处正确词组（选项{correct}）：{star_word}
 
 要求：
 - analysis_type = "sentence_order"
-- summary：解题关键——哪个语法/接续关系决定了词序
-- correct_order：完整正确句子
-- star_answer：★位置的词组内容
-- order_logic：逐步说明各词组间的接续关系及排列理由
-- stem_notes：题干基础句中值得注意的词/语法（≤2个）
-- options_analysis 每项：option（词组内容）、role（语法角色）、explanation（为何在此位置）
-- atoms：决定词序的关键语法形式（≤2个，type="grammar"）
-- relations：语法接续关系
+- correct_sequence：四个词组的正确排列顺序，格式如"1-3-2-4"（验证：第{star_position}位必须是选项{correct}）
+- correct_order：将四个词组按 correct_sequence 填入题干空格后的完整句子
+- translation：完整句子的中文翻译
+- grammar：句中值得学习的语法点（pattern 以〜开头，meaning 中文含义，example 日语例句）
+- vocabulary：句中值得学习的词汇（word 基本形，reading 假名读音，meaning 中文含义，part_of_speech 日语词性）
 
 直接输出JSON：
 {schema_json}""",
@@ -592,7 +581,118 @@ _PROMPTS: dict[str, str] = {
 
 直接输出JSON：
 {schema_json}""",
+
+"listening": """\
+你是日语听力理解专家。根据听力文字稿和题目，分析各选项并逐句解析文字稿。
+
+文字稿：
+{transcript}
+
+问题：{stem}
+选项：
+{options}
+正确答案：{correct}
+
+{atom_rules}
+
+要求：
+- analysis_type = "listening"
+- options_analysis 每项：explanation（正确选项说明音声依据；错误选项指出与音声内容哪里矛盾或未提及）
+- sentences：将文字稿分割为句子，对每句提供中文翻译及词汇/语法解析。词汇和语法点尽可能全面，宁多勿少，包含口语特有表达
+
+直接输出JSON：
+{schema_json}""",
 }
+
+# ── 段落填空题——问题级分析 Schema 和 Prompt ───────────────────────────────────────
+
+_PASSAGE_FILL_PROBLEM_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "analysis_type": {"type": "string"},
+        "items": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "num": {"type": "integer"},
+                    "options_analysis": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "option": {"type": "string"},
+                                "is_correct": {"type": "boolean"},
+                                "explanation": {"type": "string"},
+                            },
+                            "required": ["option", "is_correct", "explanation"],
+                        },
+                    },
+                },
+                "required": ["num", "options_analysis"],
+            },
+        },
+        "sentences": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string"},
+                    "translation": {"type": "string"},
+                    "vocab": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "surface": {"type": "string"},
+                                "base": {"type": "string"},
+                                "reading": {"type": "string"},
+                                "meaning": {"type": "string"},
+                                "part_of_speech": {"type": "string"},
+                                "jlpt_level": {"type": "string"},
+                                "example": {"type": "string"},
+                            },
+                            "required": ["surface", "base", "reading", "meaning", "part_of_speech"],
+                        },
+                    },
+                    "grammar": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "pattern": {"type": "string"},
+                                "meaning": {"type": "string"},
+                                "connection": {"type": "string"},
+                                "example": {"type": "string"},
+                            },
+                            "required": ["pattern", "meaning"],
+                        },
+                    },
+                },
+                "required": ["text", "translation", "vocab", "grammar"],
+            },
+        },
+    },
+    "required": ["analysis_type", "items", "sentences"],
+}
+
+_PASSAGE_FILL_PROBLEM_PROMPT = """\
+你是日语语法专家。分析JLPT补全文章题，逐空对比选项，并对全文进行语料解析。
+
+文章：
+{passage}
+
+填空明细：
+{items_info}
+
+要求：
+- analysis_type = "passage_fill"
+- items：每处填空编号（num）对应的 options_analysis（每个选项的 is_correct + explanation 说明在该语境中适合或不适合的理由，正确选项需说明上下文线索）
+- sentences：将文章按自然句切分，每句给出 translation（中文）、vocab（值得学习的词汇，≤3个/句）、grammar（值得学习的语法点，≤2个/句，pattern 以〜开头）
+- 重要：所有文字字段使用中文输出
+
+直接输出JSON：
+{schema_json}"""
 
 
 # ── 试卷列表 ──────────────────────────────────────────────────────────────────
@@ -653,7 +753,7 @@ async def get_exam(paper_id: UUID, db: AsyncSession = Depends(get_db)):
                 instruction=prob.instruction, passage=prob.passage, transcript=prob.transcript,
                 media=[ExamMediaItem(id=m.id, url=m.url, caption=m.caption, seq=m.seq) for m in media],
                 items=[ItemSchema(id=i.id, seq=i.seq, num=i.num, stem=i.stem,
-                                  options=i.options, meta=i.meta) for i in items],
+                                  transcript=i.transcript, options=i.options, meta=i.meta) for i in items],
             ))
 
         section_details.append(SectionDetail(
@@ -825,16 +925,22 @@ async def get_item_analysis(item_id: UUID, db: AsyncSession = Depends(get_db)):
     opts_text = "\n".join(f"{k}. {v}" for k, v in sorted(item.options.items()))
     correct = item.correct_answer or "不明"
     target = (item.meta or {}).get("target", item.stem or "")
+    star_position = (item.meta or {}).get("star_position", "")
+    star_word = (item.options or {}).get(str(correct), "") if item.options else ""
 
+    transcript = item.transcript or problem.transcript or ""
     _LANG = "重要：所有 explanation、summary、meaning、connection、usage、example 等文字字段必须使用中文输出。\n\n"
     prompt = _LANG + prompt_tpl.format(
         stem=item.stem or "",
         passage=problem.passage or "",
+        transcript=transcript,
         options=opts_text,
         correct=correct,
         target=target,
         atom_rules=_ATOM_RULES,
         schema_json=json.dumps(schema, ensure_ascii=False),
+        star_position=star_position,
+        star_word=star_word,
     )
 
     llm = get_llm_client()
@@ -860,6 +966,65 @@ async def get_item_analysis(item_id: UUID, db: AsyncSession = Depends(get_db)):
         item_id=item_id, session_data=result_data,
         relations_suggested=[], cached=False,
     )
+
+
+# ── 段落填空题——问题级 AI 分析 ─────────────────────────────────────────────────
+
+@router.get("/problems/{problem_id}/analysis")
+async def get_problem_analysis(problem_id: UUID, db: AsyncSession = Depends(get_db)):
+    problem = await db.get(ExamProblem, problem_id)
+    if problem is None:
+        raise HTTPException(status_code=404, detail="Problem not found")
+
+    # Only passage_fill uses problem-level analysis
+    if problem.type != "passage_fill":
+        raise HTTPException(status_code=400, detail="Problem-level analysis only supported for passage_fill")
+
+    cached = (await db.execute(
+        select(ProblemAnalysis).where(ProblemAnalysis.problem_id == problem_id)
+    )).scalar_one_or_none()
+    if cached and cached.session_data:
+        return {"problem_id": str(problem_id), "session_data": cached.session_data, "cached": True}
+
+    # Load all items eagerly
+    items_result = await db.execute(
+        select(ExamItem).where(ExamItem.problem_id == problem_id).order_by(ExamItem.seq)
+    )
+    items = items_result.scalars().all()
+    if not items:
+        raise HTTPException(status_code=404, detail="No items found for problem")
+
+    # Build items_info string
+    items_lines = []
+    for it in items:
+        opts_text = "\n".join(f"  {k}. {v}" for k, v in sorted(it.options.items()))
+        items_lines.append(
+            f"第{it.num}空\n选项：\n{opts_text}\n正确答案：{it.correct_answer or '不明'}"
+        )
+    items_info = "\n\n".join(items_lines)
+
+    prompt = "重要：所有 explanation、translation、meaning、connection、usage、example 等文字字段必须使用中文输出。\n\n"
+    prompt += _PASSAGE_FILL_PROBLEM_PROMPT.format(
+        passage=problem.passage or "",
+        items_info=items_info,
+        schema_json=json.dumps(_PASSAGE_FILL_PROBLEM_SCHEMA, ensure_ascii=False),
+    )
+
+    llm = get_llm_client()
+    try:
+        raw = await llm.analyze(prompt, _PASSAGE_FILL_PROBLEM_SCHEMA)
+        result_data = json.loads(raw) if isinstance(raw, str) else raw
+    except Exception as e:
+        logger.error("LLM problem analysis failed for problem %s: %s", problem_id, e)
+        raise HTTPException(status_code=502, detail="AI analysis failed")
+
+    if cached:
+        cached.session_data = result_data
+    else:
+        db.add(ProblemAnalysis(problem_id=problem_id, session_data=result_data))
+    await db.commit()
+
+    return {"problem_id": str(problem_id), "session_data": result_data, "cached": False}
 
 
 # ── 追问 ──────────────────────────────────────────────────────────────────────
@@ -1043,7 +1208,7 @@ async def get_attempt_review(attempt_id: UUID, db: AsyncSession = Depends(get_db
             review_items = [
                 ReviewItem(
                     id=i.id, seq=i.seq, num=i.num, stem=i.stem,
-                    options=i.options, meta=i.meta,
+                    transcript=i.transcript, options=i.options, meta=i.meta,
                     user_answer=answers[i.id].user_answer if i.id in answers else None,
                     correct_answer=i.correct_answer if reveal else None,
                     is_correct=answers[i.id].is_correct if i.id in answers and reveal else None,

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import * as d3 from 'd3'
 import { CheckCircle, Loader2, XCircle } from 'lucide-react'
-import { getItemAnalysis, followupAnalysis, createAtom, createRelation } from '../../services/api'
+import { getItemAnalysis, getProblemAnalysis, followupAnalysis, createAtom, createRelation } from '../../services/api'
 import type { QuestionAnalysisResponse, VocabItem, GrammarItem } from '../../types'
 import VocabChip from '../analysis/VocabChip'
 import GrammarKBCard from '../analysis/GrammarCard'
@@ -271,32 +271,50 @@ function GrammarFillAnalysis({ data }: { data: SD }) {
 }
 
 function SentenceOrderAnalysis({ data }: { data: SD }) {
-  const opts = data.options_analysis as Array<{
-    option: string; role: string; explanation: string
-  }>
+  const grammar = data.grammar as Array<{ pattern: string; meaning: string; example?: string }> | undefined
+  const vocabulary = data.vocabulary as Array<{ word: string; reading: string; meaning: string; part_of_speech: string }> | undefined
   return (
     <div className="space-y-3">
-      {!!(data.correct_order || data.star_answer) && (
-        <div className="bg-accent/5 border border-accent/20 rounded-xl px-3 py-2.5 space-y-1">
-          {!!data.correct_order && (
-            <p className="text-sm font-semibold text-fg">{data.correct_order as string}</p>
+      {!!(data.correct_sequence || data.correct_order) && (
+        <div className="bg-accent/5 border border-accent/20 rounded-xl px-3 py-2.5 space-y-1.5">
+          {!!data.correct_sequence && (
+            <p className="text-xs text-fg-muted font-mono">顺序：{data.correct_sequence as string}</p>
           )}
-          {!!data.star_answer && (
-            <p className="text-xs text-fg-muted">
-              ★ <span className="text-fg font-medium">{data.star_answer as string}</span>
-            </p>
+          {!!data.correct_order && (
+            <p className="text-sm font-semibold text-fg leading-relaxed">{data.correct_order as string}</p>
+          )}
+          {!!data.translation && (
+            <p className="text-xs text-fg-muted">{data.translation as string}</p>
           )}
         </div>
       )}
-      {!!data.order_logic && (
-        <p className="text-xs text-fg leading-relaxed bg-surface border border-border rounded-lg px-3 py-2">
-          {data.order_logic as string}
-        </p>
+      {vocabulary && vocabulary.length > 0 && (
+        <div className="space-y-1.5">
+          <p className="section-label">词汇</p>
+          <div className="flex flex-wrap gap-2">
+            {vocabulary.map((v, i) => (
+              <VocabChip key={i} item={{
+                surface: v.word, base: v.word, reading: v.reading,
+                meaning: v.meaning, part_of_speech: v.part_of_speech,
+                jlpt_level: null, register: null, usage: null, nuance: null, example: null,
+              }} />
+            ))}
+          </div>
+        </div>
       )}
-      <OptionTabs options={opts?.map(o => ({
-        option: o.option, explanation: o.explanation,
-        detail: o.role ? <p className="text-fg-muted text-xs font-medium">{o.role}</p> : undefined,
-      })) ?? []} />
+      {grammar && grammar.length > 0 && (
+        <div className="space-y-1.5">
+          <p className="section-label">语法</p>
+          <div className="space-y-2">
+            {grammar.map((g, i) => (
+              <GrammarKBCard key={i} item={{
+                pattern: g.pattern, meaning: g.meaning, example: g.example ?? null,
+                connection: null, jlpt_level: null, register: null, usage: null, nuance: null,
+              }} />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -346,6 +364,138 @@ function ReadingCompAnalysis({ data }: { data: SD }) {
   )
 }
 
+function ListeningAnalysis({ data }: { data: SD }) {
+  const opts = data.options_analysis as Array<{
+    option: string; is_correct: boolean; explanation: string
+  }>
+  const sentences = data.sentences as Array<{
+    index: number; text: string; translation: string
+    vocab?: VocabItem[]; grammar?: GrammarItem[]
+  }> | undefined
+
+  return (
+    <div className="space-y-4">
+      <OptionTabs options={opts?.map(o => ({
+        option: o.option, is_correct: o.is_correct, explanation: o.explanation,
+      })) ?? []} />
+
+      {sentences && sentences.length > 0 && (
+        <div className="space-y-3 pt-1">
+          <p className="section-label">语料解析</p>
+          {sentences.map(s => (
+            <div key={s.index} className="border border-border rounded-xl overflow-hidden">
+              <div className="bg-bg-subtle px-3 py-2">
+                <p className="text-sm font-medium text-fg leading-relaxed">{s.text}</p>
+                <p className="text-xs text-fg-muted mt-0.5">{s.translation}</p>
+              </div>
+              {((s.vocab?.length ?? 0) > 0 || (s.grammar?.length ?? 0) > 0) && (
+                <div className="px-3 py-2.5 space-y-3">
+                  {(s.vocab?.length ?? 0) > 0 && (
+                    <div className="space-y-1.5">
+                      <p className="section-label">词汇</p>
+                      <div className="flex flex-wrap gap-2">
+                        {s.vocab!.map((v, i) => <VocabChip key={`${v.surface}-${i}`} item={v} />)}
+                      </div>
+                    </div>
+                  )}
+                  {(s.grammar?.length ?? 0) > 0 && (
+                    <div className="space-y-1.5">
+                      <p className="section-label">语法</p>
+                      <div className="space-y-2">
+                        {s.grammar!.map((g, i) => <GrammarKBCard key={`${g.pattern}-${i}`} item={g} />)}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Problem-level passage_fill renderer ─────────────────────────────────────
+
+function PassageFillProblemAnalysis({ data }: { data: SD }) {
+  const items = data.items as Array<{
+    num: number
+    options_analysis: Array<{ option: string; is_correct: boolean; explanation: string }>
+  }> | undefined
+  const sentences = data.sentences as Array<{
+    text: string; translation: string
+    vocab?: Array<{ surface: string; base: string; reading: string; meaning: string; part_of_speech: string; jlpt_level?: string; example?: string }>
+    grammar?: Array<{ pattern: string; meaning: string; connection?: string; example?: string }>
+  }> | undefined
+
+  return (
+    <div className="space-y-4">
+      {items && items.map(item => (
+        <div key={item.num} className="space-y-1.5">
+          <p className="text-xs font-semibold text-fg-muted">第 {item.num} 空</p>
+          <OptionTabs options={item.options_analysis.map(o => ({
+            option: o.option,
+            is_correct: o.is_correct,
+            explanation: o.explanation,
+          }))} />
+        </div>
+      ))}
+
+      {sentences && sentences.length > 0 && (
+        <div className="space-y-3 pt-1">
+          <div className="flex items-center gap-2">
+            <div className="flex-1 h-px bg-border" />
+            <p className="section-label shrink-0">语料解析</p>
+            <div className="flex-1 h-px bg-border" />
+          </div>
+          {sentences.map((s, idx) => (
+            <div key={idx} className="border border-border rounded-xl overflow-hidden">
+              <div className="bg-bg-subtle px-3 py-2">
+                <p className="text-sm font-medium text-fg leading-relaxed">{s.text}</p>
+                <p className="text-xs text-fg-muted mt-0.5">{s.translation}</p>
+              </div>
+              {((s.vocab?.length ?? 0) > 0 || (s.grammar?.length ?? 0) > 0) && (
+                <div className="px-3 py-2.5 space-y-3">
+                  {(s.vocab?.length ?? 0) > 0 && (
+                    <div className="space-y-1.5">
+                      <p className="section-label">词汇</p>
+                      <div className="flex flex-wrap gap-2">
+                        {s.vocab!.map((v, i) => (
+                          <VocabChip key={`${v.surface}-${i}`} item={{
+                            surface: v.surface, base: v.base, reading: v.reading ?? null,
+                            meaning: v.meaning, part_of_speech: v.part_of_speech ?? null,
+                            jlpt_level: v.jlpt_level ?? null, register: null,
+                            usage: null, nuance: null, example: v.example ?? null,
+                          }} />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {(s.grammar?.length ?? 0) > 0 && (
+                    <div className="space-y-1.5">
+                      <p className="section-label">语法</p>
+                      <div className="space-y-2">
+                        {s.grammar!.map((g, i) => (
+                          <GrammarKBCard key={`${g.pattern}-${i}`} item={{
+                            pattern: g.pattern, meaning: g.meaning,
+                            connection: g.connection ?? null, example: g.example ?? null,
+                            jlpt_level: null, register: null, usage: null, nuance: null,
+                          }} />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Dispatch ─────────────────────────────────────────────────────────────────
 
 const TYPE_RENDERERS: Record<string, (data: SD) => React.ReactNode> = {
@@ -359,6 +509,7 @@ const TYPE_RENDERERS: Record<string, (data: SD) => React.ReactNode> = {
   sentence_order:  data => <SentenceOrderAnalysis data={data} />,
   passage_fill:    data => <PassageFillAnalysis data={data} />,
   reading_comp:    data => <ReadingCompAnalysis data={data} />,
+  listening:       data => <ListeningAnalysis data={data} />,
 }
 
 // ─── D3 Relation graph ────────────────────────────────────────────────────────
@@ -534,8 +685,16 @@ function RelationGraph({
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function AnalysisPanel({ itemId }: { itemId: string }) {
+type ProblemAnalysisResponse = { problem_id: string; session_data: Record<string, unknown>; cached: boolean }
+
+export default function AnalysisPanel({ itemId, problem }: {
+  itemId?: string
+  problem?: { id: string; type: string }
+}) {
+  const isProblemLevel = problem?.type === 'passage_fill'
+
   const [data, setData] = useState<QuestionAnalysisResponse | null>(null)
+  const [problemData, setProblemData] = useState<ProblemAnalysisResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [followupText, setFollowupText] = useState('')
   const [sending, setSending] = useState(false)
@@ -545,12 +704,22 @@ export default function AnalysisPanel({ itemId }: { itemId: string }) {
   useEffect(() => {
     setLoading(true)
     setData(null)
+    setProblemData(null)
     setSaved(null)
-    getItemAnalysis(itemId)
-      .then(setData)
-      .catch(() => setData(null))
-      .finally(() => setLoading(false))
-  }, [itemId])
+    if (isProblemLevel && problem) {
+      getProblemAnalysis(problem.id)
+        .then(setProblemData)
+        .catch(() => setProblemData(null))
+        .finally(() => setLoading(false))
+    } else if (itemId) {
+      getItemAnalysis(itemId)
+        .then(setData)
+        .catch(() => setData(null))
+        .finally(() => setLoading(false))
+    } else {
+      setLoading(false)
+    }
+  }, [itemId, problem?.id, isProblemLevel])
 
   async function saveToKB() {
     if (!sd) return
@@ -619,6 +788,10 @@ export default function AnalysisPanel({ itemId }: { itemId: string }) {
   const sd = data?.session_data
   const analysisType = sd?.analysis_type as string | undefined
 
+  // For problem-level analysis
+  const psd = problemData?.session_data
+  const isProblemAnalysis = isProblemLevel && !!psd && Array.isArray(psd?.items)
+
   // Merge stem_notes atoms + sd.atoms, deduplicate by key
   const stemAtoms: ExamAtom[] = ((sd?.stem_notes ?? []) as Array<{
     type: string; key: string; reading?: string; note: string
@@ -628,11 +801,14 @@ export default function AnalysisPanel({ itemId }: { itemId: string }) {
     (a, i, arr) => arr.findIndex(b => b.key === a.key) === i
   )
 
+  const isCached = isProblemLevel ? problemData?.cached : data?.cached
+  const hasData = isProblemLevel ? !!psd : !!sd
+
   return (
     <div className="mt-3 border border-accent/30 rounded-xl overflow-hidden bg-bg">
       <div className="flex items-center justify-between px-3 py-2 bg-accent/5 border-b border-accent/20">
         <span className="text-xs font-semibold text-accent">AI 解析</span>
-        {data?.cached && (
+        {isCached && (
           <span className="text-[10px] text-fg-muted bg-border px-1.5 py-0.5 rounded-full">缓存</span>
         )}
       </div>
@@ -645,11 +821,17 @@ export default function AnalysisPanel({ itemId }: { itemId: string }) {
           </div>
         )}
 
-        {!loading && !sd && (
+        {!loading && !hasData && (
           <p className="text-xs text-fg-muted text-center py-4">暂无解析</p>
         )}
 
-        {sd && (
+        {/* Problem-level passage_fill analysis */}
+        {!loading && isProblemAnalysis && psd && (
+          <PassageFillProblemAnalysis data={psd} />
+        )}
+
+        {/* Item-level analysis */}
+        {!loading && !isProblemLevel && sd && (
           <>
             {sd.summary && (
               <p className="text-xs text-fg leading-relaxed bg-surface border border-border rounded-lg px-3 py-2">
@@ -659,15 +841,17 @@ export default function AnalysisPanel({ itemId }: { itemId: string }) {
 
             {analysisType && TYPE_RENDERERS[analysisType]?.(sd)}
 
-            <AtomsSection atoms={allAtoms} />
+            {analysisType !== 'listening' && <AtomsSection atoms={allAtoms} />}
 
-            <RelationGraph
-              atoms={allAtoms}
-              relations={(sd.relations ?? []) as ExamRelation[]}
-              onSave={saveToKB}
-              saving={saving}
-              saved={saved}
-            />
+            {analysisType !== 'listening' && (
+              <RelationGraph
+                atoms={allAtoms}
+                relations={(sd.relations ?? []) as ExamRelation[]}
+                onSave={saveToKB}
+                saving={saving}
+                saved={saved}
+              />
+            )}
 
             {(sd.followups as Array<{ prompt: string; response: string }>)?.map((f, i) => (
               <div key={i} className="space-y-1">

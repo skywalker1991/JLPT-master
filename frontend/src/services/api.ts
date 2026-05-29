@@ -280,6 +280,10 @@ export async function getItemAnalysis(itemId: string): Promise<QuestionAnalysisR
   return request<QuestionAnalysisResponse>(`/api/items/${itemId}/analysis`)
 }
 
+export async function getProblemAnalysis(problemId: string): Promise<{ problem_id: string; session_data: Record<string, unknown>; cached: boolean }> {
+  return request<{ problem_id: string; session_data: Record<string, unknown>; cached: boolean }>(`/api/problems/${problemId}/analysis`)
+}
+
 export async function followupAnalysis(
   itemId: string,
   prompt: string,

@@ -4,12 +4,13 @@ import { submitAnswer, submitSection, completeAttempt } from '../../services/api
 import type { ExamPaperDetail, ProblemDetail, ItemSchema, SectionDetail } from '../../types'
 import AnalysisPanel from './AnalysisPanel'
 
-// ─── Quiz unit (one per Problem) ──────────────────────────────────────────────
+// ─── Quiz unit (one per Item) ─────────────────────────────────────────────────
 
 interface QuizUnit {
   sectionId: string
   sectionName: string
   problem: ProblemDetail
+  item: ItemSchema
 }
 
 function buildUnits(sections: SectionDetail[], sectionIds: string[]): QuizUnit[] {
@@ -17,7 +18,9 @@ function buildUnits(sections: SectionDetail[], sectionIds: string[]): QuizUnit[]
   for (const sec of sections) {
     if (!sectionIds.includes(sec.id)) continue
     for (const prob of sec.problems) {
-      units.push({ sectionId: sec.id, sectionName: sec.name, problem: prob })
+      for (const item of prob.items) {
+        units.push({ sectionId: sec.id, sectionName: sec.name, problem: prob, item })
+      }
     }
   }
   return units
@@ -40,14 +43,13 @@ function QuestionNav({
   reviewMode?: boolean
   isCorrectMap?: Record<string, boolean | null>
 }) {
-  const sections: { name: string; indices: number[] }[] = []
+  const sections: { name: string; entries: { idx: number; u: QuizUnit }[] }[] = []
   for (let i = 0; i < units.length; i++) {
     const u = units[i]
     if (sections.length === 0 || sections[sections.length - 1].name !== u.sectionName) {
-      sections.push({ name: u.sectionName, indices: [i] })
-    } else {
-      sections[sections.length - 1].indices.push(i)
+      sections.push({ name: u.sectionName, entries: [] })
     }
+    sections[sections.length - 1].entries.push({ idx: i, u })
   }
 
   return (
@@ -56,27 +58,28 @@ function QuestionNav({
         <div key={sec.name} className="px-4 pt-2 pb-2">
           <p className="text-[10px] font-semibold text-fg-muted uppercase tracking-wide mb-1.5">{sec.name}</p>
           <div className="flex flex-wrap gap-1">
-            {sec.indices.map(idx => {
-              const u = units[idx]
-              const items = u.problem.items
-              const gradedItems = items.filter(i => Object.keys(i.options).length > 0)
+            {sec.entries.map(({ idx, u }) => {
+              const { item } = u
+              const hasOptions = Object.keys(item.options).length > 0
               const isCurrent = idx === unitIdx
+              const label = item.num != null ? String(item.num) : String(item.seq)
               let colorClass: string
               if (reviewMode) {
-                const answered = gradedItems.every(i => answers[i.id])
-                const allCorrect = answered && gradedItems.every(i => isCorrectMap?.[i.id] === true)
-                const anyWrong = gradedItems.some(i => isCorrectMap?.[i.id] === false)
+                const answered = hasOptions && !!answers[item.id]
+                const correct = isCorrectMap?.[item.id]
                 colorClass = isCurrent
                   ? 'bg-accent text-white shadow-sm ring-2 ring-accent/30'
+                  : !hasOptions
+                  ? 'border border-border text-fg-muted'
                   : !answered
                   ? 'bg-border/50 text-fg-muted'
-                  : anyWrong
+                  : correct === false
                   ? 'bg-danger/15 text-danger-fg border border-danger/30'
-                  : allCorrect
+                  : correct === true
                   ? 'bg-success/15 text-success-fg border border-success/30'
                   : 'bg-border/50 text-fg-muted'
               } else {
-                const isAnswered = gradedItems.every(i => answers[i.id])
+                const isAnswered = !!answers[item.id]
                 const isDone = submitted.has(u.sectionId)
                 colorClass = isCurrent
                   ? 'bg-accent text-white shadow-sm ring-2 ring-accent/30'
@@ -90,12 +93,11 @@ function QuestionNav({
               }
               return (
                 <button
-                  key={idx}
+                  key={item.id}
                   onClick={() => onSelect(idx)}
-                  title={u.problem.name}
                   className={`w-8 h-8 text-xs font-semibold rounded-lg transition-all ${colorClass}`}
                 >
-                  {idx + 1}
+                  {label}
                 </button>
               )
             })}
@@ -156,11 +158,20 @@ function ItemDisplay({
       {isSentenceOrder && (
         <p className="text-xs text-fg-muted">选择填入 <span className="inline-flex items-center justify-center w-5 h-5 rounded bg-accent text-white text-[10px] font-bold align-middle">★</span> 处的词语：</p>
       )}
+      {item.transcript && (
+        <div className="bg-bg border border-border rounded-xl p-3 text-sm text-fg leading-relaxed whitespace-pre-wrap">
+          <p className="text-[10px] font-semibold text-fg-muted mb-1.5 uppercase tracking-wide">聴解原文</p>
+          {item.transcript}
+        </div>
+      )}
       {Object.keys(item.options).length > 0 ? (
         <div className="space-y-2">
           {OPTS.filter(k => k in item.options).map(k => {
             const isCorrectOpt = reviewMode && k === correctAnswer
-            const isWrongUser = reviewMode && k === selected && isCorrect === false
+            // Mark red only when we know the correct answer and this isn't it
+            const isWrongUser = reviewMode && k === selected && correctAnswer != null && k !== correctAnswer
+            // User's selection when correct answer is unknown (no DB answer)
+            const isNeutralPick = reviewMode && k === selected && !isCorrectOpt && !isWrongUser
             const isSelected = !reviewMode && selected === k
             return (
               <button
@@ -173,6 +184,8 @@ function ItemDisplay({
                     ? 'border-success bg-success-light text-success-fg font-medium'
                     : isWrongUser
                     ? 'border-danger bg-danger-light text-danger-fg'
+                    : isNeutralPick
+                    ? 'border-accent/50 bg-accent-light/40 text-fg'
                     : isSelected
                     ? 'border-accent bg-accent-light text-accent-fg font-medium shadow-sm'
                     : 'border-border hover:border-accent/40 hover:bg-accent-light/30',
@@ -182,6 +195,7 @@ function ItemDisplay({
                 <span>{item.options[k]}</span>
                 {isCorrectOpt && <CheckCircle className="w-4 h-4 ml-auto shrink-0 mt-0.5 text-success" />}
                 {isWrongUser && <XCircle className="w-4 h-4 ml-auto shrink-0 mt-0.5 text-danger" />}
+                {isNeutralPick && <CheckCircle className="w-4 h-4 ml-auto shrink-0 mt-0.5 text-accent/60" />}
                 {isSelected && <CheckCircle className="w-4 h-4 ml-auto shrink-0 mt-0.5 text-accent" />}
               </button>
             )
@@ -224,7 +238,7 @@ export default function ExamSession({
   const startIdx = useMemo(() => {
     if (reviewMode || !initialAnswers) return 0
     const firstUnanswered = units.findIndex(u =>
-      u.problem.items.some(i => Object.keys(i.options).length > 0 && !initialAnswers[i.id]),
+      Object.keys(u.item.options).length > 0 && !initialAnswers[u.item.id],
     )
     return firstUnanswered >= 0 ? firstUnanswered : 0
   }, [units, initialAnswers, reviewMode])
@@ -237,6 +251,7 @@ export default function ExamSession({
   const [elapsed, setElapsed] = useState(0)
   const [submitting, setSubmitting] = useState(false)
   const [analysisItemId, setAnalysisItemId] = useState<string | null>(null)
+  const [analysisProblemId, setAnalysisProblemId] = useState<string | null>(null)
 
   useEffect(() => {
     if (reviewMode) return
@@ -246,17 +261,18 @@ export default function ExamSession({
 
   const unit = units[unitIdx]
   const prob = unit.problem
+  const item = unit.item
 
   const currentSectionUnits = useMemo(
     () => units.filter(u => u.sectionId === unit.sectionId),
     [units, unit.sectionId],
   )
-  const answeredInSection = currentSectionUnits.reduce(
-    (n, u) => n + u.problem.items.filter(i => Object.keys(i.options).length > 0 && answers[i.id]).length, 0,
-  )
-  const totalInSection = currentSectionUnits.reduce(
-    (n, u) => n + u.problem.items.filter(i => Object.keys(i.options).length > 0).length, 0,
-  )
+  const answeredInSection = currentSectionUnits.filter(
+    u => Object.keys(u.item.options).length > 0 && answers[u.item.id],
+  ).length
+  const totalInSection = currentSectionUnits.filter(
+    u => Object.keys(u.item.options).length > 0,
+  ).length
   const currentSectionAnswered = answeredInSection === totalInSection
 
   const sectionAlreadySubmitted = submitted.has(unit.sectionId)
@@ -298,6 +314,18 @@ export default function ExamSession({
             {reviewMode ? '查看结果' : `${answeredInSection}/${totalInSection} 已作答`}
           </p>
         </div>
+        {reviewMode && correctAnswers && (() => {
+          const allItems = units.flatMap(u => u.item)
+          const knowable = allItems.filter(i => correctAnswers[i.id])
+          const correct = knowable.filter(i => answers[i.id] === correctAnswers[i.id]).length
+          const total = knowable.length
+          const pct = total > 0 ? Math.round(correct / total * 100) : null
+          return pct !== null ? (
+            <span className={`shrink-0 text-sm font-bold ${pct >= 80 ? 'text-success-fg' : pct >= 60 ? 'text-accent' : 'text-danger-fg'}`}>
+              {pct}% <span className="text-xs font-normal text-fg-muted">({correct}/{total})</span>
+            </span>
+          ) : null
+        })()}
         {!reviewMode && (
           <span className="text-sm font-mono text-fg-muted shrink-0">{formatTime(elapsed)}</span>
         )}
@@ -332,7 +360,7 @@ export default function ExamSession({
         isCorrectMap={isCorrectMap}
       />
 
-      {/* Problem content */}
+      {/* Item content */}
       <div className="flex-1 overflow-y-auto px-6 py-6 space-y-5">
         {/* Problem header */}
         <div className="flex items-center gap-2">
@@ -351,14 +379,6 @@ export default function ExamSession({
           </div>
         )}
 
-        {/* Transcript (listening) */}
-        {prob.transcript && (
-          <div className="bg-bg border border-border rounded-xl p-4 text-sm text-fg leading-relaxed whitespace-pre-wrap max-h-40 overflow-y-auto">
-            <p className="text-[10px] font-semibold text-fg-muted mb-2 uppercase tracking-wide">聴解原文</p>
-            {prob.transcript}
-          </div>
-        )}
-
         {/* Media images */}
         {prob.media.length > 0 && (
           <div className="flex flex-wrap gap-3">
@@ -368,32 +388,46 @@ export default function ExamSession({
           </div>
         )}
 
-        {/* Items */}
-        {prob.items.map(item => (
-          <div key={item.id} className="space-y-2">
-            <ItemDisplay
-              item={item}
-              selected={answers[item.id] ?? null}
-              onSelect={ans => handleSelect(item.id, ans)}
-              reviewMode={reviewMode}
-              correctAnswer={correctAnswers?.[item.id]}
-              isCorrect={isCorrectMap?.[item.id]}
-              problemType={prob.type}
-            />
-            {reviewMode && Object.keys(item.options).length > 0 && (
-              <button
-                onClick={() => setAnalysisItemId(analysisItemId === item.id ? null : item.id)}
-                className="flex items-center gap-1.5 text-xs text-accent hover:text-accent-hover transition-colors"
-              >
-                <Brain className="w-3.5 h-3.5" />
-                {analysisItemId === item.id ? '收起解析' : 'AI 解析'}
-              </button>
-            )}
-            {reviewMode && analysisItemId === item.id && (
-              <AnalysisPanel itemId={item.id} />
+        {/* Single item */}
+        <div className="space-y-2">
+          <ItemDisplay
+            item={item}
+            selected={answers[item.id] ?? null}
+            onSelect={ans => handleSelect(item.id, ans)}
+            reviewMode={reviewMode}
+            correctAnswer={correctAnswers?.[item.id]}
+            isCorrect={isCorrectMap?.[item.id]}
+            problemType={prob.type}
+          />
+          {reviewMode && Object.keys(item.options).length > 0 && prob.type !== 'passage_fill' && (
+            <button
+              onClick={() => setAnalysisItemId(analysisItemId === item.id ? null : item.id)}
+              className="flex items-center gap-1.5 text-xs text-accent hover:text-accent-hover transition-colors"
+            >
+              <Brain className="w-3.5 h-3.5" />
+              {analysisItemId === item.id ? '收起解析' : 'AI 解析'}
+            </button>
+          )}
+          {reviewMode && analysisItemId === item.id && prob.type !== 'passage_fill' && (
+            <AnalysisPanel itemId={item.id} />
+          )}
+        </div>
+
+        {/* Problem-level analysis for passage_fill (shown once per problem) */}
+        {reviewMode && prob.type === 'passage_fill' && (
+          <div className="space-y-2">
+            <button
+              onClick={() => setAnalysisProblemId(analysisProblemId === prob.id ? null : prob.id)}
+              className="flex items-center gap-1.5 text-xs text-accent hover:text-accent-hover transition-colors"
+            >
+              <Brain className="w-3.5 h-3.5" />
+              {analysisProblemId === prob.id ? '收起解析' : 'AI 解析（全文）'}
+            </button>
+            {analysisProblemId === prob.id && (
+              <AnalysisPanel problem={{ id: prob.id, type: prob.type }} />
             )}
           </div>
-        ))}
+        )}
       </div>
 
       {/* Navigation */}

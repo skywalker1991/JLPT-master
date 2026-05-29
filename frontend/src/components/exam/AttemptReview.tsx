@@ -53,10 +53,11 @@ function ScoreSummary({ score }: { score: AttemptReviewData['score'] }) {
 const OPTS = ['1', '2', '3', '4'] as const
 
 function ItemReviewCard({
-  item, onAnalyze,
+  item, onAnalyze, hideAnalyzeButton,
 }: {
   item: ReviewItem
   onAnalyze: () => void
+  hideAnalyzeButton?: boolean
 }) {
   const [open, setOpen] = useState(false)
 
@@ -106,7 +107,7 @@ function ItemReviewCard({
             <p className="text-xs text-fg-muted italic">未作答</p>
           )}
 
-          {Object.keys(item.options).length > 0 && (
+          {Object.keys(item.options).length > 0 && !hideAnalyzeButton && (
             <button
               onClick={onAnalyze}
               className="flex items-center gap-1.5 text-xs text-accent hover:text-accent-hover font-medium transition-colors"
@@ -124,10 +125,11 @@ function ItemReviewCard({
 // ─── Section block ────────────────────────────────────────────────────────────
 
 function SectionReview({
-  section, onAnalyze,
+  section, onAnalyze, onAnalyzeProblem,
 }: {
   section: ReviewSection
   onAnalyze: (itemId: string) => void
+  onAnalyzeProblem: (problemId: string) => void
 }) {
   const [open, setOpen] = useState(false)
 
@@ -198,8 +200,22 @@ function SectionReview({
                 </div>
               )}
               {prob.items.map(item => (
-                <ItemReviewCard key={item.id} item={item} onAnalyze={() => onAnalyze(item.id)} />
+                <ItemReviewCard
+                  key={item.id}
+                  item={item}
+                  onAnalyze={prob.type === 'passage_fill' ? () => {} : () => onAnalyze(item.id)}
+                  hideAnalyzeButton={prob.type === 'passage_fill'}
+                />
               ))}
+              {prob.type === 'passage_fill' && prob.items.some(i => Object.keys(i.options).length > 0) && (
+                <button
+                  onClick={() => onAnalyzeProblem(prob.id)}
+                  className="flex items-center gap-1.5 text-xs text-accent hover:text-accent-hover font-medium transition-colors"
+                >
+                  <Brain className="w-3.5 h-3.5" />
+                  请求 AI 解析（全文）
+                </button>
+              )}
             </div>
           ))}
         </div>
@@ -218,6 +234,7 @@ export default function AttemptReview({
   const [review, setReview] = useState<AttemptReviewData | null>(null)
   const [loading, setLoading] = useState(true)
   const [analysisItemId, setAnalysisItemId] = useState<string | null>(null)
+  const [analysisProblemId, setAnalysisProblemId] = useState<string | null>(null)
 
   useEffect(() => {
     setLoading(true)
@@ -262,11 +279,20 @@ export default function AttemptReview({
       <ScoreSummary score={review.score} />
 
       {review.sections.map(sec => (
-        <SectionReview key={sec.id} section={sec} onAnalyze={setAnalysisItemId} />
+        <SectionReview
+          key={sec.id}
+          section={sec}
+          onAnalyze={id => { setAnalysisItemId(id); setAnalysisProblemId(null) }}
+          onAnalyzeProblem={id => { setAnalysisProblemId(analysisProblemId === id ? null : id); setAnalysisItemId(null) }}
+        />
       ))}
 
       {analysisItemId && (
         <AnalysisPanel itemId={analysisItemId} />
+      )}
+
+      {analysisProblemId && (
+        <AnalysisPanel problem={{ id: analysisProblemId, type: 'passage_fill' }} />
       )}
     </div>
   )

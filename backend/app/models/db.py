@@ -221,6 +221,8 @@ class ExamProblem(Base):
                          order_by="ExamItem.seq")
     media = relationship("ExamMedia", back_populates="problem", cascade="all, delete-orphan",
                          order_by="ExamMedia.seq")
+    problem_analysis = relationship("ProblemAnalysis", back_populates="problem", uselist=False,
+                                    cascade="all, delete-orphan")
 
     __table_args__ = (
         Index("ix_exam_problems_section_id", "section_id"),
@@ -303,6 +305,21 @@ class QuestionAnalysis(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
 
     item = relationship("ExamItem", back_populates="analysis")
+
+
+class ProblemAnalysis(Base):
+    __tablename__ = "problem_analyses"
+
+    id         = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    problem_id = Column(UUID(as_uuid=True), ForeignKey("exam_problems.id", ondelete="CASCADE"), nullable=False, unique=True)
+    session_data = Column(JSONB, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+
+    problem = relationship("ExamProblem", back_populates="problem_analysis")
+
+    __table_args__ = (
+        Index("ix_problem_analyses_problem_id", "problem_id"),
+    )
 
 
 class ExamAttempt(Base):
