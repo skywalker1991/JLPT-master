@@ -4,9 +4,8 @@ interface Props {
 
 export default function VideoPlayer({ videoId }: Props) {
   return (
-    <div className="bg-black rounded-xl overflow-hidden shrink-0">
-      {/* Outer div holds the 16:9 ratio; inner target gets replaced by YT iframe */}
-      <div className="relative w-full aspect-video">
+    <div className="flex-1 min-h-0 bg-black rounded-xl overflow-hidden">
+      <div className="relative h-full">
         {videoId
           ? <div id="yt-player" className="absolute inset-0 w-full h-full" />
           : <div className="absolute inset-0 flex items-center justify-center text-white/20 text-sm">

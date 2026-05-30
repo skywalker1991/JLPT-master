@@ -1,18 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
-import { FileText, Loader2, Upload } from 'lucide-react'
-import { listDrafts, createDraftFromPdf, getDraft } from '../services/api'
+import { FileText, Loader2, Trash2, Upload } from 'lucide-react'
+import { listDrafts, createDraftFromPdf, getDraft, deleteDraft } from '../services/api'
 import type { DraftSummary, DraftDetail } from '../types'
 import DraftEditor from '../components/admin/DraftEditor'
 
 // ─── Draft list sidebar ───────────────────────────────────────────────────────
 
 function DraftList({
-  drafts, selectedId, onSelect, onUpload, uploading,
+  drafts, selectedId, onSelect, onUpload, onDelete, uploading,
 }: {
   drafts: DraftSummary[]
   selectedId: string | null
   onSelect: (id: string) => void
   onUpload: (file: File) => void
+  onDelete: (id: string) => void
   uploading: boolean
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
@@ -49,28 +50,38 @@ function DraftList({
           const isSelected = d.id === selectedId
           const date = new Date(d.updated_at)
           return (
-            <button
+            <div
               key={d.id}
-              onClick={() => onSelect(d.id)}
               className={[
-                'w-full text-left px-4 py-2.5 border-b border-border/50 transition-colors',
+                'group relative border-b border-border/50 transition-colors',
                 isSelected ? 'bg-accent-light' : 'hover:bg-bg',
               ].join(' ')}
             >
-              <p className="text-xs font-medium text-fg truncate">{d.filename ?? '无文件名'}</p>
-              <div className="flex items-center gap-1.5 mt-0.5">
-                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
-                  d.status === 'confirmed'
-                    ? 'bg-success-light text-success-fg'
-                    : 'bg-orange-100 text-orange-700'
-                }`}>
-                  {d.status === 'confirmed' ? '已入库' : '待校对'}
-                </span>
-                <span className="text-[10px] text-fg-subtle">
-                  {date.getMonth() + 1}/{date.getDate()}
-                </span>
-              </div>
-            </button>
+              <button
+                onClick={() => onSelect(d.id)}
+                className="w-full text-left px-4 py-2.5 pr-8"
+              >
+                <p className="text-xs font-medium text-fg truncate">{d.filename ?? '无文件名'}</p>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                    d.status === 'confirmed'
+                      ? 'bg-success-light text-success-fg'
+                      : 'bg-orange-100 text-orange-700'
+                  }`}>
+                    {d.status === 'confirmed' ? '已入库' : '待校对'}
+                  </span>
+                  <span className="text-[10px] text-fg-subtle">
+                    {date.getMonth() + 1}/{date.getDate()}
+                  </span>
+                </div>
+              </button>
+              <button
+                onClick={() => onDelete(d.id)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 text-fg-muted hover:text-danger transition-all"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
           )
         })}
       </div>
@@ -134,6 +145,20 @@ export default function AdminIngestPage() {
     alert('入库成功！试卷已添加到考试列表。')
   }
 
+  async function handleDelete(id: string) {
+    if (!confirm('确认删除该草稿？')) return
+    try {
+      await deleteDraft(id)
+      if (selectedId === id) {
+        setSelectedId(null)
+        setDraft(null)
+      }
+      await refresh()
+    } catch (e) {
+      alert(`删除失败：${(e as Error).message}`)
+    }
+  }
+
   // suppress unused warning
   void loadingDrafts
 
@@ -144,6 +169,7 @@ export default function AdminIngestPage() {
         selectedId={selectedId}
         onSelect={handleSelect}
         onUpload={handleUpload}
+        onDelete={handleDelete}
         uploading={uploading}
       />
 

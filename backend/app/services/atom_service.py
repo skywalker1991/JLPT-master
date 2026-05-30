@@ -1,4 +1,5 @@
 import logging
+import re
 from uuid import UUID
 
 from sqlalchemy import select, func, and_, or_
@@ -8,6 +9,44 @@ from app.models.db import Atom, AtomProperty, AtomRelation, AtomTag, Trace, Anal
 from app.schemas.atoms import PropertyInput
 
 logger = logging.getLogger(__name__)
+
+# ── Tag normalization ────────────────────────────────────────────────────────
+
+_POS_NORMS = [
+    (re.compile(r'惯用|慣用|idiom', re.IGNORECASE), '慣用語'),
+    (re.compile(r'助動詞|auxiliary verb', re.IGNORECASE), '助動詞'),
+    (re.compile(r'代名詞|pronoun', re.IGNORECASE), '代名詞'),
+    (re.compile(r'名詞|noun|名词', re.IGNORECASE), '名詞'),
+    (re.compile(r'動詞|verb|动词', re.IGNORECASE), '動詞'),
+    (re.compile(r'形容|adjective|adj|形容词', re.IGNORECASE), '形容詞'),
+    (re.compile(r'副詞|adverb|adv|副词', re.IGNORECASE), '副詞'),
+    (re.compile(r'助詞|particle', re.IGNORECASE), '助詞'),
+    (re.compile(r'接続詞|conjunction', re.IGNORECASE), '接続詞'),
+    (re.compile(r'感動詞|interjection', re.IGNORECASE), '感動詞'),
+    (re.compile(r'接頭|prefix', re.IGNORECASE), '接頭語'),
+    (re.compile(r'接尾|suffix', re.IGNORECASE), '接尾語'),
+]
+
+_REGISTER_NORMS = [
+    (re.compile(r'書面|formal|文語|正式', re.IGNORECASE), '書面語'),
+    (re.compile(r'口語|casual|会話|くだけ', re.IGNORECASE), '口語'),
+    (re.compile(r'敬語|polite|honorific|丁寧|尊敬', re.IGNORECASE), '敬語'),
+    (re.compile(r'俗語|slang', re.IGNORECASE), '俗語'),
+]
+
+
+def _normalize_pos(pos: str) -> str | None:
+    for pat, tag in _POS_NORMS:
+        if pat.search(pos):
+            return tag
+    return None
+
+
+def _normalize_register(reg: str) -> str | None:
+    for pat, tag in _REGISTER_NORMS:
+        if pat.search(reg):
+            return tag
+    return None
 
 # Valid property kinds
 VALID_KINDS = {
@@ -86,6 +125,32 @@ async def add_properties(
 
     if added > 0:
         await db.flush()
+
+    # Auto-derive tags from key properties so multi-dimensional filtering works
+    auto_tags: list[str] = []
+    for prop in properties:
+        if not prop.value:
+            continue
+        if prop.kind == "jlpt_level":
+            auto_tags.append(prop.value.upper())
+        elif prop.kind == "part_of_speech":
+            norm = _normalize_pos(prop.value)
+            if norm:
+                auto_tags.append(norm)
+        elif prop.kind == "register":
+            norm = _normalize_register(prop.value)
+            if norm:
+                auto_tags.append(norm)
+
+    for tag_val in auto_tags:
+        existing_tag = await db.execute(
+            select(AtomTag).where(and_(AtomTag.atom_id == atom_id, AtomTag.tag == tag_val))
+        )
+        if existing_tag.scalar_one_or_none() is None:
+            db.add(AtomTag(atom_id=atom_id, tag=tag_val))
+    if auto_tags:
+        await db.flush()
+
     return added, skipped
 
 

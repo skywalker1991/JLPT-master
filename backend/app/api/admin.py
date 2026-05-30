@@ -52,6 +52,15 @@ async def get_draft(draft_id: _uuid.UUID, db: AsyncSession = Depends(get_db)):
     )
 
 
+@router.delete("/drafts/{draft_id}", status_code=204)
+async def delete_draft(draft_id: _uuid.UUID, db: AsyncSession = Depends(get_db)):
+    draft = await db.get(ExamDraft, draft_id)
+    if draft is None:
+        raise HTTPException(status_code=404, detail="Draft not found")
+    await db.delete(draft)
+    await db.commit()
+
+
 @router.put("/drafts/{draft_id}", response_model=DraftDetail)
 async def update_draft(draft_id: _uuid.UUID, body: dict, db: AsyncSession = Depends(get_db)):
     draft = await db.get(ExamDraft, draft_id)
@@ -125,14 +134,18 @@ async def create_draft_from_pdf(
 def _inject_metadata_from_md(draft_json: dict, markdown: str) -> None:
     """Parse level/source from the metadata block at the top of the markdown and inject."""
     import re
+    level, source = "", ""
     for line in markdown.splitlines()[:15]:
         m = re.match(r'^level:\s*(N[1-5])\s*$', line.strip())
         if m:
-            draft_json["level"] = m.group(1)
-            draft_json["title"] = f"日本語能力試験{m.group(1)}"
+            level = m.group(1)
+            draft_json["level"] = level
         m = re.match(r'^source:\s*(\d{4}年\d{2}月)\s*$', line.strip())
         if m:
-            draft_json["source"] = m.group(1)
+            source = m.group(1)
+            draft_json["source"] = source
+    if level:
+        draft_json["title"] = f"日本語能力試験{level}" + (f" {source}" if source else "")
 
 
 async def _run_pdf_to_md(pdf_path: Path, api_key: str) -> str:
@@ -224,16 +237,15 @@ async def confirm_draft(draft_id: _uuid.UUID, db: AsyncSession = Depends(get_db)
         raise HTTPException(status_code=400, detail="Draft has no structured data")
 
     data = draft.draft_json
-    title = data.get("title", "")
     level = data.get("level", "")
     source = data.get("source", "")
+    if not level:
+        raise HTTPException(status_code=400, detail="draft_json missing level")
+    title = f"日本語能力試験{level}" + (f" {source}" if source else "")
 
-    if not title or not level:
-        raise HTTPException(status_code=400, detail="draft_json missing title or level")
-
-    # Idempotent: delete existing paper with same title+level
+    # Idempotent: delete existing paper with same level+source
     existing = (await db.execute(
-        select(ExamPaper).where(ExamPaper.title == title, ExamPaper.level == level)
+        select(ExamPaper).where(ExamPaper.level == level, ExamPaper.source == source)
     )).scalar_one_or_none()
     if existing:
         await db.execute(delete(ExamPaper).where(ExamPaper.id == existing.id))
@@ -264,12 +276,19 @@ async def confirm_draft(draft_id: _uuid.UUID, db: AsyncSession = Depends(get_db)
             await db.flush()
 
             for item_idx, item_data in enumerate(prob_data.get("items", []), start=1):
+                seq = item_data.get("seq") or item_idx
+                is_listening = prob_data.get("type") == "listening"
+                raw_stem = item_data.get("stem", "")
+                stem = raw_stem or (f"{seq}番" if is_listening else "")
+                raw_options = item_data.get("options", {})
+                options = raw_options or ({"1": "", "2": "", "3": "", "4": ""} if is_listening else {})
                 db.add(ExamItem(
                     problem_id=problem.id,
-                    seq=item_data.get("seq") or item_idx,
+                    seq=seq,
                     num=item_data.get("num"),
-                    stem=item_data.get("stem", ""),
-                    options=item_data.get("options", {}),
+                    stem=stem,
+                    transcript=item_data.get("transcript"),
+                    options=options,
                     correct_answer=item_data.get("correct_answer"),
                     meta=item_data.get("meta"),
                 ))

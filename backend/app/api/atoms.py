@@ -285,10 +285,35 @@ async def list_atoms(
     result = await db.execute(query)
     atoms = result.scalars().all()
 
+    atom_ids = [a.id for a in atoms]
+
+    # Batch-fetch tags for all atoms on this page
+    tags_res = await db.execute(select(AtomTag).where(AtomTag.atom_id.in_(atom_ids)))
+    tags_map: dict[str, list[str]] = {}
+    for t in tags_res.scalars().all():
+        aid = str(t.atom_id)
+        tags_map.setdefault(aid, []).append(t.tag)
+
+    # Batch-fetch key properties for all atoms on this page
+    _KEY_KINDS = {"reading", "meaning", "part_of_speech", "example", "usage", "jlpt_level"}
+    props_res = await db.execute(
+        select(AtomProperty)
+        .where(AtomProperty.atom_id.in_(atom_ids))
+        .where(AtomProperty.kind.in_(_KEY_KINDS))
+    )
+    props_map: dict[str, dict[str, str]] = {}
+    for p in props_res.scalars().all():
+        aid = str(p.atom_id)
+        if aid not in props_map:
+            props_map[aid] = {}
+        if p.kind not in props_map[aid]:
+            props_map[aid][p.kind] = p.value
+
     items = []
     for atom in atoms:
         prop_count, rel_count = await atom_service.get_atom_counts(db, atom.id)
         maturity = await atom_service.compute_maturity(prop_count, rel_count)
+        kp = props_map.get(str(atom.id), {})
         items.append({
             "id": str(atom.id),
             "type": atom.type,
@@ -297,9 +322,105 @@ async def list_atoms(
             "relation_count": rel_count,
             "maturity": maturity,
             "created_at": atom.created_at.isoformat() if atom.created_at else None,
+            "reading": kp.get("reading"),
+            "meaning": kp.get("meaning"),
+            "part_of_speech": kp.get("part_of_speech"),
+            "example": kp.get("example"),
+            "usage": kp.get("usage"),
+            "jlpt_level": kp.get("jlpt_level"),
+            "tags": tags_map.get(str(atom.id), []),
         })
 
     return {"items": items, "total": total}
+
+
+# ---------------------------------------------------------------------------
+# POST /atoms/backfill-jlpt-tags — one-time fix for existing atoms
+# ---------------------------------------------------------------------------
+
+@router.post("/atoms/backfill-tags")
+async def backfill_tags(db: AsyncSession = Depends(get_db)):
+    """Derive tags from jlpt_level / part_of_speech / register properties for all existing atoms."""
+    from app.services.atom_service import _normalize_pos, _normalize_register
+
+    props_res = await db.execute(
+        select(AtomProperty).where(
+            AtomProperty.kind.in_(["jlpt_level", "part_of_speech", "register"])
+        )
+    )
+    created = 0
+    skipped = 0
+    for p in props_res.scalars().all():
+        if not p.value:
+            continue
+        if p.kind == "jlpt_level":
+            tag_val = p.value.upper()
+        elif p.kind == "part_of_speech":
+            tag_val = _normalize_pos(p.value)
+        else:
+            tag_val = _normalize_register(p.value)
+        if not tag_val:
+            continue
+        existing = await db.execute(
+            select(AtomTag).where(and_(AtomTag.atom_id == p.atom_id, AtomTag.tag == tag_val))
+        )
+        if existing.scalar_one_or_none() is None:
+            db.add(AtomTag(atom_id=p.atom_id, tag=tag_val))
+            created += 1
+        else:
+            skipped += 1
+    await db.commit()
+    return {"created": created, "skipped": skipped}
+
+
+# ---------------------------------------------------------------------------
+# GET /atoms/graph  — must be defined before /atoms/{atom_id}
+# ---------------------------------------------------------------------------
+
+_JLPT_LEVELS = {"N1", "N2", "N3", "N4", "N5"}
+
+
+@router.get("/atoms/graph")
+async def get_atom_graph(db: AsyncSession = Depends(get_db)):
+    """Return all atoms and relations for knowledge graph visualisation."""
+    atoms_res = await db.execute(select(Atom).order_by(Atom.created_at))
+    atoms = atoms_res.scalars().all()
+
+    rels_res = await db.execute(select(AtomRelation))
+    rels = rels_res.scalars().all()
+
+    atom_ids = [a.id for a in atoms]
+
+    # Read JLPT level and POS from properties (single batch query)
+    graph_props_res = await db.execute(
+        select(AtomProperty)
+        .where(AtomProperty.atom_id.in_(atom_ids))
+        .where(AtomProperty.kind.in_(["jlpt_level", "part_of_speech"]))
+    )
+    jlpt_map: dict = {}
+    pos_map: dict = {}
+    for p in graph_props_res.scalars().all():
+        if p.kind == "jlpt_level" and p.atom_id not in jlpt_map and p.value:
+            jlpt_map[p.atom_id] = p.value.upper()
+        elif p.kind == "part_of_speech" and p.atom_id not in pos_map:
+            pos_map[p.atom_id] = p.value
+
+    return {
+        "nodes": [
+            {
+                "id": str(a.id),
+                "key": a.key,
+                "type": a.type,
+                "jlpt": jlpt_map.get(a.id),
+                "pos": pos_map.get(a.id),
+            }
+            for a in atoms
+        ],
+        "edges": [
+            {"from_id": str(r.from_id), "to_id": str(r.to_id), "type": r.type}
+            for r in rels
+        ],
+    }
 
 
 # ---------------------------------------------------------------------------

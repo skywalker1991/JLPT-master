@@ -104,7 +104,9 @@ PROMPT_HEADER = """\
   kanji_reading/kanji_writing/synonym: __対象語__ マークアップを保持した文
   word_formation/vocab_fill/grammar_fill: （　）プレースホルダーを含む文
   usage: 対象語そのもの（例: "早期"）
-  sentence_order: [_1_][_2_][_N★_][_4_] マークアップを保持した完全な文
+  sentence_order: 必ず4つの空欄すべてを [_1_][_2_][_N★_][_4_] 形式で記述する完全な文。
+    ★ は必ず [_N★_]（N は空欄番号）の形式で、番号なしの [_★_] は絶対に使わない。
+    例：「昔の [_1_] [_2_] [_3★_] [_4_] 不思議な感覚だった。」
   passage_fill/reading_comp: 設問の文（例: "筆者の考えに合うのはどれか。"）
   listening（選択肢あり）: 番号のみ（例: "1番"）
   listening（音声のみ）: ""
@@ -220,8 +222,8 @@ async def convert(md_path: str, out_path: str) -> None:
 
     # Override title/level/source with path-derived values
     if level:
-        data["title"] = f"日本語能力試験{level}"
         data["level"] = level
+        data["title"] = f"日本語能力試験{level}" + (f" {source}" if source else "")
     if source:
         data["source"] = source
 

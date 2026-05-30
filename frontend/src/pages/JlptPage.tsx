@@ -404,10 +404,11 @@ function ExamDetailView({ paper, onBack }: { paper: ExamPaperList; onBack: () =>
 
   const handleViewResult = useCallback(async (attemptId: string) => {
     const review = await getAttemptReview(attemptId)
+    const nameToDetailId = new Map(detail?.sections.map(s => [s.name, s.id]) ?? [])
     const scoreNames = new Set(Object.keys(review.score ?? {}).filter(k => k !== 'total'))
-    const sectionIds = review.sections
-      .filter(s => scoreNames.has(s.name))
-      .map(s => s.id)
+    const sectionIds = [...scoreNames]
+      .map(name => nameToDetailId.get(name))
+      .filter(Boolean) as string[]
 
     const initialAnswers: Record<string, string> = {}
     const correctAnswers: Record<string, string> = {}
@@ -422,13 +423,17 @@ function ExamDetailView({ paper, onBack }: { paper: ExamPaperList; onBack: () =>
       }
     }
     setMode({ type: 'session', attemptId, sectionIds, initialAnswers, reviewMode: true, correctAnswers, isCorrectMap })
-  }, [])
+  }, [detail])
 
   const handleContinue = useCallback(async (attemptId: string) => {
     const review = await getAttemptReview(attemptId)
-    let sectionIds = review.sections
+    const nameToDetailId = new Map(detail?.sections.map(s => [s.name, s.id]) ?? [])
+    const answeredNames = review.sections
       .filter(s => s.problems.some(p => p.items.some(i => i.user_answer !== null)))
-      .map(s => s.id)
+      .map(s => s.name)
+    let sectionIds = answeredNames
+      .map(name => nameToDetailId.get(name))
+      .filter(Boolean) as string[]
     if (sectionIds.length === 0) {
       sectionIds = detail?.sections.map(s => s.id) ?? []
     }
@@ -441,9 +446,9 @@ function ExamDetailView({ paper, onBack }: { paper: ExamPaperList; onBack: () =>
       }
     }
     const scoreNames = Object.keys(review.score ?? {}).filter(k => k !== 'total')
-    const initialSubmitted = review.sections
-      .filter(s => scoreNames.includes(s.name))
-      .map(s => s.id)
+    const initialSubmitted = scoreNames
+      .map(name => nameToDetailId.get(name))
+      .filter(Boolean) as string[]
     setMode({ type: 'session', attemptId, sectionIds, initialAnswers, initialSubmitted })
     setRefreshKey(k => k + 1)
   }, [detail])

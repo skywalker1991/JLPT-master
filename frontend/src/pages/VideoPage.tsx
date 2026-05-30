@@ -206,7 +206,7 @@ export default function VideoPage() {
       <div className="flex flex-1 min-h-0 gap-4 overflow-hidden">
 
         {/* Left: Video + karaoke */}
-        <div className="flex flex-col gap-4 shrink-0" style={{ width: '60%' }}>
+        <div className="flex flex-col gap-4 shrink-0 min-h-0 overflow-hidden" style={{ width: '60%' }}>
           <VideoPlayer videoId={videoId} />
           <KaraokeBar
             timings={current?.tokenTimings ?? []}

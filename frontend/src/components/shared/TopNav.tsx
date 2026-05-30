@@ -32,39 +32,41 @@ export default function TopNav() {
   const { settings, updateSettings, toggleLevel } = useSettings()
 
   return (
-    <header className="sticky top-0 z-50 bg-surface shadow-topbar h-14 flex items-center px-6 gap-4">
+    <header className="sticky top-0 z-50 bg-surface shadow-topbar h-14 flex items-center px-3 md:px-6 gap-2 md:gap-4">
       {/* Logo */}
       <div className="flex items-center gap-2 shrink-0">
-        <img src="/image.png" alt="日本語 Master" className="w-11 h-11 object-contain rounded-xl" />
+        <img src="/image.png" alt="日本語 Master" className="w-9 h-9 md:w-11 md:h-11 object-contain rounded-xl" />
         <span className="font-semibold text-fg text-sm tracking-tight hidden sm:block">日本語 Master</span>
       </div>
 
       {/* Tab nav */}
-      <nav className="flex items-center gap-0.5 ml-2 overflow-x-auto">
+      <nav className="flex items-center gap-0.5 ml-1 md:ml-2">
         {NAV.map(({ to, end, icon: Icon, label }) => (
           <NavLink
             key={to}
             to={to}
             end={end}
             className={({ isActive }) =>
-              `flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-semibold whitespace-nowrap
-               transition-colors duration-150 cursor-pointer
-               ${isActive
-                 ? 'bg-accent-light text-accent-fg'
-                 : 'text-fg-muted hover:text-fg hover:bg-gray-100'
-               }`
+              clsx(
+                'flex items-center gap-1.5 rounded-lg transition-colors duration-150 cursor-pointer',
+                'px-2.5 py-2 md:px-3.5',
+                'text-sm font-semibold whitespace-nowrap',
+                isActive
+                  ? 'bg-accent-light text-accent-fg'
+                  : 'text-fg-muted hover:text-fg hover:bg-gray-100',
+              )
             }
           >
-            <Icon className="w-3.5 h-3.5" />
-            {label}
+            <Icon className="w-4 h-4 md:w-3.5 md:h-3.5 shrink-0" />
+            <span className="hidden md:inline">{label}</span>
           </NavLink>
         ))}
       </nav>
 
       <div className="flex-1" />
 
-      {/* Level filter toggles */}
-      <div className="flex items-center gap-1 shrink-0">
+      {/* Level filter toggles — desktop only */}
+      <div className="hidden md:flex items-center gap-1 shrink-0">
         {ALL_LEVELS.map(level => {
           const isActive = settings.levelFilter.includes(level)
           return (
@@ -84,11 +86,11 @@ export default function TopNav() {
         })}
       </div>
 
-      {/* Model selector */}
+      {/* Model selector — desktop only */}
       <select
         value={settings.model}
         onChange={e => updateSettings({ model: e.target.value })}
-        className="text-xs border border-border rounded-lg px-2 py-1.5 bg-surface text-fg
+        className="hidden md:block text-xs border border-border rounded-lg px-2 py-1.5 bg-surface text-fg
                    hover:border-accent/50 focus:border-accent focus:ring-2 focus:ring-accent/20
                    focus:outline-none transition-all cursor-pointer max-w-40 shrink-0"
       >

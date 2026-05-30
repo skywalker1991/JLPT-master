@@ -1,4 +1,4 @@
-import { History, Loader2, Trash2 } from 'lucide-react'
+import { History, Loader2, Trash2, Image } from 'lucide-react'
 import type { AnalysisRecord } from '../../types'
 import { INPUT_TYPE_LABELS } from '../../types'
 
@@ -10,6 +10,28 @@ function timeAgo(iso: string): string {
   const h = Math.floor(m / 60)
   if (h < 24) return `${h} 小时前`
   return `${Math.floor(h / 24)} 天前`
+}
+
+function getTitle(record: AnalysisRecord): { text: string; isImage: boolean } {
+  const isImage = record.input_type === 'image'
+
+  // Prefer first sentence text from session_data
+  const sd = record.session_data as { sentences?: { text?: string }[] } | null
+  const firstSentenceText = sd?.sentences?.[0]?.text?.trim()
+  if (firstSentenceText) {
+    const title = firstSentenceText.length > 60 ? firstSentenceText.slice(0, 60) + '…' : firstSentenceText
+    return { text: title, isImage }
+  }
+
+  // Fallback for image with no session_data
+  if (isImage) return { text: '图片分析', isImage: true }
+
+  // Fallback: first line of input_content
+  const content = record.input_content?.trim() ?? ''
+  if (!content) return { text: '（无内容）', isImage: false }
+  const firstLine = content.split('\n').find(l => l.trim()) ?? content
+  const title = firstLine.length > 60 ? firstLine.slice(0, 60) + '…' : firstLine
+  return { text: title, isImage: false }
 }
 
 interface Props {
@@ -53,9 +75,15 @@ export default function AnalysisHistory({ history, loading, onSelect, onDelete }
                 </span>
                 <span className="text-[10px] text-fg-subtle">{timeAgo(record.created_at)}</span>
               </div>
-              <p className="text-sm text-fg leading-snug line-clamp-2">
-                {record.input_content || '（无内容）'}
-              </p>
+              {(() => {
+                const { text, isImage } = getTitle(record)
+                return (
+                  <p className="text-sm text-fg leading-snug line-clamp-2 flex items-center gap-1.5">
+                    {isImage && <Image className="w-3.5 h-3.5 text-fg-subtle shrink-0" />}
+                    {text}
+                  </p>
+                )
+              })()}
             </div>
             <button
               onClick={e => onDelete(e, record.id)}

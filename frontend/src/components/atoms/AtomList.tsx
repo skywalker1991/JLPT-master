@@ -12,10 +12,19 @@ const TYPE_TABS = [
 
 const LIMIT = 20
 
-export default function AtomList({ active = true }: { active?: boolean }) {
+interface AtomListProps {
+  active?: boolean
+  selectedId?: string
+  onSelect?: (id: string) => void
+  compact?: boolean
+  jumpToKey?: string | null
+}
+
+export default function AtomList({ active = true, selectedId, onSelect, compact, jumpToKey }: AtomListProps) {
   const { atoms, total, isLoading, filters, setFilter, nextPage, prevPage } = useAtoms(active)
   const [searchInput, setSearchInput] = useState('')
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const listRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
@@ -27,6 +36,34 @@ export default function AtomList({ active = true }: { active?: boolean }) {
     }
   }, [searchInput, setFilter])
 
+  // Sync left list when graph selects a node
+  useEffect(() => {
+    if (!selectedId) return
+
+    // Small delay so the selected card renders with the new selectedId prop first
+    const t = setTimeout(() => {
+      const el = listRef.current?.querySelector<HTMLElement>(`[data-atom-id="${selectedId}"]`)
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+      } else if (jumpToKey) {
+        // Atom is on a different page — search by key to bring it into view
+        setSearchInput(jumpToKey)
+        setFilter('search', jumpToKey)
+        setFilter('page', 0)
+      }
+    }, 50)
+
+    return () => clearTimeout(t)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, jumpToKey])
+
+  // After a jump-search loads, scroll the found item into view
+  useEffect(() => {
+    if (!selectedId || !jumpToKey || isLoading) return
+    const el = listRef.current?.querySelector<HTMLElement>(`[data-atom-id="${selectedId}"]`)
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, [atoms, selectedId, jumpToKey, isLoading])
+
   const totalPages = Math.ceil(total / LIMIT)
   const currentPage = filters.page
 
@@ -34,7 +71,6 @@ export default function AtomList({ active = true }: { active?: boolean }) {
     <div className="space-y-4">
       {/* Search + filter row */}
       <div className="flex items-center gap-3 flex-wrap">
-        {/* Search */}
         <div className="relative flex-1 min-w-48">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-fg-subtle" />
           <input
@@ -46,7 +82,6 @@ export default function AtomList({ active = true }: { active?: boolean }) {
           />
         </div>
 
-        {/* Type tabs */}
         <div className="flex items-center gap-1 bg-bg rounded-lg border border-border p-1">
           {TYPE_TABS.map((tab) => (
             <button
@@ -65,14 +100,12 @@ export default function AtomList({ active = true }: { active?: boolean }) {
         </div>
       </div>
 
-      {/* Loading state */}
       {isLoading && (
         <div className="flex items-center justify-center py-16">
           <Loader2 className="w-6 h-6 animate-spin text-accent" />
         </div>
       )}
 
-      {/* Empty state */}
       {!isLoading && atoms.length === 0 && (
         <div className="flex flex-col items-center justify-center py-20 text-fg-subtle">
           <Database className="w-12 h-12 mb-3 opacity-25" />
@@ -81,16 +114,23 @@ export default function AtomList({ active = true }: { active?: boolean }) {
         </div>
       )}
 
-      {/* Grid */}
       {!isLoading && atoms.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+        <div
+          ref={listRef}
+          className={compact ? 'flex flex-col gap-2' : 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3'}
+        >
           {atoms.map((atom) => (
-            <AtomCard key={atom.id} atom={atom} />
+            <AtomCard
+              key={atom.id}
+              atom={atom}
+              selected={atom.id === selectedId}
+              onSelect={onSelect}
+              compact={compact}
+            />
           ))}
         </div>
       )}
 
-      {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between pt-4">
           <span className="text-xs text-fg-subtle">

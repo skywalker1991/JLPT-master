@@ -45,14 +45,14 @@ const REL_LABELS: Record<string, string> = {
 
 // ── Cluster / node colors ─────────────────────────────────────────────────────
 
-const CLUSTER_STYLE: Record<string, { fill: string; stroke: string; selected: string; bg: string; label: string }> = {
-  grammar:      { fill: '#ede9fe', stroke: '#8b5cf6', selected: '#7c3aed', bg: '#f5f3ff', label: '語法' },
-  vocab_名詞:   { fill: '#dbeafe', stroke: '#3b82f6', selected: '#1d4ed8', bg: '#eff6ff', label: '名詞' },
-  vocab_動詞:   { fill: '#dcfce7', stroke: '#16a34a', selected: '#15803d', bg: '#f0fdf4', label: '動詞' },
-  vocab_形容詞: { fill: '#ffedd5', stroke: '#ea580c', selected: '#c2410c', bg: '#fff7ed', label: '形容詞' },
-  vocab_副詞:   { fill: '#fce7f3', stroke: '#db2777', selected: '#be185d', bg: '#fdf4ff', label: '副詞' },
-  vocab_惯用语: { fill: '#fef9c3', stroke: '#ca8a04', selected: '#a16207', bg: '#fefce8', label: '慣用語' },
-  vocab_other:  { fill: '#f1f5f9', stroke: '#64748b', selected: '#475569', bg: '#f8fafc', label: 'その他' },
+const CLUSTER_STYLE: Record<string, { fill: string; stroke: string; selected: string; label: string }> = {
+  grammar:      { fill: '#ede9fe', stroke: '#8b5cf6', selected: '#7c3aed', label: '語法' },
+  vocab_名詞:   { fill: '#dbeafe', stroke: '#3b82f6', selected: '#1d4ed8', label: '名詞' },
+  vocab_動詞:   { fill: '#dcfce7', stroke: '#16a34a', selected: '#15803d', label: '動詞' },
+  vocab_形容詞: { fill: '#ffedd5', stroke: '#ea580c', selected: '#c2410c', label: '形容詞' },
+  vocab_副詞:   { fill: '#fce7f3', stroke: '#db2777', selected: '#be185d', label: '副詞' },
+  vocab_惯用语: { fill: '#fef9c3', stroke: '#ca8a04', selected: '#a16207', label: '慣用語' },
+  vocab_other:  { fill: '#f1f5f9', stroke: '#64748b', selected: '#475569', label: 'その他' },
 }
 
 function edgeColor(type: string) { return EDGE_COLORS[type] ?? '#94a3b8' }
@@ -178,29 +178,19 @@ export default function KnowledgeGraph({ selectedId, onSelectAtom }: Props) {
     sel.call(zoom)
     zoomRef.current = zoom
 
-    // ── Cluster background regions ──────────────────────────────────────────
+    // ── Cluster labels ──────────────────────────────────────────────────────────
     const usedClusters = [...new Set(nodes.map(clusterKey))]
-    const clusterBgGroup = root.append('g').attr('class', 'cluster-bg')
+    const clusterLabelGroup = root.append('g').attr('class', 'cluster-labels')
     usedClusters.forEach((key) => {
       const c = clusterCenter(key, w, h)
       const style = CLUSTER_STYLE[key] ?? CLUSTER_STYLE.vocab_other
-      clusterBgGroup.append('ellipse')
-        .attr('cx', c.x).attr('cy', c.y)
-        .attr('rx', 90).attr('ry', 72)
-        .attr('fill', style.bg)
-        .attr('fill-opacity', 0.6)
-        .attr('stroke', style.stroke)
-        .attr('stroke-opacity', 0.18)
-        .attr('stroke-dasharray', '5 4')
-        .attr('pointer-events', 'none')
-
-      clusterBgGroup.append('text')
-        .attr('x', c.x).attr('y', c.y - 78)
+      clusterLabelGroup.append('text')
+        .attr('x', c.x).attr('y', c.y - 60)
         .attr('text-anchor', 'middle')
         .attr('font-size', '11')
         .attr('font-weight', '600')
         .attr('fill', style.stroke)
-        .attr('opacity', 0.55)
+        .attr('opacity', 0.4)
         .attr('pointer-events', 'none')
         .text(style.label)
     })

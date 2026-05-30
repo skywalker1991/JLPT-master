@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
-import { Plus, Loader2 } from 'lucide-react'
+import { Plus, Loader2, History, X } from 'lucide-react'
 import { useAnalysis } from '../hooks/useAnalysis'
 import SentenceList from '../components/analysis/SentenceList'
 import SentenceCard from '../components/analysis/SentenceCard'
@@ -24,6 +24,7 @@ export default function AnalysisPage() {
   const [imageData, setImageData] = useState<string | null>(null)
   const [history, setHistory]     = useState<AnalysisRecord[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
 
   const hasResults = sentences.length > 0 || isStreaming
 
@@ -61,6 +62,7 @@ export default function AnalysisPage() {
     } catch {
       restoreFromHistory(record)
     }
+    setHistoryOpen(false)
   }
 
   const handleDeleteHistory = async (e: React.MouseEvent, id: string) => {
@@ -104,15 +106,11 @@ export default function AnalysisPage() {
   return (
     <div className="flex flex-1 min-h-0 p-4 gap-4 overflow-hidden">
 
-      {/* ── Left: History sidebar ── */}
-      <div className="card w-56 shrink-0 flex flex-col overflow-hidden">
+      {/* ── Left: History sidebar (desktop) ── */}
+      <div className="card hidden md:flex w-56 shrink-0 flex-col overflow-hidden">
         <div className="px-3 py-3 border-b border-border shrink-0">
-          <button
-            onClick={handleNew}
-            className="btn-primary w-full gap-2 justify-center"
-          >
-            <Plus className="w-4 h-4" />
-            新建分析
+          <button onClick={handleNew} className="btn-primary w-full gap-2 justify-center">
+            <Plus className="w-4 h-4" />新建分析
           </button>
         </div>
         <AnalysisHistory
@@ -123,8 +121,42 @@ export default function AnalysisPage() {
         />
       </div>
 
-      {/* ── Right: Results + Input ── */}
+      {/* ── Mobile history overlay ── */}
+      {historyOpen && (
+        <div className="md:hidden fixed inset-0 z-40 flex flex-col justify-end">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setHistoryOpen(false)} />
+          <div className="relative bg-surface rounded-t-2xl flex flex-col max-h-[70vh] z-10">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
+              <span className="font-semibold text-sm text-fg">历史记录</span>
+              <button onClick={() => setHistoryOpen(false)} className="p-1 rounded-lg hover:bg-gray-100 text-fg-muted">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <AnalysisHistory
+              history={history}
+              loading={historyLoading}
+              onSelect={handleRestoreHistory}
+              onDelete={handleDeleteHistory}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* ── Main: Results + Input ── */}
       <div className="card flex-1 flex flex-col min-h-0 overflow-hidden">
+
+        {/* Mobile top bar */}
+        <div className="md:hidden flex items-center gap-2 px-3 py-2 border-b border-border shrink-0">
+          <button onClick={handleNew} className="btn-primary gap-1.5 py-1.5 text-xs">
+            <Plus className="w-3.5 h-3.5" />新建
+          </button>
+          <button
+            onClick={() => setHistoryOpen(true)}
+            className="btn-ghost gap-1.5 py-1.5 text-xs"
+          >
+            <History className="w-3.5 h-3.5" />历史
+          </button>
+        </div>
 
         {/* Results area */}
         {hasResults ? (

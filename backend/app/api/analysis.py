@@ -558,27 +558,6 @@ async def followup(
 
 
 # ---------------------------------------------------------------------------
-# POST /analyses/{id}/complete
-# ---------------------------------------------------------------------------
-
-@router.post("/analyses/{analysis_id}/complete")
-async def complete_analysis(analysis_id: UUID, db: AsyncSession = Depends(get_db)):
-    """Mark analysis as completed and clear session_data."""
-    result = await db.execute(select(Analysis).where(Analysis.id == analysis_id))
-    analysis = result.scalar_one_or_none()
-    if analysis is None:
-        raise HTTPException(status_code=404, detail="Analysis not found")
-
-    await db.execute(
-        update(Analysis)
-        .where(Analysis.id == analysis_id)
-        .values(status="completed", session_data=None)
-    )
-    await db.commit()
-    return {"status": "completed"}
-
-
-# ---------------------------------------------------------------------------
 # GET /analyses
 # ---------------------------------------------------------------------------
 

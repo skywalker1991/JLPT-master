@@ -47,12 +47,14 @@ export default function VocabChip({ item }: Props) {
         type: 'vocabulary',
         key: atomKey,
         properties: [
-          ...(item.reading       ? [{ kind: 'reading',       value: item.reading,       source_type: 'ai' }] : []),
-          { kind: 'meaning',       value: item.meaning,                                  source_type: 'ai' },
-          ...(item.part_of_speech ? [{ kind: 'part_of_speech', value: item.part_of_speech, source_type: 'ai' }] : []),
-          ...(item.usage         ? [{ kind: 'usage',         value: item.usage,         source_type: 'ai' }] : []),
-          ...(item.nuance        ? [{ kind: 'nuance',        value: item.nuance,        source_type: 'ai' }] : []),
-          ...(item.example       ? [{ kind: 'example',       value: item.example,       source_type: 'ai' }] : []),
+          ...(item.reading        ? [{ kind: 'reading',        value: item.reading,        source_type: 'ai' }] : []),
+          { kind: 'meaning',        value: item.meaning,                                    source_type: 'ai' },
+          ...(item.part_of_speech  ? [{ kind: 'part_of_speech', value: item.part_of_speech, source_type: 'ai' }] : []),
+          ...(item.jlpt_level      ? [{ kind: 'jlpt_level',     value: item.jlpt_level,     source_type: 'ai' }] : []),
+          ...(item.register        ? [{ kind: 'register',       value: item.register,       source_type: 'ai' }] : []),
+          ...(item.usage           ? [{ kind: 'usage',          value: item.usage,          source_type: 'ai' }] : []),
+          ...(item.nuance          ? [{ kind: 'nuance',         value: item.nuance,         source_type: 'ai' }] : []),
+          ...(item.example         ? [{ kind: 'example',        value: item.example,        source_type: 'ai' }] : []),
         ],
       })
       setAtomId(res.atom_id)

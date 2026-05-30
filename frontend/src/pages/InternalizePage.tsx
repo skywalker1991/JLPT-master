@@ -32,7 +32,7 @@ function CardModeIcon({ onClick }: { onClick: () => void }) {
   return (
     <motion.button
       onClick={onClick}
-      className="flex flex-col items-center gap-3 p-6 rounded-2xl bg-surface border border-border hover:border-accent/50 hover:shadow-lg transition-shadow cursor-pointer w-44"
+      className="flex flex-col items-center gap-3 p-6 rounded-2xl bg-surface border border-border hover:border-accent/50 hover:shadow-lg transition-shadow cursor-pointer w-full sm:w-44"
       whileHover={{ y: -2 }}
       whileTap={{ scale: 0.97 }}
     >
@@ -47,7 +47,7 @@ function CardModeIcon({ onClick }: { onClick: () => void }) {
 
 function ComingSoonIcon({ icon, label, desc }: { icon: React.ReactNode; label: string; desc: string }) {
   return (
-    <div className="flex flex-col items-center gap-3 p-6 rounded-2xl bg-surface/50 border border-dashed border-border w-44 cursor-not-allowed">
+    <div className="flex flex-col items-center gap-3 p-6 rounded-2xl bg-surface/50 border border-dashed border-border w-full sm:w-44 cursor-not-allowed">
       <div className="w-20 h-28 rounded-xl border border-dashed border-border/60 bg-surface flex items-center justify-center text-fg-subtle/40">
         {icon}
       </div>
@@ -74,8 +74,6 @@ export default function InternalizePage() {
 
   function handleConfigChange(next: InfiniteConfig) {
     setConfig(next)
-    setTodayKnow(0)
-    setTodayUnknown(0)
   }
 
   return (
@@ -86,7 +84,7 @@ export default function InternalizePage() {
             <h1 className="text-base font-bold text-fg">内化学习</h1>
             <p className="text-xs text-fg-muted mt-0.5">选择练习模式开始</p>
           </div>
-          <div className="flex flex-wrap gap-4">
+          <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-4">
             <CardModeIcon onClick={() => setPhase('playing')} />
             <ComingSoonIcon icon={<Volume2 className="w-8 h-8" />}   label="读音练习" desc="汉字→假名" />
             <ComingSoonIcon icon={<GitCompare className="w-8 h-8" />} label="辨析练习" desc="近义词辨别" />

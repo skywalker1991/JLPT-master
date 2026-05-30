@@ -10,6 +10,8 @@
     min-height: 100dvh;
     line-height: 1.75;
     letter-spacing: 0.01em;
+    background-image: radial-gradient(circle, #C4B49E 1.5px, transparent 1.5px);
+    background-size: 20px 20px;
   }
   p, span, li { line-height: 1.75; }
   h1, h2, h3, h4 { line-height: 1.4; letter-spacing: -0.01em; }
@@ -50,8 +52,8 @@
   .badge {
     @apply inline-flex items-center px-1.5 py-0.5 rounded-md text-2xs font-semibold;
   }
-  .badge-vocab   { @apply badge bg-blue-50 text-blue-700 ring-1 ring-blue-200/60; }
-  .badge-grammar { @apply badge bg-violet-50 text-violet-700 ring-1 ring-violet-200/60; }
+  .badge-vocab   { @apply badge bg-accent-light text-accent-fg ring-1 ring-accent-border; }
+  .badge-grammar { @apply badge bg-blue-50 text-blue-700 ring-1 ring-blue-200/60; }
   .badge-n1 { @apply badge bg-red-50    text-red-700    ring-1 ring-red-200/60; }
   .badge-n2 { @apply badge bg-orange-50 text-orange-700 ring-1 ring-orange-200/60; }
   .badge-n3 { @apply badge bg-yellow-50 text-yellow-700 ring-1 ring-yellow-200/60; }

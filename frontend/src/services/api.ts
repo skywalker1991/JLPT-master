@@ -101,12 +101,6 @@ export async function followup(
   })
 }
 
-export async function completeAnalysis(analysisId: string): Promise<void> {
-  await request<void>(`/api/analyses/${analysisId}/complete`, {
-    method: 'POST',
-  })
-}
-
 export async function getAnalyses(params?: {
   status?: string
   page?: number

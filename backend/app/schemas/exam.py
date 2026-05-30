@@ -29,6 +29,7 @@ class ItemSchema(BaseModel):
     seq: int
     num: int | None
     stem: str
+    transcript: str | None = None
     options: dict
     meta: dict | None
 
@@ -152,6 +153,7 @@ class ReviewItem(BaseModel):
     seq: int
     num: int | None
     stem: str
+    transcript: str | None = None
     options: dict
     meta: dict | None
     user_answer: str | None

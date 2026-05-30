@@ -12,7 +12,7 @@ const PROBLEM_TYPES = [
 const LEVELS = ['N1', 'N2', 'N3', 'N4', 'N5']
 
 function emptyItem(seq: number): DraftItem {
-  return { num: null, seq, stem: '', options: { '1': '', '2': '', '3': '', '4': '' }, correct_answer: null, meta: null }
+  return { num: null, seq, stem: '', transcript: null, options: { '1': '', '2': '', '3': '', '4': '' }, correct_answer: null, meta: null }
 }
 
 function emptyProblem(): DraftProblem {
@@ -39,10 +39,11 @@ function ItemRow({
     onChange({ ...item, options: { ...item.options, [k]: v } })
   }
   function setStarPos(pos: number) {
-    // Rebuild stem: replace old [_N★_] with [_N_], set new position to [_N★_]
-    const newStem = item.stem
+    // Demote existing stars; bare [_★_] (legacy) becomes [_pos_] so it can be promoted
+    const withoutStar = item.stem
       .replace(/\[_(\d+)★_\]/g, '[_$1_]')
-      .replace(new RegExp(`\\[_${pos}_\\]`), `[_${pos}★_]`)
+      .replace(/\[_★_\]/g, `[_${pos}_]`)
+    const newStem = withoutStar.replace(new RegExp(`\\[_${pos}_\\]`), `[_${pos}★_]`)
     onChange({ ...item, stem: newStem, meta: { ...(item.meta ?? {}), star_position: pos } })
   }
 
@@ -105,6 +106,17 @@ function ItemRow({
               {starPos === n ? '★' : n}
             </button>
           ))}
+        </div>
+      )}
+      {problemType === 'listening' && (
+        <div className="pl-8 pt-1">
+          <textarea
+            value={item.transcript ?? ''}
+            onChange={e => set('transcript', e.target.value || null)}
+            rows={3}
+            placeholder="聴解原文…"
+            className="w-full border border-border rounded-lg px-2 py-1.5 text-xs bg-surface resize-y"
+          />
         </div>
       )}
     </div>
@@ -194,17 +206,17 @@ function ProblemBlock({
       </div>
 
       <div className="px-4 py-3 space-y-3">
-        {hasPassage && (
+        {hasPassage && !isListening && (
           <div ref={pasteZoneRef} className="relative">
             <label className="text-[10px] font-semibold text-fg-muted uppercase tracking-wide mb-1 block">
-              {isListening ? '聴解原文' : '文章'} <span className="font-normal text-fg-subtle">（Ctrl+V 粘贴图片）</span>
+              文章 <span className="font-normal text-fg-subtle">（Ctrl+V 粘贴图片）</span>
             </label>
             <textarea
-              value={isListening ? (prob.transcript ?? '') : (prob.passage ?? '')}
-              onChange={e => isListening ? set('transcript', e.target.value || null) : set('passage', e.target.value || null)}
+              value={prob.passage ?? ''}
+              onChange={e => set('passage', e.target.value || null)}
               rows={5}
               className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-bg resize-y"
-              placeholder={isListening ? '听力原文…' : '阅读文章…'}
+              placeholder="阅读文章…"
             />
             {uploading && (
               <div className="absolute inset-0 flex items-center justify-center bg-surface/70 rounded-lg">
@@ -232,6 +244,7 @@ function ProblemBlock({
             添加设问
           </button>
         </div>
+
       </div>
     </div>
   )
