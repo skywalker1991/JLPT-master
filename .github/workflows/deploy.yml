@@ -26,7 +26,7 @@ jobs:
             --document-name "AWS-RunShellScript" \
             --parameters 'commands=[
               "cd /opt/app",
-              "git pull",
+              "git fetch origin && git reset --hard origin/main",
               "docker compose up --build -d"
             ]' \
             --comment "Deploy from GitHub Actions run ${{ github.run_number }}" \
