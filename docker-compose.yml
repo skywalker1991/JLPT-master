@@ -47,7 +47,6 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - model_cache:/root/.cache/torch
       - ./backend/data:/app/data
     restart: unless-stopped
 
@@ -64,4 +63,3 @@ services:
 volumes:
   postgres_data:
   qdrant_data:
-  model_cache:
