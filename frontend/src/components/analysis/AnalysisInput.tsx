@@ -34,28 +34,7 @@ export default function AnalysisInput({
     )
   }
 
-  // ── Has results: followup bar ──
-  if (hasResults) {
-    return (
-      <div className="px-4 py-3">
-        <div className={clsx(
-          'flex items-center gap-2 rounded-xl border border-border bg-gray-50/60 px-3 py-2',
-          'focus-within:border-accent/40 focus-within:bg-white transition-all',
-        )}>
-          <input
-            type="text"
-            placeholder="追问…（例：这个语法点怎么用？）"
-            disabled
-            className="flex-1 bg-transparent text-sm text-fg placeholder:text-fg-subtle outline-none disabled:cursor-not-allowed"
-          />
-          <button disabled className="btn-ghost h-7 w-7 p-0 justify-center rounded-lg opacity-40">
-            <Send className="w-3.5 h-3.5" />
-          </button>
-        </div>
-        <p className="text-xs text-fg-subtle mt-1.5 px-1">追问功能开发中</p>
-      </div>
-    )
-  }
+  if (hasResults) return null
 
   // ── No results: new analysis input ──
   const canSubmit = !!imageData || !!text.trim()

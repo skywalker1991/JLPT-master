@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import * as d3 from 'd3'
 import { CheckCircle, Loader2, XCircle } from 'lucide-react'
-import { getItemAnalysis, getProblemAnalysis, followupAnalysis, createAtom, createRelation } from '../../services/api'
+import { getItemAnalysis, getProblemAnalysis, createAtom, createRelation } from '../../services/api'
 import type { QuestionAnalysisResponse, VocabItem, GrammarItem } from '../../types'
 import VocabChip from '../analysis/VocabChip'
 import GrammarKBCard from '../analysis/GrammarCard'
@@ -696,8 +696,6 @@ export default function AnalysisPanel({ itemId, problem }: {
   const [data, setData] = useState<QuestionAnalysisResponse | null>(null)
   const [problemData, setProblemData] = useState<ProblemAnalysisResponse | null>(null)
   const [loading, setLoading] = useState(true)
-  const [followupText, setFollowupText] = useState('')
-  const [sending, setSending] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState<{ atoms: number; relations: number } | null>(null)
 
@@ -766,24 +764,6 @@ export default function AnalysisPanel({ itemId, problem }: {
     }
   }
 
-  async function sendFollowup() {
-    if (!followupText.trim() || !data) return
-    setSending(true)
-    try {
-      const res = await followupAnalysis(itemId!, followupText.trim())
-      setData(prev => {
-        if (!prev?.session_data) return prev
-        const followups = [
-          ...(prev.session_data.followups as Array<{ prompt: string; response: string }> ?? []),
-          { prompt: followupText.trim(), response: res.response },
-        ]
-        return { ...prev, session_data: { ...prev.session_data, followups } }
-      })
-      setFollowupText('')
-    } finally {
-      setSending(false)
-    }
-  }
 
   const sd = data?.session_data
   const analysisType = sd?.analysis_type as string | undefined
@@ -853,31 +833,6 @@ export default function AnalysisPanel({ itemId, problem }: {
               />
             )}
 
-            {(sd.followups as Array<{ prompt: string; response: string }>)?.map((f, i) => (
-              <div key={i} className="space-y-1">
-                <p className="text-xs text-fg-muted bg-border/40 rounded px-2 py-1">Q: {f.prompt}</p>
-                <p className="text-xs text-fg bg-surface border border-border rounded-lg px-3 py-2 leading-relaxed whitespace-pre-wrap">
-                  {f.response}
-                </p>
-              </div>
-            ))}
-
-            <div className="flex gap-2 pt-1">
-              <input
-                className="flex-1 text-xs border border-border rounded-lg px-3 py-1.5 bg-surface focus:outline-none focus:border-accent transition-colors"
-                placeholder="继续追问…"
-                value={followupText}
-                onChange={e => setFollowupText(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && sendFollowup()}
-              />
-              <button
-                onClick={sendFollowup}
-                disabled={sending || !followupText.trim()}
-                className="px-3 py-1.5 bg-accent text-white text-xs rounded-lg disabled:opacity-40 hover:bg-accent-hover transition-colors"
-              >
-                {sending ? <Loader2 className="w-3 h-3 animate-spin" /> : '发送'}
-              </button>
-            </div>
           </>
         )}
       </div>
