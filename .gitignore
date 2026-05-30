@@ -33,6 +33,9 @@ backend/venv/
 .DS_Store
 Thumbs.db
 
+# Claude AI workspace
+.claude/
+
 # Docs (local planning only)
 doc/
 docs/
