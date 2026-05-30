@@ -17,6 +17,10 @@ build/
 .env
 .env.*
 !.env.example
+backend/.env
+
+# AI workspace
+AI_workspace
 
 # Python
 venv/
