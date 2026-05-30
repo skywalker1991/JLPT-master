@@ -12,8 +12,22 @@ import type { SubtitleState, TokenTiming } from '../components/video/types'
 
 declare global {
   interface Window {
-    YT: typeof YT
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    YT: any
     onYouTubeIframeAPIReady: () => void
+  }
+  // eslint-disable-next-line @typescript-eslint/no-namespace
+  namespace YT {
+    class Player {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      constructor(el: string | HTMLElement, opts: any)
+      getCurrentTime(): number
+      pauseVideo(): void
+      playVideo(): void
+      seekTo(seconds: number, allowSeekAhead: boolean): void
+      destroy(): void
+    }
+    enum PlayerState { PLAYING = 1, PAUSED = 2 }
   }
 }
 
@@ -229,7 +243,6 @@ export default function VideoPage() {
             <AnalysisCard
               preprocessed={selected?.preprocessed ?? null}
               analysis={selected?.analysis ?? null}
-              isEmpty={selectedIdx === null}
             />
           </div>
         </div>

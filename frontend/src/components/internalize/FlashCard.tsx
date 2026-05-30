@@ -149,7 +149,7 @@ export default function FlashCard({ card, stackIndex, onSwipe }: Props) {
           marginLeft: -144,
         }}
         initial={isTop && isN1 ? { y: -120, scale: 1.2, opacity: 0 } : { opacity: 1 }}
-        animate={stackVariants[stackIndex] ?? stackVariants[2]}
+        animate={(stackVariants[stackIndex] ?? stackVariants[2]) as never}
         transition={
           isTop && isN1
             ? { type: 'spring', stiffness: 200, damping: 18 }

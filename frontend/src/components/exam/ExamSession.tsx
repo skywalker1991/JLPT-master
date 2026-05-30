@@ -133,7 +133,7 @@ function SentenceOrderStem({ stem }: { stem: string }) {
 }
 
 function ItemDisplay({
-  item, selected, onSelect, reviewMode, correctAnswer, isCorrect, problemType,
+  item, selected, onSelect, reviewMode, correctAnswer, problemType,
 }: {
   item: ItemSchema
   selected: string | null

@@ -770,7 +770,7 @@ export default function AnalysisPanel({ itemId, problem }: {
     if (!followupText.trim() || !data) return
     setSending(true)
     try {
-      const res = await followupAnalysis(itemId, followupText.trim())
+      const res = await followupAnalysis(itemId!, followupText.trim())
       setData(prev => {
         if (!prev?.session_data) return prev
         const followups = [
