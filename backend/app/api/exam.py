@@ -676,6 +676,96 @@ _PASSAGE_FILL_PROBLEM_SCHEMA = {
     "required": ["analysis_type", "items", "sentences"],
 }
 
+# ── 阅读理解——问题级 Schema 和 Prompt ─────────────────────────────────────────
+
+_READING_COMP_PROBLEM_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "analysis_type": {"type": "string"},
+        "sentences": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string"},
+                    "translation": {"type": "string"},
+                    "vocab": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "surface": {"type": "string"},
+                                "base": {"type": "string"},
+                                "reading": {"type": "string"},
+                                "meaning": {"type": "string"},
+                                "part_of_speech": {"type": "string"},
+                                "jlpt_level": {"type": "string"},
+                                "example": {"type": "string"},
+                            },
+                            "required": ["surface", "base", "reading", "meaning", "part_of_speech"],
+                        },
+                    },
+                    "grammar": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "pattern": {"type": "string"},
+                                "meaning": {"type": "string"},
+                                "connection": {"type": "string"},
+                                "example": {"type": "string"},
+                            },
+                            "required": ["pattern", "meaning"],
+                        },
+                    },
+                },
+                "required": ["text", "translation", "vocab", "grammar"],
+            },
+        },
+        "questions": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "num": {"type": "integer"},
+                    "options_analysis": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "option": {"type": "string"},
+                                "is_correct": {"type": "boolean"},
+                                "explanation": {"type": "string"},
+                            },
+                            "required": ["option", "is_correct", "explanation"],
+                        },
+                    },
+                },
+                "required": ["num", "options_analysis"],
+            },
+        },
+    },
+    "required": ["analysis_type", "sentences", "questions"],
+}
+
+_READING_COMP_PROBLEM_PROMPT = """\
+你是日语阅读理解专家。对以下JLPT阅读理解题进行完整分析：逐句解析文章，并对每道题的各选项给出判断理由。
+
+文章：
+{passage}
+
+题目：
+{questions_info}
+
+要求：
+- analysis_type = "reading_comp"
+- sentences：将文章按自然句切分，每句给出 translation（中文）、vocab（值得学习的词汇，≤3个/句）、grammar（值得学习的语法点，≤2个/句，pattern 以〜开头）
+- questions：每道题编号（num）对应的 options_analysis（每个选项的 is_correct + explanation，正确选项引用原文依据，错误选项指出与原文矛盾处）
+- 所有文字字段使用中文输出
+
+直接输出JSON：
+{schema_json}"""
+
 _PASSAGE_FILL_PROBLEM_PROMPT = """\
 你是日语语法专家。分析JLPT补全文章题，逐空对比选项，并对全文进行语料解析。
 
@@ -976,9 +1066,8 @@ async def get_problem_analysis(problem_id: UUID, db: AsyncSession = Depends(get_
     if problem is None:
         raise HTTPException(status_code=404, detail="Problem not found")
 
-    # Only passage_fill uses problem-level analysis
-    if problem.type != "passage_fill":
-        raise HTTPException(status_code=400, detail="Problem-level analysis only supported for passage_fill")
+    if problem.type not in ("passage_fill", "reading_comp"):
+        raise HTTPException(status_code=400, detail="Problem-level analysis only supported for passage_fill and reading_comp")
 
     cached = (await db.execute(
         select(ProblemAnalysis).where(ProblemAnalysis.problem_id == problem_id)
@@ -994,25 +1083,40 @@ async def get_problem_analysis(problem_id: UUID, db: AsyncSession = Depends(get_
     if not items:
         raise HTTPException(status_code=404, detail="No items found for problem")
 
-    # Build items_info string
-    items_lines = []
-    for it in items:
-        opts_text = "\n".join(f"  {k}. {v}" for k, v in sorted(it.options.items()))
-        items_lines.append(
-            f"第{it.num}空\n选项：\n{opts_text}\n正确答案：{it.correct_answer or '不明'}"
-        )
-    items_info = "\n\n".join(items_lines)
-
     prompt = "重要：所有 explanation、translation、meaning、connection、usage、example 等文字字段必须使用中文输出。\n\n"
-    prompt += _PASSAGE_FILL_PROBLEM_PROMPT.format(
-        passage=problem.passage or "",
-        items_info=items_info,
-        schema_json=json.dumps(_PASSAGE_FILL_PROBLEM_SCHEMA, ensure_ascii=False),
-    )
+
+    if problem.type == "reading_comp":
+        questions_lines = []
+        for it in items:
+            opts_text = "\n".join(f"  {k}. {v}" for k, v in sorted(it.options.items()))
+            questions_lines.append(
+                f"第{it.num}题：{it.stem or ''}\n选项：\n{opts_text}\n正确答案：{it.correct_answer or '不明'}"
+            )
+        questions_info = "\n\n".join(questions_lines)
+        prompt += _READING_COMP_PROBLEM_PROMPT.format(
+            passage=problem.passage or "",
+            questions_info=questions_info,
+            schema_json=json.dumps(_READING_COMP_PROBLEM_SCHEMA, ensure_ascii=False),
+        )
+        schema = _READING_COMP_PROBLEM_SCHEMA
+    else:
+        items_lines = []
+        for it in items:
+            opts_text = "\n".join(f"  {k}. {v}" for k, v in sorted(it.options.items()))
+            items_lines.append(
+                f"第{it.num}空\n选项：\n{opts_text}\n正确答案：{it.correct_answer or '不明'}"
+            )
+        items_info = "\n\n".join(items_lines)
+        prompt += _PASSAGE_FILL_PROBLEM_PROMPT.format(
+            passage=problem.passage or "",
+            items_info=items_info,
+            schema_json=json.dumps(_PASSAGE_FILL_PROBLEM_SCHEMA, ensure_ascii=False),
+        )
+        schema = _PASSAGE_FILL_PROBLEM_SCHEMA
 
     llm = get_llm_client()
     try:
-        raw = await llm.analyze(prompt, _PASSAGE_FILL_PROBLEM_SCHEMA)
+        raw = await llm.analyze(prompt, schema)
         result_data = json.loads(raw) if isinstance(raw, str) else raw
     except Exception as e:
         logger.error("LLM problem analysis failed for problem %s: %s", problem_id, e)

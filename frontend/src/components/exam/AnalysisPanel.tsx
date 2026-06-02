@@ -498,6 +498,86 @@ function PassageFillProblemAnalysis({ data }: { data: SD }) {
 
 // ─── Dispatch ─────────────────────────────────────────────────────────────────
 
+// ─── Problem-level reading_comp renderer ─────────────────────────────────────
+
+type SentenceRow = {
+  text: string; translation: string
+  vocab?: Array<{ surface: string; base: string; reading: string; meaning: string; part_of_speech: string; jlpt_level?: string; example?: string }>
+  grammar?: Array<{ pattern: string; meaning: string; connection?: string; example?: string }>
+}
+
+function ReadingCompProblemAnalysis({ data }: { data: SD; itemId?: string }) {
+  const sentences = data.sentences as SentenceRow[] | undefined
+  const questions = data.questions as Array<{
+    num: number
+    options_analysis: Array<{ option: string; is_correct: boolean; explanation: string }>
+  }> | undefined
+
+  // itemId format is UUID — we match by position using the questions array order
+  // The current question is shown first; sentences below
+  return (
+    <div className="space-y-4">
+      {questions && questions.map(q => (
+        <div key={q.num} className="space-y-1.5">
+          <p className="text-xs font-semibold text-fg-muted">第 {q.num} 题</p>
+          <OptionTabs options={q.options_analysis} />
+        </div>
+      ))}
+
+      {sentences && sentences.length > 0 && (
+        <div className="space-y-3 pt-1">
+          <div className="flex items-center gap-2">
+            <div className="flex-1 h-px bg-border" />
+            <p className="section-label shrink-0">语料解析</p>
+            <div className="flex-1 h-px bg-border" />
+          </div>
+          {sentences.map((s, idx) => (
+            <div key={idx} className="border border-border rounded-xl overflow-hidden">
+              <div className="bg-bg-subtle px-3 py-2">
+                <p className="text-sm font-medium text-fg leading-relaxed">{s.text}</p>
+                <p className="text-xs text-fg-muted mt-0.5">{s.translation}</p>
+              </div>
+              {((s.vocab?.length ?? 0) > 0 || (s.grammar?.length ?? 0) > 0) && (
+                <div className="px-3 py-2.5 space-y-3">
+                  {(s.vocab?.length ?? 0) > 0 && (
+                    <div className="space-y-1.5">
+                      <p className="section-label">词汇</p>
+                      <div className="flex flex-wrap gap-2">
+                        {s.vocab!.map((v, i) => (
+                          <VocabChip key={`${v.surface}-${i}`} item={{
+                            surface: v.surface, base: v.base, reading: v.reading ?? null,
+                            meaning: v.meaning, part_of_speech: v.part_of_speech ?? null,
+                            jlpt_level: v.jlpt_level ?? null, register: null,
+                            usage: null, nuance: null, example: v.example ?? null,
+                          }} />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {(s.grammar?.length ?? 0) > 0 && (
+                    <div className="space-y-1.5">
+                      <p className="section-label">语法</p>
+                      <div className="space-y-2">
+                        {s.grammar!.map((g, i) => (
+                          <GrammarKBCard key={`${g.pattern}-${i}`} item={{
+                            pattern: g.pattern, meaning: g.meaning,
+                            connection: g.connection ?? null, example: g.example ?? null,
+                            jlpt_level: null, register: null, usage: null, nuance: null,
+                          }} />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 const TYPE_RENDERERS: Record<string, (data: SD) => React.ReactNode> = {
   vocab_fill:      data => <VocabFillAnalysis data={data} />,
   synonym:         data => <SynonymAnalysis data={data} />,
@@ -691,7 +771,7 @@ export default function AnalysisPanel({ itemId, problem }: {
   itemId?: string
   problem?: { id: string; type: string }
 }) {
-  const isProblemLevel = problem?.type === 'passage_fill'
+  const isProblemLevel = problem?.type === 'passage_fill' || problem?.type === 'reading_comp'
 
   const [data, setData] = useState<QuestionAnalysisResponse | null>(null)
   const [problemData, setProblemData] = useState<ProblemAnalysisResponse | null>(null)
@@ -770,7 +850,7 @@ export default function AnalysisPanel({ itemId, problem }: {
 
   // For problem-level analysis
   const psd = problemData?.session_data
-  const isProblemAnalysis = isProblemLevel && !!psd && Array.isArray(psd?.items)
+  const isProblemAnalysis = isProblemLevel && !!psd && (Array.isArray(psd?.items) || Array.isArray(psd?.questions))
 
   // Merge stem_notes atoms + sd.atoms, deduplicate by key
   const stemAtoms: ExamAtom[] = ((sd?.stem_notes ?? []) as Array<{
@@ -805,9 +885,12 @@ export default function AnalysisPanel({ itemId, problem }: {
           <p className="text-xs text-fg-muted text-center py-4">暂无解析</p>
         )}
 
-        {/* Problem-level passage_fill analysis */}
-        {!loading && isProblemAnalysis && psd && (
+        {/* Problem-level analysis */}
+        {!loading && isProblemAnalysis && psd && problem?.type === 'passage_fill' && (
           <PassageFillProblemAnalysis data={psd} />
+        )}
+        {!loading && isProblemAnalysis && psd && problem?.type === 'reading_comp' && (
+          <ReadingCompProblemAnalysis data={psd} itemId={itemId} />
         )}
 
         {/* Item-level analysis */}
