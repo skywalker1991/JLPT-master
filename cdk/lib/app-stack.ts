@@ -20,7 +20,7 @@ export class AppStack extends cdk.Stack {
     // Security group: HTTP inbound only, SSM uses HTTPS outbound (covered by allowAllOutbound)
     const sg = new ec2.SecurityGroup(this, 'AppSg', {
       vpc,
-      description: 'JLPT app — HTTP inbound, SSM outbound',
+      description: 'JLPT app - HTTP inbound, SSM outbound',
       allowAllOutbound: true,
     });
     sg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80), 'HTTP');

@@ -50,3 +50,5 @@ docs/
 frontend/node_modules/.vite/
 frontend/node_modules/.tmp/
 backend/**/__pycache__/
+cdk/cdk.out/
+cdk/cdk.context.json
