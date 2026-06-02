@@ -399,7 +399,7 @@ export default function ExamSession({
             isCorrect={isCorrectMap?.[item.id]}
             problemType={prob.type}
           />
-          {reviewMode && Object.keys(item.options).length > 0 && prob.type !== 'passage_fill' && (
+          {reviewMode && Object.keys(item.options).length > 0 && !['passage_fill','reading_comp'].includes(prob.type) && (
             <button
               onClick={() => setAnalysisItemId(analysisItemId === item.id ? null : item.id)}
               className="flex items-center gap-1.5 text-xs text-accent hover:text-accent-hover transition-colors"
@@ -408,13 +408,13 @@ export default function ExamSession({
               {analysisItemId === item.id ? '收起解析' : 'AI 解析'}
             </button>
           )}
-          {reviewMode && analysisItemId === item.id && prob.type !== 'passage_fill' && (
+          {reviewMode && analysisItemId === item.id && !['passage_fill','reading_comp'].includes(prob.type) && (
             <AnalysisPanel itemId={item.id} />
           )}
         </div>
 
-        {/* Problem-level analysis for passage_fill (shown once per problem) */}
-        {reviewMode && prob.type === 'passage_fill' && (
+        {/* Problem-level analysis for passage_fill / reading_comp */}
+        {reviewMode && ['passage_fill','reading_comp'].includes(prob.type) && (
           <div className="space-y-2">
             <button
               onClick={() => setAnalysisProblemId(analysisProblemId === prob.id ? null : prob.id)}

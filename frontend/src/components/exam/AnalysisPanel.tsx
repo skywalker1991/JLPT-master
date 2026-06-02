@@ -5,6 +5,7 @@ import { getItemAnalysis, getProblemAnalysis, createAtom, createRelation } from 
 import type { QuestionAnalysisResponse, VocabItem, GrammarItem } from '../../types'
 import VocabChip from '../analysis/VocabChip'
 import GrammarKBCard from '../analysis/GrammarCard'
+import AnalysisCard from '../analysis/AnalysisCard'
 
 type SD = Record<string, unknown>
 
@@ -455,39 +456,27 @@ function PassageFillProblemAnalysis({ data }: { data: SD }) {
                 <p className="text-sm font-medium text-fg leading-relaxed">{s.text}</p>
                 <p className="text-xs text-fg-muted mt-0.5">{s.translation}</p>
               </div>
-              {((s.vocab?.length ?? 0) > 0 || (s.grammar?.length ?? 0) > 0) && (
-                <div className="px-3 py-2.5 space-y-3">
-                  {(s.vocab?.length ?? 0) > 0 && (
-                    <div className="space-y-1.5">
-                      <p className="section-label">词汇</p>
-                      <div className="flex flex-wrap gap-2">
-                        {s.vocab!.map((v, i) => (
-                          <VocabChip key={`${v.surface}-${i}`} item={{
-                            surface: v.surface, base: v.base, reading: v.reading ?? null,
-                            meaning: v.meaning, part_of_speech: v.part_of_speech ?? null,
-                            jlpt_level: v.jlpt_level ?? null, register: null,
-                            usage: null, nuance: null, example: v.example ?? null,
-                          }} />
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {(s.grammar?.length ?? 0) > 0 && (
-                    <div className="space-y-1.5">
-                      <p className="section-label">语法</p>
-                      <div className="space-y-2">
-                        {s.grammar!.map((g, i) => (
-                          <GrammarKBCard key={`${g.pattern}-${i}`} item={{
-                            pattern: g.pattern, meaning: g.meaning,
-                            connection: g.connection ?? null, example: g.example ?? null,
-                            jlpt_level: null, register: null, usage: null, nuance: null,
-                          }} />
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
+              <div className="px-3 py-2.5">
+                <AnalysisCard
+                  preprocessed={null}
+                  analysis={{
+                    index: idx,
+                    text: s.text,
+                    translation: s.translation,
+                    vocab: (s.vocab ?? []).map(v => ({
+                      surface: v.surface, base: v.base, reading: v.reading ?? null,
+                      meaning: v.meaning, part_of_speech: v.part_of_speech ?? null,
+                      jlpt_level: v.jlpt_level ?? null, register: null,
+                      usage: null, nuance: null, example: v.example ?? null,
+                    })),
+                    grammar: (s.grammar ?? []).map(g => ({
+                      pattern: g.pattern, meaning: g.meaning,
+                      connection: g.connection ?? null, example: g.example ?? null,
+                      jlpt_level: null, register: null, usage: null, nuance: null,
+                    })),
+                  }}
+                />
+              </div>
             </div>
           ))}
         </div>
@@ -510,17 +499,33 @@ function ReadingCompProblemAnalysis({ data }: { data: SD; itemId?: string }) {
   const sentences = data.sentences as SentenceRow[] | undefined
   const questions = data.questions as Array<{
     num: number
-    options_analysis: Array<{ option: string; is_correct: boolean; explanation: string }>
+    stem_translation: string
+    options: Array<{ option: string; text: string; translation: string; is_correct: boolean }>
   }> | undefined
 
-  // itemId format is UUID — we match by position using the questions array order
-  // The current question is shown first; sentences below
   return (
     <div className="space-y-4">
       {questions && questions.map(q => (
         <div key={q.num} className="space-y-1.5">
           <p className="text-xs font-semibold text-fg-muted">第 {q.num} 题</p>
-          <OptionTabs options={q.options_analysis} />
+          {q.stem_translation && (
+            <p className="text-xs text-fg-muted leading-relaxed">{q.stem_translation}</p>
+          )}
+          <div className="space-y-1">
+            {q.options?.map(o => (
+              <div key={o.option} className={`flex gap-2 rounded-lg px-2.5 py-1.5 text-xs ${
+                o.is_correct ? 'bg-green-50 border border-green-200' : 'bg-bg-subtle'
+              }`}>
+                <span className={`font-semibold shrink-0 ${o.is_correct ? 'text-green-700' : 'text-fg-muted'}`}>
+                  {o.option}.
+                </span>
+                <div className="space-y-0.5">
+                  <p className={o.is_correct ? 'text-green-800 font-medium' : 'text-fg'}>{o.text}</p>
+                  <p className="text-fg-muted">{o.translation}</p>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       ))}
 
@@ -537,39 +542,27 @@ function ReadingCompProblemAnalysis({ data }: { data: SD; itemId?: string }) {
                 <p className="text-sm font-medium text-fg leading-relaxed">{s.text}</p>
                 <p className="text-xs text-fg-muted mt-0.5">{s.translation}</p>
               </div>
-              {((s.vocab?.length ?? 0) > 0 || (s.grammar?.length ?? 0) > 0) && (
-                <div className="px-3 py-2.5 space-y-3">
-                  {(s.vocab?.length ?? 0) > 0 && (
-                    <div className="space-y-1.5">
-                      <p className="section-label">词汇</p>
-                      <div className="flex flex-wrap gap-2">
-                        {s.vocab!.map((v, i) => (
-                          <VocabChip key={`${v.surface}-${i}`} item={{
-                            surface: v.surface, base: v.base, reading: v.reading ?? null,
-                            meaning: v.meaning, part_of_speech: v.part_of_speech ?? null,
-                            jlpt_level: v.jlpt_level ?? null, register: null,
-                            usage: null, nuance: null, example: v.example ?? null,
-                          }} />
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {(s.grammar?.length ?? 0) > 0 && (
-                    <div className="space-y-1.5">
-                      <p className="section-label">语法</p>
-                      <div className="space-y-2">
-                        {s.grammar!.map((g, i) => (
-                          <GrammarKBCard key={`${g.pattern}-${i}`} item={{
-                            pattern: g.pattern, meaning: g.meaning,
-                            connection: g.connection ?? null, example: g.example ?? null,
-                            jlpt_level: null, register: null, usage: null, nuance: null,
-                          }} />
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
+              <div className="px-3 py-2.5">
+                <AnalysisCard
+                  preprocessed={null}
+                  analysis={{
+                    index: idx,
+                    text: s.text,
+                    translation: s.translation,
+                    vocab: (s.vocab ?? []).map(v => ({
+                      surface: v.surface, base: v.base, reading: v.reading ?? null,
+                      meaning: v.meaning, part_of_speech: v.part_of_speech ?? null,
+                      jlpt_level: v.jlpt_level ?? null, register: null,
+                      usage: null, nuance: null, example: v.example ?? null,
+                    })),
+                    grammar: (s.grammar ?? []).map(g => ({
+                      pattern: g.pattern, meaning: g.meaning,
+                      connection: g.connection ?? null, example: g.example ?? null,
+                      jlpt_level: null, register: null, usage: null, nuance: null,
+                    })),
+                  }}
+                />
+              </div>
             </div>
           ))}
         </div>

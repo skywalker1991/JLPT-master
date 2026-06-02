@@ -129,7 +129,7 @@ function SectionReview({
 }: {
   section: ReviewSection
   onAnalyze: (itemId: string) => void
-  onAnalyzeProblem: (problemId: string) => void
+  onAnalyzeProblem: (problem: { id: string; type: string }) => void
 }) {
   const [open, setOpen] = useState(false)
 
@@ -203,13 +203,13 @@ function SectionReview({
                 <ItemReviewCard
                   key={item.id}
                   item={item}
-                  onAnalyze={prob.type === 'passage_fill' ? () => {} : () => onAnalyze(item.id)}
-                  hideAnalyzeButton={prob.type === 'passage_fill'}
+                  onAnalyze={['passage_fill','reading_comp'].includes(prob.type) ? () => {} : () => onAnalyze(item.id)}
+                  hideAnalyzeButton={['passage_fill','reading_comp'].includes(prob.type)}
                 />
               ))}
-              {prob.type === 'passage_fill' && prob.items.some(i => Object.keys(i.options).length > 0) && (
+              {['passage_fill','reading_comp'].includes(prob.type) && prob.items.some(i => Object.keys(i.options).length > 0) && (
                 <button
-                  onClick={() => onAnalyzeProblem(prob.id)}
+                  onClick={() => onAnalyzeProblem({ id: prob.id, type: prob.type })}
                   className="flex items-center gap-1.5 text-xs text-accent hover:text-accent-hover font-medium transition-colors"
                 >
                   <Brain className="w-3.5 h-3.5" />
@@ -234,7 +234,7 @@ export default function AttemptReview({
   const [review, setReview] = useState<AttemptReviewData | null>(null)
   const [loading, setLoading] = useState(true)
   const [analysisItemId, setAnalysisItemId] = useState<string | null>(null)
-  const [analysisProblemId, setAnalysisProblemId] = useState<string | null>(null)
+  const [analysisProblem, setAnalysisProblem] = useState<{ id: string; type: string } | null>(null)
 
   useEffect(() => {
     setLoading(true)
@@ -282,8 +282,8 @@ export default function AttemptReview({
         <SectionReview
           key={sec.id}
           section={sec}
-          onAnalyze={id => { setAnalysisItemId(id); setAnalysisProblemId(null) }}
-          onAnalyzeProblem={id => { setAnalysisProblemId(analysisProblemId === id ? null : id); setAnalysisItemId(null) }}
+          onAnalyze={id => { setAnalysisItemId(id); setAnalysisProblem(null) }}
+          onAnalyzeProblem={p => { setAnalysisProblem(analysisProblem?.id === p.id ? null : p); setAnalysisItemId(null) }}
         />
       ))}
 
@@ -291,8 +291,8 @@ export default function AttemptReview({
         <AnalysisPanel itemId={analysisItemId} />
       )}
 
-      {analysisProblemId && (
-        <AnalysisPanel problem={{ id: analysisProblemId, type: 'passage_fill' }} />
+      {analysisProblem && (
+        <AnalysisPanel problem={analysisProblem} />
       )}
     </div>
   )

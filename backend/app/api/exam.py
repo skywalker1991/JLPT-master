@@ -343,6 +343,7 @@ _LISTENING_SCHEMA = {
     "required": ["analysis_type", "options_analysis", "sentences"],
 }
 
+
 _SCHEMAS: dict[str, dict] = {
     "vocab_fill":     _VOCAB_FILL_SCHEMA,
     "synonym":        _SYNONYM_SCHEMA,
@@ -728,20 +729,22 @@ _READING_COMP_PROBLEM_SCHEMA = {
                 "type": "object",
                 "properties": {
                     "num": {"type": "integer"},
-                    "options_analysis": {
+                    "stem_translation": {"type": "string"},
+                    "options": {
                         "type": "array",
                         "items": {
                             "type": "object",
                             "properties": {
                                 "option": {"type": "string"},
+                                "text": {"type": "string"},
+                                "translation": {"type": "string"},
                                 "is_correct": {"type": "boolean"},
-                                "explanation": {"type": "string"},
                             },
-                            "required": ["option", "is_correct", "explanation"],
+                            "required": ["option", "text", "translation", "is_correct"],
                         },
                     },
                 },
-                "required": ["num", "options_analysis"],
+                "required": ["num", "stem_translation", "options"],
             },
         },
     },
@@ -749,7 +752,7 @@ _READING_COMP_PROBLEM_SCHEMA = {
 }
 
 _READING_COMP_PROBLEM_PROMPT = """\
-你是日语阅读理解专家。对以下JLPT阅读理解题进行完整分析：逐句解析文章，并对每道题的各选项给出判断理由。
+你是日语阅读理解专家。请对以下JLPT阅读文章进行逐句语料分析，并翻译题目。所有解释、说明、翻译均使用中文输出，不得使用英文。
 
 文章：
 {passage}
@@ -757,17 +760,18 @@ _READING_COMP_PROBLEM_PROMPT = """\
 题目：
 {questions_info}
 
-要求：
-- analysis_type = "reading_comp"
-- sentences：将文章按自然句切分，每句给出 translation（中文）、vocab（值得学习的词汇，≤3个/句）、grammar（值得学习的语法点，≤2个/句，pattern 以〜开头）
-- questions：每道题编号（num）对应的 options_analysis（每个选项的 is_correct + explanation，正确选项引用原文依据，错误选项指出与原文矛盾处）
-- 所有文字字段使用中文输出
+请按照以下要求输出：
+1. sentences：将文章分割为句子，对每个句子提供中文翻译。
+2. 尽可能全面地提取每个句子中所有值得学习的词汇（vocabulary）和语法点（grammar），不限等级，宁多勿少。
+3. 语法点必须覆盖：助词用法、助动词（て形/た形/ている/てしまう 等）、句末表达（ね/よ/でしょう 等）、接续表达、敬语形式、条件句、被动/使役等——即使是"简单句"也一定存在可标注的语法点，grammar 数组不能为空。
+4. 每个词汇和语法点都必须标注 jlpt_level（N1/N2/N3/N4/N5），如果不确定则填 null。
+5. questions：每道题编号（num）、stem_translation（题干中文翻译）、options（每个选项的 option字母、text原文、translation中文翻译、is_correct是否正确答案）
 
 直接输出JSON：
 {schema_json}"""
 
 _PASSAGE_FILL_PROBLEM_PROMPT = """\
-你是日语语法专家。分析JLPT补全文章题，逐空对比选项，并对全文进行语料解析。
+你是日语语法专家。请对以下JLPT补全文章题进行逐句语料分析，并对比各填空选项。所有解释、说明、翻译均使用中文输出，不得使用英文。
 
 文章：
 {passage}
@@ -775,11 +779,12 @@ _PASSAGE_FILL_PROBLEM_PROMPT = """\
 填空明细：
 {items_info}
 
-要求：
-- analysis_type = "passage_fill"
-- items：每处填空编号（num）对应的 options_analysis（每个选项的 is_correct + explanation 说明在该语境中适合或不适合的理由，正确选项需说明上下文线索）
-- sentences：将文章按自然句切分，每句给出 translation（中文）、vocab（值得学习的词汇，≤3个/句）、grammar（值得学习的语法点，≤2个/句，pattern 以〜开头）
-- 重要：所有文字字段使用中文输出
+请按照以下要求输出：
+1. sentences：将文章分割为句子，对每个句子提供中文翻译。
+2. 尽可能全面地提取每个句子中所有值得学习的词汇（vocabulary）和语法点（grammar），不限等级，宁多勿少。
+3. 语法点必须覆盖：助词用法、助动词（て形/た形/ている/てしまう 等）、句末表达（ね/よ/でしょう 等）、接续表达、敬语形式、条件句、被动/使役等——即使是"简单句"也一定存在可标注的语法点，grammar 数组不能为空。
+4. 每个词汇和语法点都必须标注 jlpt_level（N1/N2/N3/N4/N5），如果不确定则填 null。
+5. items：每处填空编号（num）对应的 options_analysis（每个选项的 is_correct + explanation 说明在该语境中适合或不适合的理由，正确选项需说明上下文线索）
 
 直接输出JSON：
 {schema_json}"""
