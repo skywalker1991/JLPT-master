@@ -63,12 +63,20 @@ function DraftList({
               >
                 <p className="text-xs font-medium text-fg truncate">{d.filename ?? '无文件名'}</p>
                 <div className="flex items-center gap-1.5 mt-0.5">
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium flex items-center gap-1 ${
                     d.status === 'confirmed'
                       ? 'bg-success-light text-success-fg'
+                      : d.status === 'processing'
+                      ? 'bg-blue-100 text-blue-700'
+                      : d.status === 'failed'
+                      ? 'bg-red-100 text-red-700'
                       : 'bg-orange-100 text-orange-700'
                   }`}>
-                    {d.status === 'confirmed' ? '已入库' : '待校对'}
+                    {d.status === 'processing' && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
+                    {d.status === 'confirmed' ? '已入库'
+                      : d.status === 'processing' ? '识别中'
+                      : d.status === 'failed' ? '识别失败'
+                      : '待校对'}
                   </span>
                   <span className="text-[10px] text-fg-subtle">
                     {date.getMonth() + 1}/{date.getDate()}
@@ -110,6 +118,24 @@ export default function AdminIngestPage() {
       .catch(() => setLoadingDrafts(false))
   }, [])
 
+  // Poll when selected draft is still processing
+  useEffect(() => {
+    if (draft?.status !== 'processing') return
+    const timer = setInterval(async () => {
+      try {
+        const updated = await getDraft(draft.id)
+        if (updated.status !== 'processing') {
+          setDraft(updated)
+          await refresh()
+          clearInterval(timer)
+        }
+      } catch {
+        clearInterval(timer)
+      }
+    }, 3000)
+    return () => clearInterval(timer)
+  }, [draft?.id, draft?.status])
+
   async function handleSelect(id: string) {
     setSelectedId(id)
     setDraft(null)
@@ -126,8 +152,12 @@ export default function AdminIngestPage() {
     setUploading(true)
     try {
       const d = await createDraftFromPdf(file)
-      await refresh()
-      await handleSelect(d.id)
+      setDrafts(prev => [
+        { id: d.id, filename: d.filename, status: d.status, paper_id: d.paper_id, created_at: d.created_at, updated_at: d.updated_at },
+        ...prev,
+      ])
+      setSelectedId(d.id)
+      setDraft(d)
     } catch (e) {
       alert(`上传失败：${(e as Error).message}`)
     } finally {
@@ -188,7 +218,22 @@ export default function AdminIngestPage() {
         </div>
       )}
 
-      {selectedId && draft && (
+      {selectedId && draft?.status === 'processing' && (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center space-y-3">
+            <Loader2 className="w-8 h-8 animate-spin text-accent mx-auto" />
+            <p className="text-sm text-fg-muted">AI 识别中，请稍候…</p>
+          </div>
+        </div>
+      )}
+
+      {selectedId && draft?.status === 'failed' && (
+        <div className="flex-1 flex items-center justify-center">
+          <p className="text-sm text-danger">识别失败，请删除后重新上传</p>
+        </div>
+      )}
+
+      {selectedId && draft && draft.status !== 'processing' && draft.status !== 'failed' && (
         <div className="flex-1 flex min-h-0 overflow-hidden">
           <div className="w-2/5 shrink-0 border-r border-border flex flex-col">
             <div className="px-4 py-2 border-b border-border bg-surface shrink-0">

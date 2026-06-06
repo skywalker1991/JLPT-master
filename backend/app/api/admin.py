@@ -1,4 +1,5 @@
 """Admin API — exam ingestion, draft management, media upload."""
+import asyncio
 import json
 import logging
 import uuid as _uuid
@@ -12,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.db import (
     ExamPaper, ExamSection, ExamProblem, ExamItem, ExamDraft, get_db,
+    async_session_factory,
 )
 from app.schemas.exam import DraftSummary, DraftDetail, MediaUploadResponse
 from app.config import get_settings
@@ -87,41 +89,25 @@ async def create_draft_from_pdf(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
 ):
-    """Upload PDF → run pdf_to_md → run convert_exam → create ExamDraft."""
-    import tempfile
-    settings = get_settings()
-
+    """Upload PDF → create draft immediately → parse async in background."""
     pdf_bytes = await file.read()
     if not pdf_bytes:
         raise HTTPException(status_code=400, detail="Empty file")
 
-    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-        tmp.write(pdf_bytes)
-        tmp_path = Path(tmp.name)
-
-    try:
-        import sys as _sys
-        _sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-        from scripts.convert_exam import _strip_answers
-        markdown_raw = await _run_pdf_to_md(tmp_path, settings.LLM_API_KEY)
-        draft_json = await _run_convert_exam(markdown_raw, settings.LLM_API_KEY)
-        _strip_answers(draft_json)
-        _inject_metadata_from_md(draft_json, markdown_raw)
-    except Exception as e:
-        logger.error("Ingestion failed for %s: %s", file.filename, e)
-        raise HTTPException(status_code=502, detail=f"AI parsing failed: {e}")
-    finally:
-        tmp_path.unlink(missing_ok=True)
-
     draft = ExamDraft(
         filename=file.filename,
-        markdown_raw=markdown_raw,
-        draft_json=draft_json,
-        status="pending",
+        markdown_raw=None,
+        draft_json=None,
+        status="processing",
     )
     db.add(draft)
     await db.commit()
     await db.refresh(draft)
+
+    settings = get_settings()
+    asyncio.create_task(
+        _process_draft_pdf(draft.id, pdf_bytes, file.filename, settings.LLM_API_KEY)
+    )
 
     return DraftDetail(
         id=draft.id, filename=draft.filename,
@@ -129,6 +115,44 @@ async def create_draft_from_pdf(
         status=draft.status, paper_id=draft.paper_id,
         created_at=draft.created_at, updated_at=draft.updated_at,
     )
+
+
+async def _process_draft_pdf(draft_id: _uuid.UUID, pdf_bytes: bytes, filename: str, api_key: str) -> None:
+    """Background task: run Gemini parsing and update draft when done."""
+    import tempfile
+    import sys as _sys
+    _sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+    from scripts.convert_exam import _strip_answers
+
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+            tmp.write(pdf_bytes)
+            tmp_path = Path(tmp.name)
+
+        markdown_raw = await _run_pdf_to_md(tmp_path, api_key)
+        draft_json = await _run_convert_exam(markdown_raw, api_key)
+        _strip_answers(draft_json)
+        _inject_metadata_from_md(draft_json, markdown_raw)
+        new_status = "pending"
+    except Exception as e:
+        logger.error("Ingestion failed for %s: %s", filename, e)
+        markdown_raw = None
+        draft_json = None
+        new_status = "failed"
+    finally:
+        if tmp_path:
+            tmp_path.unlink(missing_ok=True)
+
+    async with async_session_factory() as session:
+        draft = await session.get(ExamDraft, draft_id)
+        if draft is None:
+            return
+        draft.markdown_raw = markdown_raw
+        draft.draft_json = draft_json
+        draft.status = new_status
+        draft.updated_at = datetime.utcnow()
+        await session.commit()
 
 
 def _inject_metadata_from_md(draft_json: dict, markdown: str) -> None:

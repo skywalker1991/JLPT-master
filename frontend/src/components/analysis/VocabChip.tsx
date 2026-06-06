@@ -23,7 +23,7 @@ export default function VocabChip({ item }: Props) {
   const { toast } = useToast()
 
   const badgeClass = item.jlpt_level ? (JLPT_BADGE[item.jlpt_level.toUpperCase()] ?? '') : ''
-  const atomKey = /^[぀-ヿ]+$/.test(item.base) ? item.surface : item.base
+  const atomKey = item.base
 
   const style = (() => {
     const pos = item.part_of_speech
