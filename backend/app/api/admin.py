@@ -337,21 +337,26 @@ async def confirm_draft(draft_id: _uuid.UUID, db: AsyncSession = Depends(get_db)
 _ANSWER_PROMPT = """这是 JLPT 试卷的参考答案页，格式为表格：每个問題占两行，第一行是题号（n番），第二行是对应答案（1/2/3/4）。
 
 读取规则：
-1. 言語知識（文字・語彙 / 文法・読解）各題：直接使用表格中显示的番号（全局题号，如 1番=Q1、46番=Q46）
-2. 聴解各題：使用每个聴解组内的相对番号（聴解1的1番=Q1、聴解2的1番=Q1……各组独立编号）
+1. 言語知識（文字・語彙 / 文法・読解）各題：使用表格中显示的全局番号（如 1番=Q1、46番=Q46）
+2. 聴解各題：使用 C{组号}Q{番号} 格式（聴解1的1番=C1Q1，聴解2的1番=C2Q1，依此类推）
 3. 逐列对应：番号行与答案行严格一一对应，不跳行
 
-请将所有答案提取为以下格式，每道题单独一行：
-Q1: 2
-Q2: 4
-Q3: 1
+输出格式示例（言語知識用Q，聴解用C{n}Q）：
+Q1: 1
+Q2: 2
+...
+C1Q1: 1
+C1Q2: 4
+...
+C2Q1: 2
+C2Q2: 4
 ...
 
 要求：
-- 格式严格为 `Q{番号}: {单个数字}`，不加任何其他内容
+- 言語知識严格用 `Q{番号}: {数字}`
+- 聴解严格用 `C{组号}Q{番号}: {数字}`，组号从1开始
 - 番号和答案数字必须与表格完全一致
-- 言語知識和聴解分别按各自的番号列出（聴解各组均从Q1开始）
-- 只输出 Q 行，不输出任何标题、分隔符或说明"""
+- 只输出这两种格式的行，不输出任何其他内容"""
 
 
 @router.post("/drafts/{draft_id}/import-answers", response_model=DraftDetail)
@@ -414,21 +419,34 @@ async def import_answers(
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Gemini failed: {e}")
 
-    # Parse Q{n}: {d} lines
-    logger.info("Gemini raw response:\n%s", response.text[:2000])
-    answer_lines = "\n".join(
-        line for line in response.text.splitlines()
-        if re.match(r'^Q\d+:\s*\d', line.strip())
-    )
-    pseudo_md = f"## 答案\n{answer_lines}"
-    answers = _parse_answers(pseudo_md)
-    logger.info("Parsed answers (%d): %s", len(answers), dict(sorted(answers.items())[:20]))
+    # Parse Q{n} (言語知識) and C{g}Q{n} (聴解) lines
+    regular_answers: dict[int, str] = {}
+    listening_answers: dict[tuple, str] = {}
+    for line in response.text.splitlines():
+        line = line.strip()
+        m = re.match(r'^C(\d+)Q(\d+):\s*(\d)', line)
+        if m:
+            listening_answers[(int(m.group(1)), int(m.group(2)))] = m.group(3)
+            continue
+        m = re.match(r'^Q(\d+):\s*(\d)', line)
+        if m:
+            regular_answers[int(m.group(1))] = m.group(2)
 
-    if not answers:
+    if not regular_answers and not listening_answers:
         raise HTTPException(status_code=422, detail="No answers could be extracted from the PDF")
 
     data = copy.deepcopy(draft.draft_json)
-    _inject_answers(data, answers)
+    # Inject 言語知識 answers by global num
+    _inject_answers(data, regular_answers)
+    # Inject 聴解 answers by (group_index, num)
+    for section in data.get("sections", []):
+        if "聴" not in section.get("name", ""):
+            continue
+        for prob_idx, problem in enumerate(section.get("problems", []), 1):
+            for item in problem.get("items", []):
+                key = (prob_idx, item.get("num"))
+                if key in listening_answers:
+                    item["correct_answer"] = listening_answers[key]
     draft.draft_json = data
     flag_modified(draft, "draft_json")
     draft.updated_at = datetime.utcnow()
