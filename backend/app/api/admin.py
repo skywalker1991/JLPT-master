@@ -415,12 +415,14 @@ async def import_answers(
         raise HTTPException(status_code=502, detail=f"Gemini failed: {e}")
 
     # Parse Q{n}: {d} lines
+    logger.info("Gemini raw response:\n%s", response.text[:2000])
     answer_lines = "\n".join(
         line for line in response.text.splitlines()
         if re.match(r'^Q\d+:\s*\d', line.strip())
     )
     pseudo_md = f"## 答案\n{answer_lines}"
     answers = _parse_answers(pseudo_md)
+    logger.info("Parsed answers (%d): %s", len(answers), dict(sorted(answers.items())[:20]))
 
     if not answers:
         raise HTTPException(status_code=422, detail="No answers could be extracted from the PDF")
