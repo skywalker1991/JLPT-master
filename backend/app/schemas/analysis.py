@@ -151,6 +151,7 @@ class TokenInfo(BaseModel):
     base: str
     pos: str
     reading: str
+    pos_detail: str = ""  # Janome POS subcategory, e.g. 非自立 / 接尾 / サ変接続
 
 
 class PreprocessedSentence(BaseModel):

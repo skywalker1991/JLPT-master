@@ -4,6 +4,8 @@ export interface TokenInfo {
   base: string
   pos: string
   reading: string
+  /** Janome POS subcategory, e.g. 非自立 / 接尾 (absent on older data) */
+  pos_detail?: string
 }
 
 export interface PreprocessedSentence {

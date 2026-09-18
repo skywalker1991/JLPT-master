@@ -61,9 +61,10 @@ class Preprocessor:
             base = token.base_form if token.base_form and token.base_form != "*" else surface
             pos_parts = token.part_of_speech.split(",")
             pos = pos_parts[0] if pos_parts else "unknown"
+            pos_detail = pos_parts[1] if len(pos_parts) > 1 and pos_parts[1] != "*" else ""
             reading_raw = token.reading if token.reading and token.reading != "*" else surface
             reading = _kata_to_hira(reading_raw)
-            tokens.append(TokenInfo(surface=surface, base=base, pos=pos, reading=reading))
+            tokens.append(TokenInfo(surface=surface, base=base, pos=pos, reading=reading, pos_detail=pos_detail))
         return tokens
 
     def preprocess(self, text: str) -> PreprocessResponse:
