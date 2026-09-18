@@ -26,7 +26,7 @@ export default function TokenText({ tokens, fallback = '', className = '', highl
 
   let charOffset = 0
   return (
-    <span className={`flex flex-wrap gap-x-0.5 ${className}`}>
+    <span className={`flex flex-wrap items-baseline gap-x-0.5 ${className}`}>
       {tokens.map((token, i) => {
         const start = charOffset
         const end   = charOffset + token.surface.length
