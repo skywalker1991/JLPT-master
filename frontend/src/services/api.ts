@@ -56,11 +56,15 @@ export async function preprocess(text: string): Promise<PreprocessResponse> {
 
 // ---- Analyze (SSE stream) ----
 
-export async function* analyzeStream(req: AnalyzeRequest): AsyncGenerator<SentenceAnalysis> {
+export async function* analyzeStream(
+  req: AnalyzeRequest,
+  opts: { signal?: AbortSignal; onStart?: (analysisId: string) => void } = {},
+): AsyncGenerator<SentenceAnalysis> {
   const res = await fetch(`${BASE_URL}/api/analyze`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(req),
+    signal: opts.signal,
   })
   if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`)
 
@@ -78,6 +82,9 @@ export async function* analyzeStream(req: AnalyzeRequest): AsyncGenerator<Senten
     for (const line of lines) {
       if (line.startsWith('event: ')) {
         lastEvent = line.slice(7).trim()
+      } else if (line.startsWith('data: ') && lastEvent === 'start') {
+        try { opts.onStart?.(JSON.parse(line.slice(6)).analysis_id) } catch { /* skip */ }
+        lastEvent = ''
       } else if (line.startsWith('data: ') && lastEvent === 'sentence') {
         try { yield JSON.parse(line.slice(6)) } catch { /* skip */ }
         lastEvent = ''

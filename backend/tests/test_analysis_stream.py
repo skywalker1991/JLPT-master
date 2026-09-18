@@ -23,6 +23,15 @@ def test_extract_ignores_braces_inside_strings():
 
 
 class _FakeDB:
+    saved = None
+    progress: list = []
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
     def add(self, obj):
         obj.id = "00000000-0000-0000-0000-000000000000"
 
@@ -33,7 +42,11 @@ class _FakeDB:
         pass
 
     async def execute(self, stmt):
-        self.saved = stmt.compile().params.get("session_data")
+        data = stmt.compile().params.get("session_data")
+        if stmt.compile().params.get("status") == "completed":
+            self.saved = data
+        else:
+            self.progress = self.progress + [len(data["sentences"])]
 
 
 class _SkippingLLM:
@@ -56,13 +69,20 @@ class _SkippingLLM:
             yield text[i:i + 7]
 
 
-def _run(monkeypatch, llm, text):
+def _run(monkeypatch, llm, text, disconnect_after=None):
     monkeypatch.setattr(analysis_api, "get_llm_client", lambda: llm)
     db = _FakeDB()
+    monkeypatch.setattr(analysis_api, "_session_factory", lambda: db)
 
     async def go():
         resp = await analysis_api.analyze(AnalyzeRequest(text=text, type="text"), db=db)
-        return [e async for e in resp.body_iterator]
+        events = []
+        async for e in resp.body_iterator:
+            events.append(e)
+            if disconnect_after is not None and len(events) >= disconnect_after:
+                break  # client went away (e.g. phone backgrounded the tab)
+        await asyncio.gather(*analysis_api._background_tasks)
+        return events
 
     return asyncio.run(go()), db
 
@@ -88,3 +108,18 @@ def test_llm_failure_still_emits_all_sentences(monkeypatch):
     events, _ = _run(monkeypatch, _FailingLLM(), "一つ目。二つ目。")
     sentences = [json.loads(e["data"]) for e in events if e["event"] == "sentence"]
     assert [s["text"] for s in sentences] == ["一つ目。", "二つ目。"]
+
+
+def test_stream_starts_with_analysis_id(monkeypatch):
+    events, _ = _run(monkeypatch, _SkippingLLM(), "一つ目。二つ目。三つ目。")
+    assert events[0]["event"] == "start"
+    assert "analysis_id" in json.loads(events[0]["data"])
+
+
+def test_job_finishes_after_client_disconnects(monkeypatch):
+    events, db = _run(monkeypatch, _SkippingLLM(), "一つ目。二つ目。三つ目。", disconnect_after=2)
+    assert len(events) == 2  # client saw only the start event and one sentence
+    # ...but the job kept going, saved progress per sentence and the final result
+    assert db.progress == [1, 2, 3]
+    assert [s["text"] for s in db.saved["sentences"]] == ["一つ目。", "二つ目。", "三つ目。"]
+    assert not analysis_api._jobs

@@ -31,17 +31,22 @@ export default function AnalysisPage() {
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true)
     try {
-      const records = await getAnalyses({ limit: 50, status: 'completed' })
+      const records = await getAnalyses({ limit: 50, status: 'completed,in_progress' })
       setHistory(records)
     } catch { /* ignore */ } finally {
       setHistoryLoading(false)
     }
   }, [])
 
-  // Load on mount and after each completed analysis
+  // Load on mount, shortly after an analysis starts (shows it as 分析中)
+  // and after it finishes
   useEffect(() => { loadHistory() }, [loadHistory])
   useEffect(() => {
-    if (!isStreaming && sentences.length > 0) loadHistory()
+    if (isStreaming) {
+      const t = setTimeout(loadHistory, 3000)
+      return () => clearTimeout(t)
+    }
+    if (sentences.length > 0) loadHistory()
   }, [isStreaming]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleAnalyze = () => {

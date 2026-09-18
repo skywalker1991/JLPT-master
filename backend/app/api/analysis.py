@@ -1,13 +1,14 @@
+import asyncio
 import json
 import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sse_starlette.sse import EventSourceResponse
-from sqlalchemy import select, update
+from sqlalchemy import and_, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.db import Analysis, get_db
+from app.models.db import Analysis, async_session_factory, get_db
 from app.schemas.analysis import (
     AnalyzeRequest,
     PreprocessRequest,
@@ -347,11 +348,94 @@ async def preprocess_text(request: PreprocessRequest):
 # POST /analyze  (SSE stream)
 # ---------------------------------------------------------------------------
 
+class _Job:
+    """
+    An in-flight analysis. It runs as a background task, independent of any
+    HTTP connection, so a client that disconnects (e.g. a phone putting the
+    tab in the background) doesn't abort it; the client can re-attach later
+    by polling GET /analyses/{id}, which sees progress saved per sentence.
+    """
+
+    def __init__(self, analysis_id: UUID, by_index: bool):
+        self.analysis_id = analysis_id
+        self.by_index = by_index  # text mode: sentences keyed by source index
+        self.events: list[dict] = []
+        self.done = False
+        self._changed = asyncio.Event()
+
+    def push(self, event: dict):
+        self.events.append(event)
+        self._wake()
+
+    def finish(self):
+        self.done = True
+        self._wake()
+
+    def _wake(self):
+        self._changed.set()
+        self._changed = asyncio.Event()
+
+    async def wait_change(self):
+        await self._changed.wait()
+
+
+# Running jobs, keyed by analysis id. Single-process only (one uvicorn worker);
+# jobs are lost on restart, and their records then read as "interrupted".
+_jobs: dict[UUID, _Job] = {}
+_background_tasks: set[asyncio.Task] = set()
+_session_factory = async_session_factory
+
+
+def _effective_status(analysis: Analysis) -> str:
+    if analysis.status == "in_progress" and analysis.id not in _jobs:
+        return "interrupted"
+    return analysis.status
+
+
+async def _run_job(job: _Job, request: AnalyzeRequest):
+    progress: dict = {}
+    try:
+        async with _session_factory() as db:
+            async for event in _build_event_stream(request, job.analysis_id, db):
+                job.push(event)
+                if event.get("event") != "sentence":
+                    continue
+                sentence = json.loads(event["data"])
+                progress[sentence.get("index") if job.by_index else len(progress)] = sentence
+                ordered = [progress[k] for k in sorted(progress)] if job.by_index else list(progress.values())
+                await db.execute(
+                    update(Analysis)
+                    .where(Analysis.id == job.analysis_id, Analysis.status == "in_progress")
+                    .values(session_data={"sentences": ordered})
+                )
+                await db.commit()
+    except Exception as e:
+        logger.exception("Analysis job %s failed", job.analysis_id)
+        job.push({"event": "error", "data": json.dumps({"message": str(e)})})
+    finally:
+        job.finish()
+        _jobs.pop(job.analysis_id, None)
+
+
+async def _relay(job: _Job):
+    """Stream a job's events to one client; disconnecting only ends this relay."""
+    yield {"event": "start", "data": json.dumps({"analysis_id": str(job.analysis_id)})}
+    sent = 0
+    while True:
+        while sent < len(job.events):
+            yield job.events[sent]
+            sent += 1
+        if job.done:
+            return
+        await job.wait_change()
+
+
 @router.post("/analyze")
 async def analyze(request: AnalyzeRequest, db: AsyncSession = Depends(get_db)):
     """
-    Create analysis record, stream AI response sentence-by-sentence via SSE.
-    Each event carries a SentenceAnalysis JSON object.
+    Create an analysis record, start the analysis as a background job and
+    stream its events via SSE (first a "start" event carrying analysis_id,
+    then one "sentence" event per SentenceAnalysis, then "done").
     """
     input_content = request.text or request.image or ""
     analysis_record = Analysis(
@@ -365,6 +449,16 @@ async def analyze(request: AnalyzeRequest, db: AsyncSession = Depends(get_db)):
     analysis_id = analysis_record.id
     await db.commit()
 
+    job = _Job(analysis_id, by_index=request.type == "text")
+    _jobs[analysis_id] = job
+    task = asyncio.create_task(_run_job(job, request))
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+    return EventSourceResponse(_relay(job))
+
+
+def _build_event_stream(request: AnalyzeRequest, analysis_id: UUID, db: AsyncSession):
+    """Event generator that performs the analysis and saves the final result."""
     prompt, schema = _build_prompt(request)
     llm = get_llm_client()
 
@@ -457,7 +551,7 @@ async def analyze(request: AnalyzeRequest, db: AsyncSession = Depends(get_db)):
         yield {"event": "done", "data": json.dumps({"analysis_id": str(analysis_id)})}
 
     if request.type == "text":
-        return EventSourceResponse(text_event_generator())
+        return text_event_generator()
 
     async def event_generator():
         full_json = ""
@@ -552,7 +646,7 @@ async def analyze(request: AnalyzeRequest, db: AsyncSession = Depends(get_db)):
             except Exception:
                 pass
 
-    return EventSourceResponse(event_generator())
+    return event_generator()
 
 
 # ---------------------------------------------------------------------------
@@ -659,10 +753,24 @@ async def list_analyses(
     limit: int = Query(default=20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
 ):
-    """List analyses with optional status filter and pagination."""
+    """
+    List analyses with pagination and an optional comma-separated status
+    filter. "in_progress" means a job is still running; "interrupted" is an
+    in_progress record whose job is gone (e.g. lost in a restart).
+    """
     query = select(Analysis).order_by(Analysis.created_at.desc())
     if status:
-        query = query.where(Analysis.status == status)
+        running = list(_jobs)
+        conditions = []
+        for st in status.split(","):
+            st = st.strip()
+            if st == "in_progress":
+                conditions.append(and_(Analysis.status == "in_progress", Analysis.id.in_(running)))
+            elif st == "interrupted":
+                conditions.append(and_(Analysis.status == "in_progress", Analysis.id.not_in(running)))
+            elif st:
+                conditions.append(Analysis.status == st)
+        query = query.where(or_(*conditions))
 
     offset = (page - 1) * limit
     query = query.offset(offset).limit(limit)
@@ -674,7 +782,7 @@ async def list_analyses(
             "id": str(a.id),
             "input_type": a.input_type,
             "input_content": a.input_content[:200] if a.input_content else "",
-            "status": a.status,
+            "status": _effective_status(a),
             "created_at": a.created_at.isoformat() if a.created_at else None,
         }
         for a in analyses
@@ -697,7 +805,7 @@ async def get_analysis(analysis_id: UUID, db: AsyncSession = Depends(get_db)):
         "id": str(analysis.id),
         "input_type": analysis.input_type,
         "input_content": analysis.input_content,
-        "status": analysis.status,
+        "status": _effective_status(analysis),
         "session_data": analysis.session_data,
         "created_at": analysis.created_at.isoformat() if analysis.created_at else None,
     }

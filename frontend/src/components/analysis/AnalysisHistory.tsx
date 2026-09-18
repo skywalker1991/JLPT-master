@@ -73,6 +73,11 @@ export default function AnalysisHistory({ history, loading, onSelect, onDelete }
                 <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-accent/10 text-accent">
                   {INPUT_TYPE_LABELS[record.input_type as keyof typeof INPUT_TYPE_LABELS] ?? record.input_type}
                 </span>
+                {record.status === 'in_progress' && (
+                  <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 flex items-center gap-1">
+                    <Loader2 className="w-2.5 h-2.5 animate-spin" />分析中
+                  </span>
+                )}
                 <span className="text-[10px] text-fg-subtle">{timeAgo(record.created_at)}</span>
               </div>
               {(() => {
