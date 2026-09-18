@@ -1,5 +1,6 @@
 import { Outlet, useLocation } from 'react-router-dom'
 import TopNav from './TopNav'
+import BottomNav from './BottomNav'
 import AnalysisPage from '../../pages/AnalysisPage'
 import VideoPage from '../../pages/VideoPage'
 import KnowledgeBasePage from '../../pages/KnowledgeBasePage'
@@ -20,7 +21,7 @@ export default function Layout() {
   const isKbDetail = /^\/kb\/.+/.test(pathname)
 
   return (
-    <div className="h-dvh bg-bg flex flex-col overflow-hidden">
+    <div className="h-dvh bg-bg flex flex-col overflow-hidden" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
       <TopNav />
       <main className="flex-1 flex flex-col min-h-0 overflow-hidden">
         <Keep active={pathname === '/'}><AnalysisPage /></Keep>
@@ -32,6 +33,7 @@ export default function Layout() {
         {/* /kb/:id needs useParams — rendered via Outlet */}
         {isKbDetail && <div className="flex-1 flex flex-col min-h-0 overflow-hidden"><Outlet /></div>}
       </main>
+      <BottomNav />
     </div>
   )
 }

@@ -19,20 +19,21 @@ const MODELS = [
   { value: 'gemini-2.5-pro',   label: 'Gemini 2.5 Pro' },
 ]
 
-const NAV = [
-  { to: '/',            end: true,  icon: FileText,   label: '语料分析' },
-  { to: '/jlpt',        end: false, icon: BookMarked, label: 'JLPT专题' },
-  { to: '/video',       end: false, icon: Video,      label: '实时视频' },
-  { to: '/kb',          end: false, icon: BookOpen,   label: '知识库' },
-  { to: '/internalize', end: false, icon: Brain,      label: '内化学习' },
-  { to: '/admin/ingest', end: false, icon: Settings,  label: '管理' },
+export const NAV = [
+  { to: '/',            end: true,  icon: FileText,   label: '语料分析', mobile: true },
+  { to: '/jlpt',        end: false, icon: BookMarked, label: 'JLPT专题', mobile: true },
+  { to: '/video',       end: false, icon: Video,      label: '实时视频', mobile: true },
+  { to: '/kb',          end: false, icon: BookOpen,   label: '知识库',   mobile: true },
+  { to: '/internalize', end: false, icon: Brain,      label: '内化学习', mobile: true },
+  { to: '/admin/ingest', end: false, icon: Settings,  label: '管理',     mobile: false },  // desktop only
 ]
 
 export default function TopNav() {
   const { settings, updateSettings, toggleLevel } = useSettings()
 
   return (
-    <header className="sticky top-0 z-50 bg-surface shadow-topbar h-14 flex items-center px-3 md:px-6 gap-2 md:gap-4">
+    // Desktop only — phones use BottomNav
+    <header className="hidden md:flex sticky top-0 z-50 bg-surface shadow-topbar h-14 items-center px-6 gap-4">
       {/* Logo */}
       <div className="flex items-center gap-2 shrink-0">
         <img src="/image.png" alt="日本語 Master" className="w-9 h-9 md:w-11 md:h-11 object-contain rounded-xl" />

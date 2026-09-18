@@ -1,7 +1,8 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import { Plus, Loader2, History, X } from 'lucide-react'
 import { useAnalysis } from '../hooks/useAnalysis'
+import { useSwipe } from '../hooks/useSwipe'
 import SentenceList from '../components/analysis/SentenceList'
 import SentenceCard from '../components/analysis/SentenceCard'
 import AnalysisCard from '../components/analysis/AnalysisCard'
@@ -9,6 +10,7 @@ import AnalysisInput from '../components/analysis/AnalysisInput'
 import AnalysisHistory from '../components/analysis/AnalysisHistory'
 import { getAnalyses, getAnalysis, deleteAnalysis } from '../services/api'
 import type { AnalysisRecord } from '../types'
+import clsx from 'clsx'
 
 export default function AnalysisPage() {
   const { pathname } = useLocation()
@@ -104,6 +106,24 @@ export default function AnalysisPage() {
     return () => document.removeEventListener('paste', onPaste)
   }, [isActive, isStreaming, loadImage])
 
+  // Sentence switching: swipe on phones, dots / numbers everywhere.
+  // slideDir picks the slide-in direction of the next sentence.
+  const [slideDir, setSlideDir] = useState<0 | 1 | -1>(0)
+  const slideRef = useRef<HTMLDivElement>(null)
+
+  const selectSentence = useCallback((index: number) => {
+    if (index === selectedIndex) return
+    setSlideDir(selectedIndex === null || index > selectedIndex ? 1 : -1)
+    setSelectedIndex(index)
+  }, [selectedIndex, setSelectedIndex])
+
+  const swipeAreaRef = useSwipe(dir => {
+    const next = (selectedIndex ?? 0) + dir
+    if (next < 0 || next >= sentences.length) return
+    if (!sentences[next].preprocessed.text.trim()) return
+    selectSentence(next)
+  }, slideRef)
+
   const selectedSentence     = selectedIndex !== null ? sentences[selectedIndex] : null
   const selectedPreprocessed = selectedSentence?.preprocessed ?? null
   const selectedAnalysis     = selectedSentence?.analysis ?? null
@@ -173,7 +193,7 @@ export default function AnalysisPage() {
                 sentences={sentences}
                 selectedIndex={selectedIndex}
                 isStreaming={isStreaming}
-                onSelect={setSelectedIndex}
+                onSelect={selectSentence}
               />
             </div>
 
@@ -181,8 +201,20 @@ export default function AnalysisPage() {
                 sentence can't squeeze the analysis to zero height.
                 Desktop: sentence card stays pinned, analysis scrolls. */}
             <div
+              ref={swipeAreaRef}
+              className="flex-1 min-h-0 flex flex-col overflow-hidden"
+            >
+            <div
               key={selectedIndex ?? -1}
-              className="flex-1 min-h-0 overflow-y-auto md:overflow-hidden md:flex md:flex-col"
+              ref={slideRef}
+              // touch-action must sit on the scroll container itself: the browser
+              // ignores it on ancestors above the nearest scroller
+              style={{ touchAction: 'pan-y pinch-zoom' }}
+              className={clsx(
+                'flex-1 min-h-0 overflow-y-auto md:overflow-hidden md:flex md:flex-col md:animate-none',
+                slideDir === 1 && 'animate-slide-from-right',
+                slideDir === -1 && 'animate-slide-from-left',
+              )}
             >
               {/* Sentence card */}
               {selectedPreprocessed && (
@@ -201,6 +233,7 @@ export default function AnalysisPage() {
                   analysis={selectedAnalysis}
                 />
               </div>
+            </div>
             </div>
           </div>
         ) : (

@@ -47,9 +47,19 @@ export default {
           '0%': { transform: 'translateX(-100%)' },
           '100%': { transform: 'translateX(200%)' },
         },
+        'slide-from-right': {
+          '0%': { transform: 'translateX(24%)', opacity: '0' },
+          '100%': { transform: 'translateX(0)', opacity: '1' },
+        },
+        'slide-from-left': {
+          '0%': { transform: 'translateX(-24%)', opacity: '0' },
+          '100%': { transform: 'translateX(0)', opacity: '1' },
+        },
       },
       animation: {
         shimmer: 'shimmer 2s ease-in-out infinite',
+        'slide-from-right': 'slide-from-right 0.22s ease-out',
+        'slide-from-left': 'slide-from-left 0.22s ease-out',
       },
     },
   },
