@@ -131,7 +131,7 @@ export default function GrammarCard({ item }: Props) {
             </p>
           )}
           {item.example && (
-            <p className="text-sm font-mono text-fg-muted bg-white rounded-lg px-2.5 py-1.5">
+            <p className="text-sm font-mono text-fg-muted bg-surface rounded-lg px-2.5 py-1.5">
               {item.example}
             </p>
           )}
@@ -147,12 +147,12 @@ export default function GrammarCard({ item }: Props) {
                 <div key={c.atom_id} className="space-y-2">
                   {/* Left / Right comparison */}
                   <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div className="rounded-md bg-white border border-border p-2 space-y-1">
+                    <div className="rounded-md bg-surface border border-border p-2 space-y-1">
                       <p className="text-[10px] text-fg-subtle font-medium uppercase tracking-wide">当前</p>
                       <p className="font-mono font-semibold text-accent">{item.pattern}</p>
                       <p className="text-fg-muted leading-snug">{item.meaning}</p>
                     </div>
-                    <div className="rounded-md bg-white border border-accent/30 p-2 space-y-1">
+                    <div className="rounded-md bg-surface border border-accent/30 p-2 space-y-1">
                       <p className="text-[10px] text-fg-subtle font-medium uppercase tracking-wide">已有</p>
                       <p className="font-mono font-semibold text-accent">{c.key}</p>
                       <p className="text-fg-muted leading-snug">{c.meaning ?? '—'}</p>

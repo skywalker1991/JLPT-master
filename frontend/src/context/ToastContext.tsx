@@ -58,9 +58,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               className={clsx(
                 'pointer-events-auto flex items-center gap-2.5 px-4 py-2.5 rounded-xl shadow-lg',
                 'border text-sm font-medium max-w-xs',
-                t.type === 'success' && 'bg-white border-success/30 text-fg',
-                t.type === 'info'    && 'bg-white border-border text-fg',
-                t.type === 'error'   && 'bg-white border-danger/30 text-fg',
+                t.type === 'success' && 'bg-surface border-success/30 text-fg',
+                t.type === 'info'    && 'bg-surface border-border text-fg',
+                t.type === 'error'   && 'bg-surface border-danger/30 text-fg',
               )}
             >
               {ICONS[t.type]}

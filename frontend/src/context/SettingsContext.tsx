@@ -1,8 +1,11 @@
-import { createContext, useContext, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+
+export type Theme = 'system' | 'light' | 'dark'
 
 export interface Settings {
   levelFilter: string[]   // selected JLPT levels; empty = show all
   model: string
+  theme: Theme            // 'system' follows the OS light/dark setting
 }
 
 interface SettingsCtx {
@@ -13,7 +16,7 @@ interface SettingsCtx {
 
 const Ctx = createContext<SettingsCtx | null>(null)
 
-const DEFAULTS: Settings = { levelFilter: [], model: 'gemini-2.5-flash' }
+const DEFAULTS: Settings = { levelFilter: [], model: 'gemini-2.5-flash', theme: 'system' }
 
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<Settings>(() => {
@@ -25,6 +28,19 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       return DEFAULTS
     }
   })
+
+  // Apply the theme as a `dark` class on <html> (index.html does the same
+  // before first paint to avoid a light flash).
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)')
+    const apply = () => {
+      const dark = settings.theme === 'dark' || (settings.theme === 'system' && mq.matches)
+      document.documentElement.classList.toggle('dark', dark)
+    }
+    apply()
+    mq.addEventListener('change', apply)
+    return () => mq.removeEventListener('change', apply)
+  }, [settings.theme])
 
   const updateSettings = (patch: Partial<Settings>) => {
     const next = { ...settings, ...patch }

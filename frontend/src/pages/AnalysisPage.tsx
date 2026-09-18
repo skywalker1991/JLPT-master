@@ -8,6 +8,7 @@ import SentenceCard from '../components/analysis/SentenceCard'
 import AnalysisCard from '../components/analysis/AnalysisCard'
 import AnalysisInput from '../components/analysis/AnalysisInput'
 import AnalysisHistory from '../components/analysis/AnalysisHistory'
+import ThemeToggle from '../components/shared/ThemeToggle'
 import { getAnalyses, getAnalysis, deleteAnalysis } from '../services/api'
 import type { AnalysisRecord } from '../types'
 import clsx from 'clsx'
@@ -181,6 +182,7 @@ export default function AnalysisPage() {
           >
             <History className="w-3.5 h-3.5" />历史
           </button>
+          <ThemeToggle className="ml-auto" />
         </div>
 
         {/* Results area */}

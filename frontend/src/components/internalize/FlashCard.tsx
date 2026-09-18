@@ -18,7 +18,7 @@ function getCardStyle(level: string | null, type: string) {
     case 'N2': return { border: 'border-slate-400',  bg: `bg-gradient-to-br ${typeGradient}`, glow: 'shadow-[0_0_12px_2px_rgba(148,163,184,0.3)]', particle: false, label: 'text-slate-700' }
     case 'N3': return { border: 'border-amber-500',  bg: `bg-gradient-to-br ${typeGradient}`, glow: '', particle: false, label: 'text-amber-700' }
     case 'N4': return { border: 'border-amber-300',  bg: `bg-gradient-to-br from-amber-50 ${type === 'vocabulary' ? 'to-blue-50' : 'to-violet-50'}`, glow: '', particle: false, label: 'text-amber-600' }
-    default:   return { border: 'border-gray-200',   bg: 'bg-white', glow: '', particle: false, label: 'text-gray-500' }
+    default:   return { border: 'border-gray-200',   bg: 'bg-surface', glow: '', particle: false, label: 'text-gray-500' }
   }
 }
 

@@ -119,7 +119,7 @@ export default function VocabChip({ item }: Props) {
           </p>
         )}
         {item.example && (
-          <p className="text-sm font-mono text-fg-muted bg-white/70 rounded-lg px-2.5 py-1.5">
+          <p className="text-sm font-mono text-fg-muted bg-surface/70 rounded-lg px-2.5 py-1.5">
             {item.example}
           </p>
         )}

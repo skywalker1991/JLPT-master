@@ -2,6 +2,7 @@ import { NavLink } from 'react-router-dom'
 import { FileText, BookMarked, Video, BookOpen, Brain, Settings } from 'lucide-react'
 import clsx from 'clsx'
 import { useSettings } from '../../context/SettingsContext'
+import ThemeToggle from './ThemeToggle'
 
 const ALL_LEVELS = ['N1', 'N2', 'N3', 'N4', 'N5']
 
@@ -97,6 +98,8 @@ export default function TopNav() {
       >
         {MODELS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
       </select>
+
+      <ThemeToggle className="shrink-0" />
     </header>
   )
 }

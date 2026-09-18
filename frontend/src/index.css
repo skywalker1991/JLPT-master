@@ -4,14 +4,14 @@
 
 @layer base {
   *, *::before, *::after { box-sizing: border-box; }
-  html { color-scheme: light; font-size: 15px; }
+  html { font-size: 15px; }
   @media (min-width: 768px) { html { font-size: 18px; } }
   body {
     @apply bg-bg text-fg font-sans antialiased;
     min-height: 100dvh;
     line-height: 1.75;
     letter-spacing: 0.01em;
-    background-image: radial-gradient(circle, #C4B49E 1.5px, transparent 1.5px);
+    background-image: radial-gradient(circle, rgb(var(--c-dot)) 1.5px, transparent 1.5px);
     background-size: 20px 20px;
   }
   p, span, li { line-height: 1.75; }

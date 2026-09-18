@@ -43,7 +43,7 @@ export default function AnalysisInput({
     <div className="p-4">
       <div className={clsx(
         'rounded-xl border border-border bg-gray-50/60 transition-all duration-200',
-        'focus-within:border-accent/50 focus-within:bg-white focus-within:shadow-sm',
+        'focus-within:border-accent/50 focus-within:bg-surface focus-within:shadow-sm',
       )}>
         {imageData ? (
           <div className="p-3 flex items-start gap-2">
