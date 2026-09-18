@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom'
 import { getSubtitles, analyzeStream, preprocess } from '../services/api'
 import type { SubtitleEntry } from '../services/api'
 import type { PreprocessedSentence } from '../types'
+import { tokensFor } from '../utils/tokens'
 import AnalysisCard from '../components/analysis/AnalysisCard'
 import VideoURLBar from '../components/video/VideoURLBar'
 import VideoPlayer from '../components/video/VideoPlayer'
@@ -149,7 +150,10 @@ export default function VideoPage() {
           states.slice(i, i + batchSize).map(async (s, offset) => {
             try {
               const res = await preprocess(s.entry.text)
-              const sent = res.sentences[0] ?? null
+              const tokens = tokensFor(s.entry.text, res)
+              const sent = tokens.length > 0
+                ? { index: 0, text: s.entry.text, tokens }
+                : res.sentences[0] ?? null
               const idx = i + offset
               setSubtitles(prev => {
                 const next = [...prev]

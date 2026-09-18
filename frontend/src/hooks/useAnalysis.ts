@@ -1,6 +1,9 @@
 import { useState, useCallback } from 'react'
-import type { SentenceAnalysis, InputType, PreprocessedSentence, AnalysisRecord } from '../types'
+import type {
+  SentenceAnalysis, InputType, PreprocessedSentence, AnalysisRecord,
+} from '../types'
 import { preprocess, analyzeStream } from '../services/api'
+import { tokensFor } from '../utils/tokens'
 
 export interface SentenceState {
   preprocessed: PreprocessedSentence
@@ -67,7 +70,7 @@ export function useAnalysis(): UseAnalysisReturn {
         rawSentences.map(s => preprocess(s.text).catch(() => null))
       )
       setSentences(prev => prev.map((s, i) => {
-        const tokens = tokenized[i]?.sentences?.[0]?.tokens ?? []
+        const tokens = tokensFor(s.preprocessed.text, tokenized[i])
         if (tokens.length === 0) return s
         return { ...s, preprocessed: { ...s.preprocessed, tokens } }
       }))
@@ -141,8 +144,7 @@ export function useAnalysis(): UseAnalysisReturn {
           imageSentenceTexts.map(t => preprocess(t).catch(() => null))
         )
         setSentences(prev => prev.map((s, i) => {
-          const result = tokenized[i]
-          const tokens = result?.sentences?.[0]?.tokens ?? []
+          const tokens = tokensFor(s.preprocessed.text, tokenized[i])
           if (tokens.length === 0) return s
           return { ...s, preprocessed: { ...s.preprocessed, tokens } }
         }))
