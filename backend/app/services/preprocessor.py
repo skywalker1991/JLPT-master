@@ -1,4 +1,3 @@
-import re
 from janome.tokenizer import Tokenizer
 from app.schemas.analysis import TokenInfo, PreprocessedSentence, PreprocessResponse
 
@@ -6,6 +5,10 @@ from app.schemas.analysis import TokenInfo, PreprocessedSentence, PreprocessResp
 _KATA_START = ord("ァ")
 _KATA_END = ord("ン")
 _HIRA_START = ord("ぁ")
+
+_SENTENCE_ENDS = set("。！？!?")
+_OPEN_QUOTES = set("「『（(")
+_CLOSE_QUOTES = set("」』）)")
 
 
 def _kata_to_hira(text: str) -> str:
@@ -31,16 +34,23 @@ class Preprocessor:
         return self._tokenizer
 
     def split_sentences(self, text: str) -> list[str]:
-        """Split by sentence-ending punctuation and newlines, keep non-empty."""
-        # Split on 。！？ keeping the delimiter attached, then on newlines
-        parts = re.split(r"(?<=[。！？])", text)
+        """Split on newlines and on 。！？!? outside of 「」『』（）quotes, keep non-empty."""
         sentences = []
-        for part in parts:
-            # Further split on newlines
-            for line in part.split("\n"):
-                stripped = line.strip()
-                if stripped:
-                    sentences.append(stripped)
+        for line in text.split("\n"):
+            depth = 0
+            buf = ""
+            for ch in line:
+                buf += ch
+                if ch in _OPEN_QUOTES:
+                    depth += 1
+                elif ch in _CLOSE_QUOTES:
+                    depth = max(0, depth - 1)
+                elif ch in _SENTENCE_ENDS and depth == 0:
+                    if buf.strip():
+                        sentences.append(buf.strip())
+                    buf = ""
+            if buf.strip():
+                sentences.append(buf.strip())
         return sentences
 
     def tokenize(self, sentence: str) -> list[TokenInfo]:

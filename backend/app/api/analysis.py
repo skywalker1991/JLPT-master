@@ -7,7 +7,6 @@ from sse_starlette.sse import EventSourceResponse
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import get_settings
 from app.models.db import Analysis, get_db
 from app.schemas.analysis import (
     AnalyzeRequest,
@@ -227,7 +226,8 @@ def _extract_completed_sentences(buffer: str, already_emitted: int) -> list[dict
     and return any that haven't been emitted yet (based on list position).
 
     Strategy: find the start of the sentences array, then use bracket-depth
-    tracking to locate each closed `{...}` object at depth 1.
+    tracking to locate each closed `{...}` object at depth 1. Braces inside
+    JSON strings are ignored.
     """
     # Locate the opening of the sentences array
     marker = '"sentences"'
@@ -243,10 +243,21 @@ def _extract_completed_sentences(buffer: str, already_emitted: int) -> list[dict
     pos = array_start + 1
     depth = 0
     obj_start = -1
+    in_string = False
+    escaped = False
 
     while pos < len(buffer):
         ch = buffer[pos]
-        if ch == '{':
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == '\\':
+                escaped = True
+            elif ch == '"':
+                in_string = False
+        elif ch == '"':
+            in_string = True
+        elif ch == '{':
             if depth == 0:
                 obj_start = pos
             depth += 1
@@ -267,20 +278,22 @@ def _extract_completed_sentences(buffer: str, already_emitted: int) -> list[dict
     return results[already_emitted:]
 
 
+def _build_free_text_prompt(sentences: dict[int, str]) -> str:
+    """Prompt for analysing pre-split sentences, keyed by their index."""
+    numbered = "\n".join(f"[{i}] {text}" for i, text in sentences.items())
+    return FREE_TEXT_ANALYSIS.format(
+        input_text=numbered,
+        sentence_count=len(sentences),
+        schema_json=json.dumps(_FREE_TEXT_SCHEMA, ensure_ascii=False),
+    )
+
+
 def _build_prompt(request: AnalyzeRequest) -> tuple[str, dict]:
     """Build the prompt and JSON schema based on analysis type."""
-    settings = get_settings()
     input_text = request.text or ""
 
     if request.type == "image":
         prompt = IMAGE_ANALYSIS.format(
-            schema_json=json.dumps(_FREE_TEXT_SCHEMA, ensure_ascii=False),
-        )
-        return prompt, _FREE_TEXT_SCHEMA
-
-    if request.type in ("text", "image"):
-        prompt = FREE_TEXT_ANALYSIS.format(
-            input_text=input_text,
             schema_json=json.dumps(_FREE_TEXT_SCHEMA, ensure_ascii=False),
         )
         return prompt, _FREE_TEXT_SCHEMA
@@ -316,12 +329,8 @@ def _build_prompt(request: AnalyzeRequest) -> tuple[str, dict]:
 
     else:
         # Default to free text
-        prompt = FREE_TEXT_ANALYSIS.format(
-            target_level=settings.TARGET_LEVEL,
-            input_text=input_text,
-            schema_json=json.dumps(_FREE_TEXT_SCHEMA, ensure_ascii=False),
-        )
-        return prompt, _FREE_TEXT_SCHEMA
+        sentences = dict(enumerate(preprocessor.split_sentences(input_text)))
+        return _build_free_text_prompt(sentences), _FREE_TEXT_SCHEMA
 
 
 # ---------------------------------------------------------------------------
@@ -367,6 +376,88 @@ async def analyze(request: AnalyzeRequest, db: AsyncSession = Depends(get_db)):
             if stripped.endswith("```"):
                 stripped = stripped[: stripped.rfind("```")]
         return stripped.strip()
+
+    async def _save_session(session_data: dict | None):
+        try:
+            await db.execute(
+                update(Analysis)
+                .where(Analysis.id == analysis_id)
+                .values(status="completed", session_data=session_data)
+            )
+            await db.commit()
+        except Exception as save_err:
+            logger.error("Failed to save analysis %s: %s", analysis_id, save_err)
+
+    async def text_event_generator():
+        """
+        Free-text mode: sentence segmentation is owned by the backend so every
+        input sentence is guaranteed to come back exactly once, keyed by index.
+        The LLM may still merge, skip or run out of output for some sentences;
+        those are re-requested once, and anything still missing is emitted as
+        text-only so the sentence is never silently dropped.
+        """
+        source = dict(enumerate(preprocessor.split_sentences(request.text or "")))
+        results: dict[int, dict] = {}
+
+        def accept(raw: dict) -> dict | None:
+            # Exact text match wins (guards against off-by-one indexes);
+            # otherwise trust the index the model reported.
+            text = (raw.get("text") or "").strip()
+            idx = next((i for i, t in source.items() if t == text and i not in results), None)
+            if idx is None:
+                idx = raw.get("index")
+                if not isinstance(idx, int) or idx not in source or idx in results:
+                    return None
+            sentence = {
+                **raw,
+                "index": idx,
+                "text": source[idx],
+                "translation": raw.get("translation") or "",
+                "vocab": raw.get("vocab") or [],
+                "grammar": raw.get("grammar") or [],
+            }
+            results[idx] = sentence
+            return sentence
+
+        async def run_pass(targets: dict[int, str]):
+            buffer = ""
+            seen = 0
+            async for chunk in llm.analyze_stream(_build_free_text_prompt(targets), _FREE_TEXT_SCHEMA):
+                buffer += chunk
+                new = _extract_completed_sentences(buffer, seen)
+                seen += len(new)
+                for raw in new:
+                    sentence = accept(raw)
+                    if sentence is not None:
+                        yield sentence
+
+        for attempt in range(2):
+            missing = {i: t for i, t in source.items() if i not in results}
+            if not missing:
+                break
+            if attempt > 0:
+                logger.warning(
+                    "Analysis %s: retrying %d missing sentences: %s",
+                    analysis_id, len(missing), sorted(missing),
+                )
+            try:
+                async for sentence in run_pass(missing):
+                    yield {"event": "sentence", "data": json.dumps(sentence, ensure_ascii=False)}
+            except Exception as e:
+                logger.error("AI stream error for analysis %s: %s", analysis_id, e)
+
+        for i, text in source.items():
+            if i not in results:
+                logger.warning("Analysis %s: sentence %d left unanalysed", analysis_id, i)
+                sentence = {"index": i, "text": text, "translation": "", "vocab": [], "grammar": []}
+                results[i] = sentence
+                yield {"event": "sentence", "data": json.dumps(sentence, ensure_ascii=False)}
+
+        await _save_session({"sentences": [results[i] for i in sorted(results)]})
+        yield {"event": "done", "data": json.dumps({"analysis_id": str(analysis_id)})}
+
+    if request.type == "text":
+        return EventSourceResponse(text_event_generator())
 
     async def event_generator():
         full_json = ""

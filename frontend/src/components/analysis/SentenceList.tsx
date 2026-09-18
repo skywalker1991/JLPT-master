@@ -12,7 +12,7 @@ export default function SentenceList({ sentences, selectedIndex, isStreaming, on
   if (sentences.length === 0 && !isStreaming) return null
 
   return (
-    <div className="flex items-center gap-1.5 px-4 py-2.5 flex-wrap">
+    <div className="flex items-center gap-1.5 px-3 md:px-4 py-2.5 overflow-x-auto md:flex-wrap md:overflow-x-visible">
       {sentences.map((s, i) => {
         const analyzed  = s.analysis !== null
         const hasTokens = s.preprocessed.tokens.length > 0

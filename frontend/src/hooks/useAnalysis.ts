@@ -110,26 +110,28 @@ export function useAnalysis(): UseAnalysisReturn {
       let pos = 0
       const imageSentenceTexts: string[] = []
       for await (const sentenceAnalysis of stream) {
-        const slot = pos++
+        // Text mode: the backend segments with the same preprocessor and keys
+        // every result by sentence index, so place it by index (results may
+        // arrive out of order when missing sentences are retried).
+        // Image mode: sentences come from OCR, so append in arrival order.
+        const slot = imageBase64 ? pos++ : sentenceAnalysis.index
         if (slot === 0) setSelectedIndex(0)
         if (imageBase64) imageSentenceTexts[slot] = sentenceAnalysis.text
         setSentences(prev => {
           // In image mode the placeholder is at slot 0 — replace it first, then append
-          if (slot < prev.length) {
-            const updated = [...prev]
-            updated[slot] = {
-              preprocessed: { index: slot, text: sentenceAnalysis.text, tokens: [] },
-              analysis: sentenceAnalysis,
-            }
-            return updated
+          const updated = [...prev]
+          const existing = prev[slot]?.preprocessed
+          updated[slot] = {
+            preprocessed: existing?.text === sentenceAnalysis.text
+              ? existing
+              : { index: slot, text: sentenceAnalysis.text, tokens: [] },
+            analysis: sentenceAnalysis,
           }
-          return [
-            ...prev,
-            {
-              preprocessed: { index: slot, text: sentenceAnalysis.text, tokens: [] },
-              analysis: sentenceAnalysis,
-            },
-          ]
+          // Fill any gap (only possible if the local split fell back to roughSplit)
+          for (let i = 0; i < updated.length; i++) {
+            updated[i] ??= { preprocessed: { index: i, text: '', tokens: [] }, analysis: null }
+          }
+          return updated
         })
       }
 

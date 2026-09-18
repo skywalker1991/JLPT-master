@@ -52,11 +52,11 @@ export default function SentenceCard({ preprocessed, analysis }: Props) {
   return (
     <div className="rounded-xl bg-accent-light/40 border border-accent-border/50 px-4 py-3 space-y-2">
       <div className="flex items-start gap-2">
-        <div className="flex-1">
+        <div className="flex-1 min-w-0">
           <TokenText
             tokens={preprocessed.tokens}
             fallback={preprocessed.text}
-            className="text-xl font-semibold leading-loose tracking-wide"
+            className="text-lg md:text-xl font-semibold leading-loose tracking-wide"
             highlightRanges={highlightRanges.length > 0 ? highlightRanges : undefined}
           />
         </div>

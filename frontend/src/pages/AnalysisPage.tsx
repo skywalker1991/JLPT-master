@@ -104,7 +104,7 @@ export default function AnalysisPage() {
   const selectedAnalysis     = selectedSentence?.analysis ?? null
 
   return (
-    <div className="flex flex-1 min-h-0 p-4 gap-4 overflow-hidden">
+    <div className="flex flex-1 min-h-0 p-2 md:p-4 gap-4 overflow-hidden">
 
       {/* ── Left: History sidebar (desktop) ── */}
       <div className="card hidden md:flex w-56 shrink-0 flex-col overflow-hidden">
@@ -172,22 +172,30 @@ export default function AnalysisPage() {
               />
             </div>
 
-            {/* Sentence card — fixed */}
-            {selectedPreprocessed && (
-              <div className="px-6 pt-4 pb-2 shrink-0">
-                <SentenceCard
+            {/* Mobile: sentence + vocab/grammar scroll together so a long
+                sentence can't squeeze the analysis to zero height.
+                Desktop: sentence card stays pinned, analysis scrolls. */}
+            <div
+              key={selectedIndex ?? -1}
+              className="flex-1 min-h-0 overflow-y-auto md:overflow-hidden md:flex md:flex-col"
+            >
+              {/* Sentence card */}
+              {selectedPreprocessed && (
+                <div className="px-3 md:px-6 pt-3 md:pt-4 pb-2 md:shrink-0">
+                  <SentenceCard
+                    preprocessed={selectedPreprocessed}
+                    analysis={selectedAnalysis}
+                  />
+                </div>
+              )}
+
+              {/* Vocab + grammar */}
+              <div className="px-3 md:px-6 pb-6 pt-2 md:flex-1 md:min-h-0 md:overflow-y-auto">
+                <AnalysisCard
                   preprocessed={selectedPreprocessed}
                   analysis={selectedAnalysis}
                 />
               </div>
-            )}
-
-            {/* Vocab + grammar — scrollable */}
-            <div className="flex-1 min-h-0 overflow-y-auto px-6 pb-6 pt-2">
-              <AnalysisCard
-                preprocessed={selectedPreprocessed}
-                analysis={selectedAnalysis}
-              />
             </div>
           </div>
         ) : (
