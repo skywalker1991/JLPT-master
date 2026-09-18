@@ -27,7 +27,10 @@ jobs:
             --parameters 'commands=[
               "cd /opt/app",
               "git fetch origin && git reset --hard origin/main",
-              "docker compose up --build -d"
+              "docker compose up --build -d",
+              "docker image prune -f",
+              "docker builder prune -f --keep-storage 1gb",
+              "df -h /"
             ]' \
             --comment "Deploy from GitHub Actions run ${{ github.run_number }}" \
             --query "Command.CommandId" \

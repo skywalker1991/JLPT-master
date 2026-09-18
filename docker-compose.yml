@@ -3,6 +3,7 @@ version: '3.9'
 services:
   postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: jlpt
       POSTGRES_PASSWORD: jlpt
@@ -20,6 +21,7 @@ services:
 
   qdrant:
     image: qdrant/qdrant:v1.12.0
+    restart: unless-stopped
     volumes:
       - qdrant_data:/qdrant/storage
     ports:
