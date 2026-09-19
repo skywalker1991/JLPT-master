@@ -11,7 +11,7 @@ import {
   AtomDetail,
   AnalysisRecord,
   AskEntry,
-  AskKind,
+  AskTarget,
   ExamPaperList,
   ExamPaperDetail,
   AttemptStatus,
@@ -101,7 +101,7 @@ export async function* analyzeStream(
 
 export async function ask(
   analysisId: string,
-  params: { sentence_index: number; kind: AskKind; target?: string; question: string },
+  params: { sentence_index: number; question: string; targets: AskTarget[] },
 ): Promise<AskEntry['result']> {
   return request<AskEntry['result']>(`/api/analyses/${analysisId}/followup`, {
     method: 'POST',

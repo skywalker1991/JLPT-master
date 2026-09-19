@@ -140,27 +140,33 @@ SESSION = {
 }
 
 
-def test_ask_prompt_includes_sentence_item_and_same_item_history():
-    prompt = analysis_api._build_ask_prompt(
-        SESSION, {"sentence_index": 0, "kind": "vocab", "target": "思う", "question": "能用于将来吗？"})
+def test_ask_prompt_with_referenced_items_and_sentence_history():
+    prompt = analysis_api._build_ask_prompt(SESSION, {
+        "sentence_index": 0, "question": "能一起用吗？",
+        "targets": [{"kind": "vocab", "key": "思う"}, {"kind": "grammar", "key": "〜も"}]})
     assert "私もそう思った。" in prompt and "我也这么想。" in prompt
-    assert "单词「思う」" in prompt and "想，认为" in prompt and "这个单词在这句话里" in prompt
-    assert "和考える有什么区别？" in prompt and "思う偏主观感受。" in prompt   # same item's history
-    assert "无关" not in prompt                                           # other item's history excluded
-    assert '"new_items"' in prompt and "思う、〜も" in prompt   # asks for JSON, excludes analysed items
+    assert "其中的单词「思う」、语法「〜も」" in prompt
+    assert "想，认为" in prompt and "表示同类" in prompt                  # both items' analysis
+    assert "和考える有什么区别？" in prompt and "无关" in prompt            # whole sentence thread as history
+    assert '"new_items"' in prompt and "思う、〜も" in prompt               # asks for JSON, excludes analysed items
 
 
 def test_ask_prompt_rejects_unknown_item_or_empty_question():
-    assert analysis_api._build_ask_prompt(SESSION, {"sentence_index": 0, "kind": "vocab", "target": "無い", "question": "?"}) is None
-    assert analysis_api._build_ask_prompt(SESSION, {"sentence_index": 3, "kind": "vocab", "target": "思う", "question": "?"}) is None
-    assert analysis_api._build_ask_prompt(SESSION, {"sentence_index": 0, "kind": "vocab", "target": "思う", "question": "  "}) is None
+    base = {"sentence_index": 0, "question": "?"}
+    assert analysis_api._build_ask_prompt(SESSION, {**base, "targets": [{"kind": "vocab", "key": "無い"}]}) is None
+    assert analysis_api._build_ask_prompt(SESSION, {**base, "sentence_index": 3}) is None
+    assert analysis_api._build_ask_prompt(SESSION, {**base, "question": "  "}) is None
 
 
 def test_ask_prompt_about_the_whole_sentence():
-    prompt = analysis_api._build_ask_prompt(
-        SESSION, {"sentence_index": 0, "kind": "sentence", "question": "口语里怎么说？"})
-    assert "对这句话有疑问" in prompt and "私もそう思った。" in prompt and "口语里怎么说？" in prompt
-    assert "已有的解析" not in prompt and "思う偏主观感受。" not in prompt  # no item info / item history
+    prompt = analysis_api._build_ask_prompt(SESSION, {"sentence_index": 0, "question": "口语里怎么说？"})
+    assert "对这句话有疑问" in prompt and "口语里怎么说？" in prompt
+    assert "已有的解析" not in prompt
+
+
+def test_ask_prompt_reads_older_single_target_shape():
+    prompt = analysis_api._build_ask_prompt(SESSION, {"sentence_index": 0, "kind": "vocab", "target": "思う", "question": "?"})
+    assert "其中的单词「思う」" in prompt
 
 
 def test_parse_ask_answer_extracts_new_items_and_drops_known():

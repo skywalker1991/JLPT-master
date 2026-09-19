@@ -9,7 +9,8 @@ import AnalysisCard from '../components/analysis/AnalysisCard'
 import AnalysisInput from '../components/analysis/AnalysisInput'
 import AnalysisHistory from '../components/analysis/AnalysisHistory'
 import ThemeToggle from '../components/shared/ThemeToggle'
-import { AskContext } from '../components/analysis/AskPanel'
+import FollowUp, { AskContext } from '../components/analysis/AskPanel'
+import type { AskTarget } from '../types'
 import { getAnalyses, getAnalysis, deleteAnalysis } from '../services/api'
 import type { AnalysisRecord } from '../types'
 import clsx from 'clsx'
@@ -109,6 +110,12 @@ export default function AnalysisPage() {
     return () => document.removeEventListener('paste', onPaste)
   }, [isActive, isStreaming, loadImage])
 
+  // Follow-up composer: items referenced by the question being written
+  // (per sentence — cleared when switching sentences).
+  const [attached, setAttached] = useState<AskTarget[]>([])
+  const composerRef = useRef<HTMLTextAreaElement>(null)
+  useEffect(() => { setAttached([]) }, [selectedIndex, analysisId])
+
   // Sentence switching: swipe on phones, dots / numbers everywhere.
   // slideDir picks the slide-in direction of the next sentence.
   const [slideDir, setSlideDir] = useState<0 | 1 | -1>(0)
@@ -189,7 +196,7 @@ export default function AnalysisPage() {
 
         {/* Results area */}
         {hasResults ? (
-          <AskContext.Provider value={{ analysisId, sentenceIndex: selectedIndex, asks, addAsk, busy: isStreaming }}>
+          <AskContext.Provider value={{ analysisId, sentenceIndex: selectedIndex, asks, addAsk, busy: isStreaming, attached, setAttached, composerRef }}>
           <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
 
             {/* Sentence nav */}
@@ -237,6 +244,7 @@ export default function AnalysisPage() {
                   preprocessed={selectedPreprocessed}
                   analysis={selectedAnalysis}
                 />
+                <FollowUp analysis={selectedAnalysis} />
               </div>
             </div>
             </div>

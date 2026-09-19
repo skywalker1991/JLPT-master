@@ -650,56 +650,65 @@ def _build_event_stream(request: AnalyzeRequest, analysis_id: UUID, db: AsyncSes
     return event_generator()
 
 
+def _ask_targets(params: dict) -> list[dict]:
+    """Referenced items of an ask: [{'kind': 'vocab'|'grammar', 'key': str}].
+    Also reads the older single-target shape (kind/target)."""
+    if isinstance(params.get("targets"), list):
+        return [t for t in params["targets"] if isinstance(t, dict) and t.get("kind") in ("vocab", "grammar") and t.get("key")]
+    if params.get("kind") in ("vocab", "grammar") and params.get("target"):
+        return [{"kind": params["kind"], "key": params["target"]}]
+    return []
+
+
 def _build_ask_prompt(session_data: dict, params: dict) -> str | None:
     """
-    Prompt for a free question about one sentence, or about one of its
-    vocab/grammar items. params: sentence_index, kind ('sentence' | 'vocab' |
-    'grammar'), target (item surface / pattern; unused for 'sentence'),
-    question. Earlier Q&A about the same thing is included so the learner can
-    follow up. Returns None if the sentence/item isn't found.
+    Prompt for a free follow-up question on one sentence. params:
+    sentence_index, question, and optional targets — vocab/grammar items of
+    that sentence the question is about (none = the sentence as a whole).
+    The sentence's earlier Q&A is included so follow-ups work.
+    Returns None if the sentence or a referenced item isn't found.
     """
     sentences = session_data.get("sentences") or []
-    idx, kind, target = params.get("sentence_index"), params.get("kind"), params.get("target")
+    idx = params.get("sentence_index")
     question = (params.get("question") or "").strip()
     if not isinstance(idx, int) or not 0 <= idx < len(sentences) or not question:
         return None
     sentence = sentences[idx]
 
-    if kind == "sentence":
-        subject, focus, item_line = "这句话", "这句话的意思、结构和表达", ""
-    elif kind in ("vocab", "grammar"):
-        key = "surface" if kind == "vocab" else "pattern"
-        item = next((it for it in sentence.get(kind) or [] if it.get(key) == target), None)
+    item_lines, names = [], []
+    for t in _ask_targets(params):
+        field, label = ("surface", "单词") if t["kind"] == "vocab" else ("pattern", "语法")
+        item = next((it for it in sentence.get(t["kind"]) or [] if it.get(field) == t["key"]), None)
         if item is None:
             return None
-        label = "单词" if kind == "vocab" else "语法"
         info_keys = (
             ("reading", "meaning", "part_of_speech", "usage", "nuance")
-            if kind == "vocab" else ("meaning", "connection", "usage", "nuance")
+            if t["kind"] == "vocab" else ("meaning", "connection", "usage", "nuance")
         )
-        item_info = "；".join(f"{item[k]}" for k in info_keys if item.get(k)) or "（无）"
-        subject = f"其中的{label}「{target}」"
-        focus = f"这个{label}在这句话里的意思和用法"
-        item_line = f"关于「{target}」已有的解析：{item_info}\n"
+        info = "；".join(f"{item[k]}" for k in info_keys if item.get(k)) or "（无）"
+        names.append(f"{label}「{t['key']}」")
+        item_lines.append(f"{label}「{t['key']}」已有的解析：{info}")
+
+    if names:
+        subject = "其中的" + "、".join(names)
+        focus = f"{'、'.join(names)}在这句话里的意思和用法"
     else:
-        return None
+        subject, focus = "这句话", "这句话的意思、结构和表达"
 
     earlier = [
-        f
-        for f in session_data.get("followups") or []
-        if f.get("template") == "ask"
-        and f.get("params", {}).get("sentence_index") == idx
-        and f.get("params", {}).get("kind") == kind
-        and (kind == "sentence" or f.get("params", {}).get("target") == target)
+        f for f in session_data.get("followups") or []
+        if f.get("template") == "ask" and f.get("params", {}).get("sentence_index") == idx
     ][-4:]
     history = ""
     if earlier:
-        history = "\n之前的问答：\n" + "\n".join(
+        history = "\n这句话之前的问答：\n" + "\n".join(
             f"问：{f['params'].get('question', '')}\n答：{(f.get('result') or {}).get('response', '')}" for f in earlier
         ) + "\n"
+
     known = [v.get("surface") for v in sentence.get("vocab") or []] + [g.get("pattern") for g in sentence.get("grammar") or []]
     return FOLLOWUP_ASK.format(
-        subject=subject, focus=focus, item_line=item_line, history=history,
+        subject=subject, focus=focus,
+        item_line="".join(line + "\n" for line in item_lines), history=history,
         sentence=sentence.get("text", ""), translation=sentence.get("translation", ""),
         question=question, known_items="、".join(k for k in known if k) or "（无）",
     )

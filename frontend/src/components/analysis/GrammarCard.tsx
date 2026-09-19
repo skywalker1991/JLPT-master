@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import clsx from 'clsx'
 import type { GrammarItem } from '../../types'
 import { createAtom } from '../../services/api'
-import { AskSection } from './AskPanel'
+import { AttachButton } from './AskPanel'
 import { useToast } from '../../context/ToastContext'
 
 interface Props { item: GrammarItem }
@@ -199,7 +199,7 @@ export default function GrammarCard({ item }: Props) {
               {status === 'error'   && <><AlertCircle className="w-3 h-3" />失败</>}
             </button>
           )}
-          <AskSection kind="grammar" target={item.pattern} />
+          <AttachButton target={{ kind: 'grammar', key: item.pattern }} />
         </div>
       )}
     </div>

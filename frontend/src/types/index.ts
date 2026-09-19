@@ -412,8 +412,11 @@ export interface AtomGraphResponse {
   edges: GraphEdge[]
 }
 
-// Free questions about a sentence or one of its vocab / grammar items
-export type AskKind = 'sentence' | 'vocab' | 'grammar'
+// Follow-up questions on a sentence, optionally about some of its vocab / grammar items
+export interface AskTarget {
+  kind: 'vocab' | 'grammar'
+  key: string   // vocab surface or grammar pattern
+}
 
 export interface AskNewItem {
   kind: 'vocab' | 'grammar'
@@ -424,6 +427,21 @@ export interface AskNewItem {
 
 export interface AskEntry {
   template: 'ask'
-  params: { sentence_index: number; kind: AskKind; target?: string; question: string }
+  params: {
+    sentence_index: number
+    question: string
+    targets?: AskTarget[]
+    /** older single-target shape */
+    kind?: 'sentence' | 'vocab' | 'grammar'
+    target?: string
+  }
   result: { response: string; new_items?: AskNewItem[] }
+}
+
+/** Items an ask referenced, reading either shape. */
+export function askTargets(entry: AskEntry): AskTarget[] {
+  const p = entry.params
+  if (p.targets) return p.targets
+  if ((p.kind === 'vocab' || p.kind === 'grammar') && p.target) return [{ kind: p.kind, key: p.target }]
+  return []
 }
