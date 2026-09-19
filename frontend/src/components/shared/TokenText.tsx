@@ -23,29 +23,34 @@ export default function TokenText({
   tokens, fallback = '', className = '', hidden = false, revealed, onReveal, marks,
 }: Props) {
   if (tokens.length === 0) {
-    if (hidden && !revealed?.has(0)) {
-      return (
-        <span className={className}>
-          <MaskButton length={fallback.length} onClick={() => onReveal?.(0)} />
+    const blurred = hidden && !revealed?.has(0)
+    return (
+      <span className={className}>
+        <span
+          {...(blurred ? revealProps(() => onReveal?.(0)) : {})}
+          className={clsx(BLUR_TRANSITION, blurred && BLURRED)}
+        >
+          {fallback}
         </span>
-      )
-    }
-    return <span className={className}>{fallback}</span>
+      </span>
+    )
   }
 
   return (
     <span className={`flex flex-wrap items-baseline gap-x-[0.75em] ${className}`}>
       {toChunks(tokens).map((chunk, i) => {
         const mark = marks?.[i]
-        if (hidden && !marks && !revealed?.has(i)) {
-          const length = chunk.reduce((n, t) => n + t.surface.length, 0)
-          return <MaskButton key={i} length={length} onClick={() => onReveal?.(i)} />
-        }
+        // Hidden chunks are the same element, just blurred, so revealing
+        // animates in place instead of re-laying out the line.
+        const blurred = hidden && !marks && !revealed?.has(i)
         return (
           <span
             key={i}
+            {...(blurred ? revealProps(() => onReveal?.(i)) : {})}
             className={clsx(
               'inline-flex items-baseline',
+              BLUR_TRANSITION,
+              blurred && BLURRED,
               mark === false && 'bg-danger-light rounded px-0.5 -mx-0.5',
             )}
           >
@@ -74,15 +79,19 @@ export default function TokenText({
   )
 }
 
-function MaskButton({ length, onClick }: { length: number; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title="点击显示"
-      aria-label="隐藏的文节，点击显示"
-      className="inline-block h-[1.05em] rounded-md bg-border hover:bg-accent-border/70 transition-colors align-[-0.15em]"
-      style={{ width: `${Math.max(1, length) * 1.05}em` }}
-    />
-  )
+const BLUR_TRANSITION = 'transition-[filter,opacity] duration-500 ease-out motion-reduce:transition-none'
+const BLURRED = 'blur-[0.4em] opacity-60 cursor-pointer select-none'
+
+/** Make a blurred chunk tappable / keyboard-activatable to reveal it. */
+function revealProps(reveal: () => void) {
+  return {
+    role: 'button' as const,
+    tabIndex: 0,
+    title: '点击显示',
+    'aria-label': '隐藏的文节，点击显示',
+    onClick: reveal,
+    onKeyDown: (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); reveal() }
+    },
+  }
 }
