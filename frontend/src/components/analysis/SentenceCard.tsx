@@ -6,6 +6,7 @@ import { useSettings } from '../../context/SettingsContext'
 import TokenText from '../shared/TokenText'
 import { speak } from '../../utils/speech'
 import { checkTyping } from '../../utils/tokens'
+import { AskSection } from './AskPanel'
 
 interface Props {
   preprocessed: PreprocessedSentence
@@ -148,6 +149,9 @@ export default function SentenceCard({ preprocessed, analysis }: Props) {
           <Keyboard className="w-3.5 h-3.5" />打字
         </button>
       </div>
+
+      {/* folded by default: an open thread would push the words / grammar far down */}
+      <AskSection kind="sentence" label="问这句" defaultOpen={false} />
     </div>
   )
 }

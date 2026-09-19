@@ -142,7 +142,7 @@ class PreprocessRequest(BaseModel):
 
 
 class FollowupRequest(BaseModel):
-    template: str  # comparison|usage|derivative|example|free
+    template: str  # comparison|usage|derivative|example|free|ask
     params: dict
 
 

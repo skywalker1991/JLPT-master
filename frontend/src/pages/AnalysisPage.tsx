@@ -9,6 +9,7 @@ import AnalysisCard from '../components/analysis/AnalysisCard'
 import AnalysisInput from '../components/analysis/AnalysisInput'
 import AnalysisHistory from '../components/analysis/AnalysisHistory'
 import ThemeToggle from '../components/shared/ThemeToggle'
+import { AskContext } from '../components/analysis/AskPanel'
 import { getAnalyses, getAnalysis, deleteAnalysis } from '../services/api'
 import type { AnalysisRecord } from '../types'
 import clsx from 'clsx'
@@ -18,6 +19,7 @@ export default function AnalysisPage() {
   const isActive = pathname === '/'
 
   const {
+    analysisId, asks, addAsk,
     sentences, selectedIndex,
     isStreaming, phase, error,
     setSelectedIndex, startAnalysis, restoreFromHistory, reset,
@@ -187,6 +189,7 @@ export default function AnalysisPage() {
 
         {/* Results area */}
         {hasResults ? (
+          <AskContext.Provider value={{ analysisId, sentenceIndex: selectedIndex, asks, addAsk, busy: isStreaming }}>
           <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
 
             {/* Sentence nav */}
@@ -238,6 +241,7 @@ export default function AnalysisPage() {
             </div>
             </div>
           </div>
+          </AskContext.Provider>
         ) : (
           <div className="flex-1 flex items-center justify-center text-fg-subtle text-sm">
             {isStreaming

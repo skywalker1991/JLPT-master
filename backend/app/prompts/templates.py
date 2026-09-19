@@ -206,3 +206,25 @@ RELATION_DISCOVERY = """
 输出须严格遵循以下 JSON Schema：
 {schema_json}
 """
+
+FOLLOWUP_ASK = """
+你是一名耐心的日语老师。学习者在读下面这句日语时，对{subject}有疑问。
+
+原句：{sentence}
+中文翻译：{translation}
+{item_line}{history}
+学习者的问题：{question}
+
+请用中文回答：
+- 紧扣{focus}来解释，必要时再扩展到一般用法。
+- 需要举例时给出日语例句，并在后面附上中文翻译。
+- 简洁清楚，控制在 300 字以内；可以分段，但不要使用 Markdown 标题、表格或加粗符号。
+- 直接回答问题，不要寒暄或称呼（不要写"你好""学习者你好"之类）。
+
+另外，把你的回答里**新引入**、值得学习的单词或语法点列在 new_items 里（最多 3 个，没有就给空数组）。
+不要列出这句话已经解析过的这些：{known_items}
+kind 只能是 vocab 或 grammar；key 用词典形或语法句型（如「〜ように」）；reading 只有单词需要（平假名）；meaning 用中文简短说明。
+
+直接输出 JSON 对象，不要 ```json 代码块，不要任何前缀或后缀文字。格式：
+{{"answer": "给学习者的回答", "new_items": [{{"kind": "vocab", "key": "考える", "reading": "かんがえる", "meaning": "思考，考虑"}}]}}
+"""

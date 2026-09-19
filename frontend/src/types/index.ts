@@ -411,3 +411,19 @@ export interface AtomGraphResponse {
   nodes: GraphNode[]
   edges: GraphEdge[]
 }
+
+// Free questions about a sentence or one of its vocab / grammar items
+export type AskKind = 'sentence' | 'vocab' | 'grammar'
+
+export interface AskNewItem {
+  kind: 'vocab' | 'grammar'
+  key: string
+  reading: string | null
+  meaning: string
+}
+
+export interface AskEntry {
+  template: 'ask'
+  params: { sentence_index: number; kind: AskKind; target?: string; question: string }
+  result: { response: string; new_items?: AskNewItem[] }
+}

@@ -123,3 +123,59 @@ def test_job_finishes_after_client_disconnects(monkeypatch):
     assert db.progress == [1, 2, 3]
     assert [s["text"] for s in db.saved["sentences"]] == ["一つ目。", "二つ目。", "三つ目。"]
     assert not analysis_api._jobs
+
+
+SESSION = {
+    "sentences": [
+        {"index": 0, "text": "私もそう思った。", "translation": "我也这么想。",
+         "vocab": [{"surface": "思う", "reading": "おもう", "meaning": "想，认为"}],
+         "grammar": [{"pattern": "〜も", "meaning": "也", "usage": "表示同类"}]},
+    ],
+    "followups": [
+        {"template": "ask", "params": {"sentence_index": 0, "kind": "vocab", "target": "思う", "question": "和考える有什么区别？"},
+         "result": {"response": "思う偏主观感受。"}},
+        {"template": "ask", "params": {"sentence_index": 0, "kind": "grammar", "target": "〜も", "question": "别的"},
+         "result": {"response": "无关"}},
+    ],
+}
+
+
+def test_ask_prompt_includes_sentence_item_and_same_item_history():
+    prompt = analysis_api._build_ask_prompt(
+        SESSION, {"sentence_index": 0, "kind": "vocab", "target": "思う", "question": "能用于将来吗？"})
+    assert "私もそう思った。" in prompt and "我也这么想。" in prompt
+    assert "单词「思う」" in prompt and "想，认为" in prompt and "这个单词在这句话里" in prompt
+    assert "和考える有什么区别？" in prompt and "思う偏主观感受。" in prompt   # same item's history
+    assert "无关" not in prompt                                           # other item's history excluded
+    assert '"new_items"' in prompt and "思う、〜も" in prompt   # asks for JSON, excludes analysed items
+
+
+def test_ask_prompt_rejects_unknown_item_or_empty_question():
+    assert analysis_api._build_ask_prompt(SESSION, {"sentence_index": 0, "kind": "vocab", "target": "無い", "question": "?"}) is None
+    assert analysis_api._build_ask_prompt(SESSION, {"sentence_index": 3, "kind": "vocab", "target": "思う", "question": "?"}) is None
+    assert analysis_api._build_ask_prompt(SESSION, {"sentence_index": 0, "kind": "vocab", "target": "思う", "question": "  "}) is None
+
+
+def test_ask_prompt_about_the_whole_sentence():
+    prompt = analysis_api._build_ask_prompt(
+        SESSION, {"sentence_index": 0, "kind": "sentence", "question": "口语里怎么说？"})
+    assert "对这句话有疑问" in prompt and "私もそう思った。" in prompt and "口语里怎么说？" in prompt
+    assert "已有的解析" not in prompt and "思う偏主观感受。" not in prompt  # no item info / item history
+
+
+def test_parse_ask_answer_extracts_new_items_and_drops_known():
+    raw = json.dumps({"answer": "思う偏主观。", "new_items": [
+        {"kind": "vocab", "key": "考える", "reading": "かんがえる", "meaning": "思考"},
+        {"kind": "vocab", "key": "思う", "meaning": "想"},            # already analysed → dropped
+        {"kind": "other", "key": "x", "meaning": "y"},                # bad kind → dropped
+        {"kind": "grammar", "key": "〜と思う", "meaning": "我认为"},
+    ]}, ensure_ascii=False)
+    out = analysis_api._parse_ask_answer(raw, {"思う", "〜も"})
+    assert out["response"] == "思う偏主观。"
+    assert [i["key"] for i in out["new_items"]] == ["考える", "〜と思う"]
+    assert out["new_items"][1]["reading"] is None
+
+
+def test_parse_ask_answer_falls_back_to_plain_text():
+    out = analysis_api._parse_ask_answer("就是普通的回答", set())
+    assert out == {"response": "就是普通的回答", "new_items": []}

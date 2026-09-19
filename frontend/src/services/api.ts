@@ -10,6 +10,8 @@ import {
   AtomListItem,
   AtomDetail,
   AnalysisRecord,
+  AskEntry,
+  AskKind,
   ExamPaperList,
   ExamPaperDetail,
   AttemptStatus,
@@ -96,6 +98,16 @@ export async function* analyzeStream(
 }
 
 // ---- Followup ----
+
+export async function ask(
+  analysisId: string,
+  params: { sentence_index: number; kind: AskKind; target?: string; question: string },
+): Promise<AskEntry['result']> {
+  return request<AskEntry['result']>(`/api/analyses/${analysisId}/followup`, {
+    method: 'POST',
+    body: JSON.stringify({ template: 'ask', params }),
+  })
+}
 
 export async function followup(
   analysisId: string,

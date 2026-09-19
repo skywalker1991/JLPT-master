@@ -37,6 +37,7 @@ from app.prompts.templates import (
     FOLLOWUP_USAGE,
     FOLLOWUP_DERIVATIVE,
     FOLLOWUP_EXAMPLE,
+    FOLLOWUP_ASK,
 )
 
 logger = logging.getLogger(__name__)
@@ -649,6 +650,82 @@ def _build_event_stream(request: AnalyzeRequest, analysis_id: UUID, db: AsyncSes
     return event_generator()
 
 
+def _build_ask_prompt(session_data: dict, params: dict) -> str | None:
+    """
+    Prompt for a free question about one sentence, or about one of its
+    vocab/grammar items. params: sentence_index, kind ('sentence' | 'vocab' |
+    'grammar'), target (item surface / pattern; unused for 'sentence'),
+    question. Earlier Q&A about the same thing is included so the learner can
+    follow up. Returns None if the sentence/item isn't found.
+    """
+    sentences = session_data.get("sentences") or []
+    idx, kind, target = params.get("sentence_index"), params.get("kind"), params.get("target")
+    question = (params.get("question") or "").strip()
+    if not isinstance(idx, int) or not 0 <= idx < len(sentences) or not question:
+        return None
+    sentence = sentences[idx]
+
+    if kind == "sentence":
+        subject, focus, item_line = "这句话", "这句话的意思、结构和表达", ""
+    elif kind in ("vocab", "grammar"):
+        key = "surface" if kind == "vocab" else "pattern"
+        item = next((it for it in sentence.get(kind) or [] if it.get(key) == target), None)
+        if item is None:
+            return None
+        label = "单词" if kind == "vocab" else "语法"
+        info_keys = (
+            ("reading", "meaning", "part_of_speech", "usage", "nuance")
+            if kind == "vocab" else ("meaning", "connection", "usage", "nuance")
+        )
+        item_info = "；".join(f"{item[k]}" for k in info_keys if item.get(k)) or "（无）"
+        subject = f"其中的{label}「{target}」"
+        focus = f"这个{label}在这句话里的意思和用法"
+        item_line = f"关于「{target}」已有的解析：{item_info}\n"
+    else:
+        return None
+
+    earlier = [
+        f
+        for f in session_data.get("followups") or []
+        if f.get("template") == "ask"
+        and f.get("params", {}).get("sentence_index") == idx
+        and f.get("params", {}).get("kind") == kind
+        and (kind == "sentence" or f.get("params", {}).get("target") == target)
+    ][-4:]
+    history = ""
+    if earlier:
+        history = "\n之前的问答：\n" + "\n".join(
+            f"问：{f['params'].get('question', '')}\n答：{(f.get('result') or {}).get('response', '')}" for f in earlier
+        ) + "\n"
+    known = [v.get("surface") for v in sentence.get("vocab") or []] + [g.get("pattern") for g in sentence.get("grammar") or []]
+    return FOLLOWUP_ASK.format(
+        subject=subject, focus=focus, item_line=item_line, history=history,
+        sentence=sentence.get("text", ""), translation=sentence.get("translation", ""),
+        question=question, known_items="、".join(k for k in known if k) or "（无）",
+    )
+
+
+def _parse_ask_answer(raw: str, known: set[str]) -> dict:
+    """{"answer", "new_items"} from the model; plain text if it isn't JSON."""
+    text = raw.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[-1].rsplit("```", 1)[0]
+    try:
+        data = json.loads(text)
+        answer = str(data.get("answer") or "").strip()
+    except (json.JSONDecodeError, AttributeError):
+        return {"response": raw.strip(), "new_items": []}
+    items = []
+    for it in data.get("new_items") or []:
+        if not isinstance(it, dict):
+            continue
+        kind, key, meaning = it.get("kind"), (it.get("key") or "").strip(), (it.get("meaning") or "").strip()
+        if kind not in ("vocab", "grammar") or not key or not meaning or key in known:
+            continue
+        items.append({"kind": kind, "key": key, "reading": (it.get("reading") or "").strip() or None, "meaning": meaning})
+    return {"response": answer or raw.strip(), "new_items": items[:3]}
+
+
 # ---------------------------------------------------------------------------
 # POST /analyses/{id}/followup
 # ---------------------------------------------------------------------------
@@ -709,6 +786,18 @@ async def followup(
         schema = _EXAMPLE_SCHEMA
         result_data = await llm.analyze(prompt, schema)
         parsed_result = ExampleResult(**result_data)
+
+    elif template == "ask":
+        if analysis_id in _jobs:
+            raise HTTPException(status_code=409, detail="Analysis still running; ask after it finishes")
+        prompt = _build_ask_prompt(analysis.session_data or {}, params)
+        if prompt is None:
+            raise HTTPException(status_code=400, detail="Unknown sentence or item")
+        raw = await llm.analyze(prompt, {})
+        sentence = (analysis.session_data or {})["sentences"][params["sentence_index"]]
+        known = {v.get("surface") for v in sentence.get("vocab") or []} | {g.get("pattern") for g in sentence.get("grammar") or []}
+        result_data = _parse_ask_answer(raw, known)
+        parsed_result = result_data
 
     elif template == "free":
         free_prompt = params.get("prompt", "")

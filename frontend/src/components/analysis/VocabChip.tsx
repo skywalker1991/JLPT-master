@@ -5,6 +5,7 @@ import clsx from 'clsx'
 import type { VocabItem } from '../../types'
 import { createAtom } from '../../services/api'
 import { useToast } from '../../context/ToastContext'
+import { AskSection } from './AskPanel'
 
 interface Props { item: VocabItem }
 
@@ -140,6 +141,7 @@ export default function VocabChip({ item }: Props) {
           {status === 'exists'  && <><ExternalLink className="w-3 h-3" />查看</>}
           {status === 'error'   && <><AlertCircle className="w-3 h-3" />失败</>}
         </button>
+        <AskSection kind="vocab" target={item.surface} />
       </div>
     </div>
   )

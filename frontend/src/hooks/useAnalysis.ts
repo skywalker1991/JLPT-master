@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import type {
-  SentenceAnalysis, InputType, PreprocessedSentence, AnalysisRecord, TokenInfo,
+  SentenceAnalysis, InputType, PreprocessedSentence, AnalysisRecord, TokenInfo, AskEntry,
 } from '../types'
 import { preprocess, analyzeStream, getAnalysis } from '../services/api'
 import { tokensFor } from '../utils/tokens'
@@ -14,6 +14,11 @@ export type AnalysisPhase = 'idle' | 'preprocessing' | 'extracting' | 'analyzing
 
 interface UseAnalysisReturn {
   inputType: InputType
+  /** Current analysis record (null until the server has created it) */
+  analysisId: string | null
+  /** Saved questions & answers about this analysis's sentences / items */
+  asks: AskEntry[]
+  addAsk: (entry: AskEntry) => void
   sentences: SentenceState[]
   selectedIndex: number | null
   isStreaming: boolean
@@ -54,6 +59,11 @@ function loadPending(): string | null {
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
+function recordAsks(record: AnalysisRecord): AskEntry[] {
+  const data = record.session_data as { followups?: AskEntry[] } | null
+  return (data?.followups ?? []).filter(f => f?.template === 'ask')
+}
+
 function recordSentences(record: AnalysisRecord): SentenceAnalysis[] {
   const data = record.session_data as { sentences?: SentenceAnalysis[] } | null
   return (data?.sentences ?? []).filter(s => s && typeof s.text === 'string')
@@ -66,6 +76,9 @@ export function useAnalysis(): UseAnalysisReturn {
   const [isStreaming, setIsStreaming]      = useState(false)
   const [phase, setPhase]                  = useState<AnalysisPhase>('idle')
   const [error, setError]                  = useState<string | null>(null)
+  const [analysisId, setAnalysisId]        = useState<string | null>(null)
+  const [asks, setAsks]                    = useState<AskEntry[]>([])
+  const addAsk = useCallback((entry: AskEntry) => setAsks(prev => [...prev, entry]), [])
 
   const streamAbortRef = useRef<AbortController | null>(null)  // live SSE stream
   const handoffRef     = useRef<AbortController | null>(null)  // stream aborted to switch to polling
@@ -91,6 +104,7 @@ export function useAnalysis(): UseAnalysisReturn {
    * sentences by source index; image jobs by position.
    */
   const applyRecord = useCallback((record: AnalysisRecord) => {
+    setAsks(recordAsks(record))
     const list = recordSentences(record)
     const byIndex = record.input_type === 'text'
     setSentences(prev => {
@@ -163,6 +177,7 @@ export function useAnalysis(): UseAnalysisReturn {
       if (res) setSentences(res.sentences.map(s => ({ preprocessed: s, analysis: null })))
     }
     savePending(record.id)
+    setAnalysisId(record.id)
     applyRecord(record)
     await follow(record.id)
   }, [applyRecord, follow, stopActivity])
@@ -170,6 +185,8 @@ export function useAnalysis(): UseAnalysisReturn {
   const reset = useCallback(() => {
     stopActivity()
     savePending(null)
+    setAnalysisId(null)
+    setAsks([])
     setSentences([])
     setSelectedIndex(null)
     setError(null)
@@ -184,6 +201,8 @@ export function useAnalysis(): UseAnalysisReturn {
     }
     stopActivity()
     savePending(null)
+    setAnalysisId(record.id)
+    setAsks(recordAsks(record))
     const rawSentences = recordSentences(record)
     const restored: SentenceState[] = rawSentences.map((s, i) => ({
       preprocessed: { index: i, text: s.text, tokens: [] },
@@ -203,6 +222,8 @@ export function useAnalysis(): UseAnalysisReturn {
 
     stopActivity()
     setError(null)
+    setAnalysisId(null)
+    setAsks([])
     setSentences([])
     setSelectedIndex(null)
     setIsStreaming(true)
@@ -235,7 +256,7 @@ export function useAnalysis(): UseAnalysisReturn {
         imageBase64 ? { image: imageBase64, type: 'image' } : { text, type: inputType },
         {
           signal: controller.signal,
-          onStart: id => { analysisId = id; savePending(id) },
+          onStart: id => { analysisId = id; savePending(id); setAnalysisId(id) },
         },
       )
 
@@ -320,7 +341,7 @@ export function useAnalysis(): UseAnalysisReturn {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   return {
-    inputType, sentences, selectedIndex,
+    inputType, analysisId, asks, addAsk, sentences, selectedIndex,
     isStreaming, phase, error,
     setSelectedIndex, startAnalysis, restoreFromHistory, reset,
   }
