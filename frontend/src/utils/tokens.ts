@@ -56,3 +56,39 @@ export function isFunctionToken(t: TokenInfo): boolean {
   return t.pos === '助詞' || t.pos === '助動詞' || t.pos === '記号'
     || (t.pos === '動詞' && t.pos_detail === '非自立')
 }
+
+const toHiragana = (s: string) =>
+  s.replace(/[ァ-ヶ]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60))
+/** Loose form for comparing typed Japanese: width-folded, hiragana, no punctuation/spaces. */
+const loose = (s: string) =>
+  toHiragana(s.normalize('NFKC')).replace(/[\s、。，,．.！!？?「」『』（）()…・“”"'〜~]/g, '')
+
+/**
+ * Compare typed Japanese against a sentence, 文節 by 文節. A chunk counts as
+ * right if typed as written or in kana (its reading). Returns one flag per
+ * chunk of `toChunks(tokens)`.
+ */
+export function checkTyping(tokens: TokenInfo[], input: string): boolean[] {
+  let rest = loose(input)
+  return toChunks(tokens).map(chunk => {
+    const forms = [
+      loose(chunk.map(t => t.surface).join('')),
+      loose(chunk.map(t => t.reading || t.surface).join('')),
+    ].filter(Boolean)
+    if (forms.length === 0) return true  // punctuation only
+    const hit = forms.find(f => rest.startsWith(f))
+    if (hit) {
+      rest = rest.slice(hit.length)
+      return true
+    }
+    // Wrong or missing: skip ahead to where this chunk appears later, if it
+    // does, so one mistake doesn't mark everything after it wrong.
+    let best: { at: number; len: number } | null = null
+    for (const f of forms) {
+      const at = rest.indexOf(f)
+      if (at >= 0 && (!best || at < best.at)) best = { at, len: f.length }
+    }
+    if (best) rest = rest.slice(best.at + best.len)
+    return false
+  })
+}

@@ -6,6 +6,8 @@ export interface Settings {
   levelFilter: string[]   // selected JLPT levels; empty = show all
   model: string
   theme: Theme            // 'system' follows the OS light/dark setting
+  hideJa: boolean         // sentence card: hide Japanese (recall practice)
+  hideZh: boolean         // sentence card: hide the translation
 }
 
 interface SettingsCtx {
@@ -16,7 +18,9 @@ interface SettingsCtx {
 
 const Ctx = createContext<SettingsCtx | null>(null)
 
-const DEFAULTS: Settings = { levelFilter: [], model: 'gemini-2.5-flash', theme: 'system' }
+const DEFAULTS: Settings = {
+  levelFilter: [], model: 'gemini-2.5-flash', theme: 'system', hideJa: false, hideZh: false,
+}
 
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<Settings>(() => {

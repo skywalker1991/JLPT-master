@@ -36,6 +36,7 @@ export function useSwipe(
 
     const down = (e: PointerEvent) => {
       if (e.pointerType !== 'touch') return
+      if ((e.target as Element | null)?.closest?.('textarea, input')) return  // text editing
       if (e.clientX < EDGE_PX || e.clientX > window.innerWidth - EDGE_PX) return
       id = e.pointerId; sx = e.clientX; sy = e.clientY; dx = 0; mode = null
     }
