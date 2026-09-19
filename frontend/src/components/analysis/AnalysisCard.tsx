@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import clsx from 'clsx'
+import { ChevronDown } from 'lucide-react'
 import type { SentenceAnalysis, PreprocessedSentence } from '../../types'
 import { useSettings } from '../../context/SettingsContext'
 import VocabChip from './VocabChip'
@@ -26,6 +28,23 @@ export default function AnalysisCard({ preprocessed, analysis }: Props) {
   const filteredVocab   = analysis?.vocab.filter(v => passes(v.jlpt_level ?? null)) ?? []
   const filteredGrammar = analysis?.grammar.filter(g => passes(g.jlpt_level ?? null)) ?? []
   const isFiltered      = levelFilter.length > 0
+
+  // While practising recall (Japanese hidden) the word/grammar cards would
+  // give the answer away, so keep them folded until asked for as a hint.
+  // Resets per sentence (the card is remounted on sentence change).
+  const [peek, setPeek] = useState(false)
+  if (settings.hideJa && analysis && !peek) {
+    return (
+      <button
+        type="button"
+        onClick={() => setPeek(true)}
+        className="w-full flex items-center justify-between gap-3 rounded-xl border border-dashed border-border px-4 py-3 text-sm text-fg-muted hover:text-fg hover:border-accent/40 transition-colors"
+      >
+        <span>单词 {filteredVocab.length} · 语法 {filteredGrammar.length} 已折叠，需要提示时点开</span>
+        <ChevronDown className="w-4 h-4 shrink-0" />
+      </button>
+    )
+  }
 
   return (
     <div className="space-y-6">
