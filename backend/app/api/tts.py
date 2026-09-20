@@ -1,7 +1,6 @@
 import base64
 import io
 import wave
-from functools import lru_cache
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query
@@ -16,15 +15,9 @@ GEMINI_TTS_URL = (
     "/gemini-3.1-flash-tts-preview:generateContent"
 )
 
-VOICE_NAME = "Kore"
-
-TTS_PROMPT = (
-    "穏やかで忍耐強い日本語の女性教師として、"
-    "外国人の生徒に教えるように、"
-    "ゆっくりと間を取りながら、明るく温かみのある声で読んでください。"
-    "発音は丁寧に、一語一語はっきりと：\n\n"
-    "{text}"
-)
+# Read plain text with one voice and no style instruction: prompting a
+# teaching style only made it sound like a slow classroom recital.
+VOICE_NAME = "Iapetus"
 
 
 def pcm_to_wav(pcm: bytes, sample_rate: int = 24000, channels: int = 1, sample_width: int = 2) -> bytes:
@@ -35,14 +28,6 @@ def pcm_to_wav(pcm: bytes, sample_rate: int = 24000, channels: int = 1, sample_w
         wf.setframerate(sample_rate)
         wf.writeframes(pcm)
     return buf.getvalue()
-
-
-@lru_cache(maxsize=256)
-def _cached_wav(text: str, api_key: str) -> bytes | None:
-    # Synchronous helper — called from async context via run_in_executor if needed,
-    # but lru_cache on the sync fetch is the simplest approach here.
-    # We store None on failure so we don't retry transiently.
-    return None  # placeholder — actual fetch is async, see below
 
 
 # Simple async-safe in-memory cache: text → WAV bytes
@@ -59,16 +44,11 @@ async def tts(text: str = Query(..., max_length=500)):
     if not settings.LLM_API_KEY:
         raise HTTPException(status_code=500, detail="LLM_API_KEY not configured")
 
-    prompt = TTS_PROMPT.format(text=text)
     payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
+        "contents": [{"parts": [{"text": text}]}],
         "generationConfig": {
             "responseModalities": ["AUDIO"],
-            "speechConfig": {
-                "voiceConfig": {
-                    "prebuiltVoiceConfig": {"voiceName": VOICE_NAME}
-                }
-            },
+            "speechConfig": {"voiceConfig": {"prebuiltVoiceConfig": {"voiceName": VOICE_NAME}}},
         },
     }
 
