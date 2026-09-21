@@ -185,3 +185,19 @@ def test_parse_ask_answer_extracts_new_items_and_drops_known():
 def test_parse_ask_answer_falls_back_to_plain_text():
     out = analysis_api._parse_ask_answer("就是普通的回答", set())
     assert out == {"response": "就是普通的回答", "new_items": []}
+
+
+LONG_SESSION = {"sentences": [{"index": i, "text": f"第{i}文。", "translation": f"第{i}句"} for i in range(10)]}
+
+
+def test_ask_prompt_includes_the_whole_passage_when_short():
+    prompt = analysis_api._build_ask_prompt(
+        SESSION, {"sentence_index": 0, "question": "これは何の話？"}, "私もそう思った。だから賛成した。")
+    assert "这段文字（上下文）" in prompt and "だから賛成した。" in prompt   # neighbouring sentence, not just the asked one
+
+
+def test_ask_prompt_falls_back_to_a_window_for_a_long_passage():
+    long_text = "あ" * 3000
+    prompt = analysis_api._build_ask_prompt(LONG_SESSION, {"sentence_index": 5, "question": "?"}, long_text)
+    assert "…第3文。第4文。第5文。第6文。第7文。…" in prompt
+    assert "あああ" not in prompt                                          # the raw long text isn't sent

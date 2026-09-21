@@ -660,12 +660,32 @@ def _ask_targets(params: dict) -> list[dict]:
     return []
 
 
-def _build_ask_prompt(session_data: dict, params: dict) -> str | None:
+# A question can be about the passage ("what does this term mean here?"),
+# not just the sentence, so send surrounding text as context: the whole
+# passage while it is short, otherwise a window around the sentence.
+_CONTEXT_CHARS = 1200
+_CONTEXT_WINDOW = 2
+
+
+def _ask_context(session_data: dict, source_text: str, idx: int) -> str:
+    text = (source_text or "").strip()
+    if text and len(text) <= _CONTEXT_CHARS:
+        return text
+    sentences = session_data.get("sentences") or []
+    lo, hi = max(0, idx - _CONTEXT_WINDOW), min(len(sentences), idx + _CONTEXT_WINDOW + 1)
+    window = "".join(s.get("text", "") for s in sentences[lo:hi])
+    if not window:
+        return text[:_CONTEXT_CHARS]
+    return ("…" if lo > 0 else "") + window + ("…" if hi < len(sentences) else "")
+
+
+def _build_ask_prompt(session_data: dict, params: dict, source_text: str = "") -> str | None:
     """
     Prompt for a free follow-up question on one sentence. params:
     sentence_index, question, and optional targets — vocab/grammar items of
     that sentence the question is about (none = the sentence as a whole).
-    The sentence's earlier Q&A is included so follow-ups work.
+    The surrounding passage and the sentence's earlier Q&A are included, so
+    questions about content or terminology work and follow-ups keep context.
     Returns None if the sentence or a referenced item isn't found.
     """
     sentences = session_data.get("sentences") or []
@@ -705,8 +725,10 @@ def _build_ask_prompt(session_data: dict, params: dict) -> str | None:
             f"问：{f['params'].get('question', '')}\n答：{(f.get('result') or {}).get('response', '')}" for f in earlier
         ) + "\n"
 
+    context = _ask_context(session_data, source_text, idx)
     known = [v.get("surface") for v in sentence.get("vocab") or []] + [g.get("pattern") for g in sentence.get("grammar") or []]
     return FOLLOWUP_ASK.format(
+        context=f"这段文字（上下文）：\n{context}\n\n" if context else "",
         subject=subject, focus=focus,
         item_line="".join(line + "\n" for line in item_lines), history=history,
         sentence=sentence.get("text", ""), translation=sentence.get("translation", ""),
@@ -799,7 +821,7 @@ async def followup(
     elif template == "ask":
         if analysis_id in _jobs:
             raise HTTPException(status_code=409, detail="Analysis still running; ask after it finishes")
-        prompt = _build_ask_prompt(analysis.session_data or {}, params)
+        prompt = _build_ask_prompt(analysis.session_data or {}, params, analysis.input_content or "")
         if prompt is None:
             raise HTTPException(status_code=400, detail="Unknown sentence or item")
         raw = await llm.analyze(prompt, {})

@@ -120,7 +120,7 @@ export default function FollowUp({ analysis }: { analysis: SentenceAnalysis | nu
               <Plus className="w-3 h-3" />引用单词 / 语法
             </button>
           )}
-          {attached.length === 0 && <span className="text-xs text-fg-subtle">不引用就是问整句</span>}
+          {attached.length === 0 && <span className="text-xs text-fg-subtle">不引用就是问这句或整段</span>}
         </div>
 
         {picking && (
@@ -158,7 +158,7 @@ export default function FollowUp({ analysis }: { analysis: SentenceAnalysis | nu
             }}
             rows={1}
             disabled={busy}
-            placeholder={busy ? '分析完成后就可以追问' : thread.length ? '继续追问…' : '对这句话、上面的单词或语法有疑问？回车发送'}
+            placeholder={busy ? '分析完成后就可以追问' : thread.length ? '继续追问…' : '这句话、上面的单词语法，或整段内容都可以问，回车发送'}
             aria-label="追问"
             className="flex-1 resize-none bg-transparent text-sm text-fg placeholder:text-fg-subtle outline-none min-h-[2.25rem] py-2 px-1"
           />
