@@ -1,12 +1,13 @@
 import { NavLink } from 'react-router-dom'
 import clsx from 'clsx'
 import { NAV } from './TopNav'
+import ThemeToggle from './ThemeToggle'
 
 /** Phone navigation: a tab bar at the bottom, within thumb reach. */
 export default function BottomNav() {
   return (
     <nav
-      className="md:hidden shrink-0 grid grid-cols-5 bg-surface border-t border-border"
+      className="md:hidden shrink-0 grid grid-cols-6 bg-surface border-t border-border"
       style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
     >
       {NAV.filter(n => n.mobile).map(({ to, end, icon: Icon, label }) => (
@@ -29,6 +30,7 @@ export default function BottomNav() {
           )}
         </NavLink>
       ))}
+      <ThemeToggle variant="tab" />
     </nav>
   )
 }
