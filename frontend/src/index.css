@@ -11,8 +11,6 @@
     min-height: 100dvh;
     line-height: 1.75;
     letter-spacing: 0.01em;
-    background-image: radial-gradient(circle, rgb(var(--c-dot)) 1.5px, transparent 1.5px);
-    background-size: 20px 20px;
   }
   p, span, li { line-height: 1.75; }
   h1, h2, h3, h4 { line-height: 1.4; letter-spacing: -0.01em; }

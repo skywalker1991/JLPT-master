@@ -37,7 +37,6 @@ const SEMANTIC = {
   'danger':         ['#EF4444', '#EF4444'],
   'danger-light':   ['#FEF2F2', '#3A1616'],
   'danger-fg':      ['#991B1B', '#FCA5A5'],
-  'dot':            ['#C4B49E', '#2E2823'],   // body dot pattern
 }
 
 const SHADES = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950]
@@ -101,7 +100,6 @@ export default {
         bg: v('bg'),
         surface: v('surface'),
         border: v('border'),
-        dot: v('dot'),
         fg: {
           DEFAULT: v('fg'),
           muted: v('fg-muted'),
