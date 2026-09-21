@@ -20,22 +20,22 @@ const hexToRgb = hex => {
 
 const SEMANTIC = {
   //  token            light       dark
-  'bg':             ['#FAF9F7', '#171412'],
-  'surface':        ['#FFFFFF', '#1F1B18'],
-  'border':         ['#E8E2D9', '#352E29'],
-  'fg':             ['#1C1917', '#EDE7E1'],
-  'fg-muted':       ['#78716C', '#A89F97'],
-  'fg-subtle':      ['#A8A29E', '#7D746C'],
+  'bg':             ['#FFFFFF', '#000000'],
+  'surface':        ['#FFFFFF', '#0E0E0E'],
+  'border':         ['#E6E4E1', '#262626'],
+  'fg':             ['#1C1917', '#EDEDED'],
+  'fg-muted':       ['#6B6560', '#A3A3A3'],
+  'fg-subtle':      ['#A3A09B', '#737373'],
   'accent':         ['#D97757', '#D97757'],
   'accent-hover':   ['#C4694A', '#E48A6B'],
-  'accent-light':   ['#FDF3EE', '#2C1F19'],
+  'accent-light':   ['#FDF3EE', '#1E1512'],
   'accent-border':  ['#F5C4A8', '#5C3A2B'],
   'accent-fg':      ['#9B3E22', '#F2A98C'],
   'success':        ['#10B981', '#10B981'],
-  'success-light':  ['#ECFDF5', '#0F2A20'],
+  'success-light':  ['#ECFDF5', '#0B241B'],
   'success-fg':     ['#065F46', '#6EE7B7'],
   'danger':         ['#EF4444', '#EF4444'],
-  'danger-light':   ['#FEF2F2', '#3A1616'],
+  'danger-light':   ['#FEF2F2', '#2E1212'],
   'danger-fg':      ['#991B1B', '#FCA5A5'],
 }
 
@@ -45,16 +45,19 @@ const HUES = [
   ...NEUTRALS, 'red', 'orange', 'amber', 'yellow', 'lime', 'green', 'emerald', 'teal',
   'cyan', 'sky', 'blue', 'indigo', 'violet', 'purple', 'fuchsia', 'pink', 'rose',
 ]
-const WARM_DARK_NEUTRAL = {
-  50: '#26211D', 100: '#2B2521', 200: '#383029', 300: '#4A413A', 400: '#7D746C',
-  500: '#9A9189', 600: '#B5ADA5', 700: '#D0C9C2', 800: '#E3DDD7', 900: '#EDE7E1', 950: '#F5F1ED',
+// Neutral greys in dark mode: a pure-black page wants a neutral scale, not a
+// warm one, or greys read brown against it.
+const DARK_NEUTRAL = {
+  50: '#141414', 100: '#1C1C1C', 200: '#292929', 300: '#3D3D3D', 400: '#737373',
+  500: '#8C8C8C', 600: '#A3A3A3', 700: '#C7C7C7', 800: '#DEDEDE', 900: '#EDEDED', 950: '#F7F7F7',
 }
+
 const mirror = shade => SHADES[SHADES.length - 1 - SHADES.indexOf(shade)]
 
 // Pale tints (50/100) are used as badge/chip backgrounds; their mirrored
 // shades (950/900) are too saturated on a dark page, so mix them toward the
 // dark surface colour.
-const DARK_SURFACE = '#1F1B18'
+const DARK_SURFACE = '#0E0E0E'
 const mix = (a, b, t) => {
   const [x, y] = [a, b].map(h => [0, 2, 4].map(i => parseInt(h.replace('#', '').slice(i, i + 2), 16)))
   return '#' + x.map((c, i) => Math.round(c * (1 - t) + y[i] * t).toString(16).padStart(2, '0')).join('')
@@ -75,7 +78,7 @@ const themeVars = plugin(({ addBase }) => {
       light[`--c-${hue}-${shade}`] = hexToRgb(defaultColors[hue][shade])
       const mirrored = defaultColors[hue][mirror(shade)]
       dark[`--c-${hue}-${shade}`] = hexToRgb(
-        NEUTRALS.includes(hue) ? WARM_DARK_NEUTRAL[shade]
+        NEUTRALS.includes(hue) ? DARK_NEUTRAL[shade]
           : shade in TINT_TO_SURFACE ? mix(mirrored, DARK_SURFACE, TINT_TO_SURFACE[shade])
           : mirrored,
       )
