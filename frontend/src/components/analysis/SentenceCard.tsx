@@ -44,7 +44,7 @@ export default function SentenceCard({ preprocessed, analysis }: Props) {
   const correct = marks?.filter(Boolean).length ?? 0
 
   return (
-    <div className="rounded-xl bg-accent-light/40 border border-accent-border/50 px-4 py-3 space-y-2">
+    <div className="rounded-xl bg-surface border border-border px-4 py-3 space-y-2">
       <div className="flex items-start gap-2">
         <div className="flex-1 min-w-0">
           <TokenText
@@ -82,12 +82,12 @@ export default function SentenceCard({ preprocessed, analysis }: Props) {
           <button
             type="button"
             onClick={() => setZhRevealed(true)}
-            className="block w-full text-left text-sm text-fg-subtle border-t border-accent-border/40 pt-2"
+            className="block w-full text-left text-sm text-fg-subtle border-t border-border pt-2"
           >
             <span className="inline-block rounded-md bg-border px-3 py-0.5">中文已隐藏，点击显示</span>
           </button>
         ) : (
-          <p className="text-sm text-fg-muted border-t border-accent-border/40 pt-2 leading-relaxed">
+          <p className="text-sm text-fg-muted border-t border-border pt-2 leading-relaxed">
             {analysis.translation}
           </p>
         )

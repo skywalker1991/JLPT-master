@@ -28,7 +28,7 @@ const SEMANTIC = {
   'fg-subtle':      ['#A3A09B', '#737373'],
   // Ink accent: the UI itself stays neutral so colour can carry meaning
   // (JLPT levels, parts of speech, right/wrong). Matches the logo.
-  'accent':         ['#1C1917', '#EDEDED'],
+  'accent':         ['#1C1917', '#E3E3E3'],
   'accent-hover':   ['#3A3532', '#FFFFFF'],
   'accent-light':   ['#F5F4F2', '#171717'],
   'accent-border':  ['#DBD8D4', '#333333'],
