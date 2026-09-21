@@ -142,7 +142,7 @@ export default function SentenceCard({ preprocessed, analysis }: Props) {
           aria-pressed={typing}
           className={clsx(
             'btn text-xs gap-1.5 py-1 px-2.5 rounded-full ring-1',
-            typing ? 'bg-accent text-white ring-accent' : 'text-fg-muted ring-border hover:text-fg',
+            typing ? 'bg-accent text-on-accent ring-accent' : 'text-fg-muted ring-border hover:text-fg',
           )}
         >
           <Keyboard className="w-3.5 h-3.5" />打字

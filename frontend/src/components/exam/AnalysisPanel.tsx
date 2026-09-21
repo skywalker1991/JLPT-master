@@ -101,7 +101,7 @@ function OptionTabs({ options }: { options: OptionEntry[] }) {
                 : 'border-border text-fg-muted hover:border-accent/40')
           } else {
             cls += isCur
-              ? 'bg-accent text-white border-accent shadow-sm'
+              ? 'bg-accent text-on-accent border-accent shadow-sm'
               : 'border-border text-fg-muted hover:border-accent/40'
           }
           return (

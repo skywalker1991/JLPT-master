@@ -3,6 +3,7 @@ import { FileText, BookMarked, Video, BookOpen, Brain, Settings } from 'lucide-r
 import clsx from 'clsx'
 import { useSettings } from '../../context/SettingsContext'
 import ThemeToggle from './ThemeToggle'
+import Logo from './Logo'
 
 const ALL_LEVELS = ['N1', 'N2', 'N3', 'N4', 'N5']
 
@@ -37,7 +38,7 @@ export default function TopNav() {
     <header className="hidden md:flex sticky top-0 z-50 bg-surface shadow-topbar h-14 items-center px-6 gap-4">
       {/* Logo */}
       <div className="flex items-center gap-2 shrink-0">
-        <img src="/image.png" alt="日本語 Master" className="w-9 h-9 md:w-11 md:h-11 object-contain rounded-xl" />
+        <Logo className="w-8 h-8 md:w-9 md:h-9 text-fg shrink-0" />
         <span className="font-semibold text-fg text-sm tracking-tight hidden sm:block">日本語 Master</span>
       </div>
 

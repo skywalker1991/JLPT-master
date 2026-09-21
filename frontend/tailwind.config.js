@@ -26,11 +26,14 @@ const SEMANTIC = {
   'fg':             ['#1C1917', '#EDEDED'],
   'fg-muted':       ['#6B6560', '#A3A3A3'],
   'fg-subtle':      ['#A3A09B', '#737373'],
-  'accent':         ['#D97757', '#D97757'],
-  'accent-hover':   ['#C4694A', '#E48A6B'],
-  'accent-light':   ['#FDF3EE', '#1E1512'],
-  'accent-border':  ['#F5C4A8', '#5C3A2B'],
-  'accent-fg':      ['#9B3E22', '#F2A98C'],
+  // Ink accent: the UI itself stays neutral so colour can carry meaning
+  // (JLPT levels, parts of speech, right/wrong). Matches the logo.
+  'accent':         ['#1C1917', '#EDEDED'],
+  'accent-hover':   ['#3A3532', '#FFFFFF'],
+  'accent-light':   ['#F5F4F2', '#171717'],
+  'accent-border':  ['#DBD8D4', '#333333'],
+  'accent-fg':      ['#1C1917', '#EDEDED'],
+  'on-accent':      ['#FFFFFF', '#0E0E0E'],   // text/icons on an accent fill
   'success':        ['#10B981', '#10B981'],
   'success-light':  ['#ECFDF5', '#0B241B'],
   'success-fg':     ['#065F46', '#6EE7B7'],
@@ -108,6 +111,7 @@ export default {
           muted: v('fg-muted'),
           subtle: v('fg-subtle'),
         },
+        'on-accent': v('on-accent'),
         accent: {
           DEFAULT: v('accent'),
           hover: v('accent-hover'),

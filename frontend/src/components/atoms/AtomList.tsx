@@ -90,7 +90,7 @@ export default function AtomList({ active = true, selectedId, onSelect, compact,
               className={clsx(
                 'px-3 py-1.5 rounded-md text-sm font-medium transition-colors duration-150 cursor-pointer',
                 filters.type === tab.value
-                  ? 'bg-accent text-white shadow-sm'
+                  ? 'bg-accent text-on-accent shadow-sm'
                   : 'text-fg-muted hover:text-fg hover:bg-surface',
               )}
             >

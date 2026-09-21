@@ -135,7 +135,7 @@ export default function FollowUp({ analysis }: { analysis: SentenceAnalysis | nu
                   aria-pressed={on}
                   className={clsx(
                     'text-xs rounded-md px-2 py-1 ring-1 transition-colors',
-                    on ? 'bg-accent text-white ring-accent' : 'ring-border text-fg-muted hover:text-fg',
+                    on ? 'bg-accent text-on-accent ring-accent' : 'ring-border text-fg-muted hover:text-fg',
                   )}
                 >
                   {t.kind === 'grammar' && <span className="opacity-70 mr-1">法</span>}{t.key}

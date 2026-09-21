@@ -77,7 +77,7 @@ export default function SentenceList({ sentences, selectedIndex, isStreaming, on
               onClick={() => clickable && onSelect(i)}
               className={clsx(
                 'w-7 h-7 rounded-full text-xs font-semibold transition-all duration-150 shrink-0',
-                selected && 'bg-accent text-white shadow-sm',
+                selected && 'bg-accent text-on-accent shadow-sm',
                 !selected && analyzed  && 'bg-accent-light text-accent-fg ring-1 ring-accent-border hover:bg-accent/20',
                 !selected && !analyzed && hasTokens  && 'border-2 border-accent/40 text-fg-muted animate-pulse',
                 !selected && !analyzed && !hasTokens && 'border-2 border-border text-fg-subtle hover:border-accent/40',

@@ -99,7 +99,7 @@ function ItemRow({
               className={[
                 'w-7 h-7 rounded text-xs font-bold transition-all',
                 starPos === n
-                  ? 'bg-accent text-white'
+                  ? 'bg-accent text-on-accent'
                   : 'bg-border/50 text-fg-muted hover:bg-border',
               ].join(' ')}
             >
@@ -442,7 +442,7 @@ export default function DraftEditor({
         <button
           onClick={handleConfirm}
           disabled={saving || confirming}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm bg-accent text-white hover:bg-accent-hover transition-colors disabled:opacity-40 font-semibold"
+          className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm bg-accent text-on-accent hover:bg-accent-hover transition-colors disabled:opacity-40 font-semibold"
         >
           {confirming && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
           确认入库

@@ -68,7 +68,7 @@ function QuestionNav({
                 const answered = hasOptions && !!answers[item.id]
                 const correct = isCorrectMap?.[item.id]
                 colorClass = isCurrent
-                  ? 'bg-accent text-white shadow-sm ring-2 ring-accent/30'
+                  ? 'bg-accent text-on-accent shadow-sm ring-2 ring-accent/30'
                   : !hasOptions
                   ? 'border border-border text-fg-muted'
                   : !answered
@@ -82,7 +82,7 @@ function QuestionNav({
                 const isAnswered = !!answers[item.id]
                 const isDone = submitted.has(u.sectionId)
                 colorClass = isCurrent
-                  ? 'bg-accent text-white shadow-sm ring-2 ring-accent/30'
+                  ? 'bg-accent text-on-accent shadow-sm ring-2 ring-accent/30'
                   : isDone && isAnswered
                   ? 'bg-success/15 text-success-fg border border-success/30'
                   : isDone
@@ -121,7 +121,7 @@ function SentenceOrderStem({ stem }: { stem: string }) {
         const star = /\[_(\d+)★_\]/.exec(part)
         const plain = /\[_(\d+)_\]/.exec(part)
         if (star) return (
-          <span key={i} className="inline-flex items-center justify-center w-8 h-8 mx-0.5 rounded-lg bg-accent text-white text-xs font-bold align-middle">★</span>
+          <span key={i} className="inline-flex items-center justify-center w-8 h-8 mx-0.5 rounded-lg bg-accent text-on-accent text-xs font-bold align-middle">★</span>
         )
         if (plain) return (
           <span key={i} className="inline-flex items-center justify-center w-8 h-8 mx-0.5 rounded-lg bg-border/60 text-fg-muted text-xs font-bold align-middle">{plain[1]}</span>
@@ -156,7 +156,7 @@ function ItemDisplay({
             </p>
       )}
       {isSentenceOrder && (
-        <p className="text-xs text-fg-muted">选择填入 <span className="inline-flex items-center justify-center w-5 h-5 rounded bg-accent text-white text-[10px] font-bold align-middle">★</span> 处的词语：</p>
+        <p className="text-xs text-fg-muted">选择填入 <span className="inline-flex items-center justify-center w-5 h-5 rounded bg-accent text-on-accent text-[10px] font-bold align-middle">★</span> 处的词语：</p>
       )}
       {item.transcript && (
         <div className="bg-bg border border-border rounded-xl p-3 text-sm text-fg leading-relaxed whitespace-pre-wrap">
@@ -336,7 +336,7 @@ export default function ExamSession({
             className={[
               'shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5',
               currentSectionAnswered
-                ? 'bg-accent text-white hover:bg-accent-hover'
+                ? 'bg-accent text-on-accent hover:bg-accent-hover'
                 : 'bg-surface border border-border text-fg-muted hover:border-accent/50',
             ].join(' ')}
           >

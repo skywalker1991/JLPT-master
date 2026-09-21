@@ -343,7 +343,7 @@ function ExamConfigPanel({
         <button
           onClick={handleStart}
           disabled={starting || selected.length === 0}
-          className="w-full py-3 bg-accent text-white rounded-xl font-semibold hover:bg-accent-hover disabled:opacity-40 transition-colors flex items-center justify-center gap-2"
+          className="w-full py-3 bg-accent text-on-accent rounded-xl font-semibold hover:bg-accent-hover disabled:opacity-40 transition-colors flex items-center justify-center gap-2"
         >
           {starting && <Loader2 className="w-4 h-4 animate-spin" />}
           开始考试
