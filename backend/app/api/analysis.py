@@ -13,6 +13,8 @@ from app.schemas.analysis import (
     AnalyzeRequest,
     PreprocessRequest,
     PreprocessResponse,
+    PreprocessBatchRequest,
+    PreprocessBatchResponse,
     FollowupRequest,
     FreeTextResult,
     GrammarQuizResult,
@@ -343,6 +345,14 @@ def _build_prompt(request: AnalyzeRequest) -> tuple[str, dict]:
 async def preprocess_text(request: PreprocessRequest):
     """Local morphological analysis only — no DB, no AI."""
     return preprocessor.preprocess(request.text)
+
+
+@router.post("/preprocess/batch", response_model=PreprocessBatchResponse)
+async def preprocess_batch(request: PreprocessBatchRequest):
+    """Same, for many texts at once (subtitles, sentence windows)."""
+    if len(request.texts) > 500:
+        raise HTTPException(status_code=400, detail="Too many texts (max 500)")
+    return PreprocessBatchResponse(results=[preprocessor.preprocess(t) for t in request.texts])
 
 
 # ---------------------------------------------------------------------------

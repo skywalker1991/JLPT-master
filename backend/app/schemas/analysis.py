@@ -162,3 +162,11 @@ class PreprocessedSentence(BaseModel):
 
 class PreprocessResponse(BaseModel):
     sentences: list[PreprocessedSentence]
+
+
+class PreprocessBatchRequest(BaseModel):
+    texts: list[str]
+
+
+class PreprocessBatchResponse(BaseModel):
+    results: list[PreprocessResponse]

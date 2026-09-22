@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import type {
   SentenceAnalysis, InputType, PreprocessedSentence, AnalysisRecord, TokenInfo, AskEntry,
 } from '../types'
-import { preprocess, analyzeStream, getAnalysis } from '../services/api'
+import { preprocess, preprocessBatch, analyzeStream, getAnalysis } from '../services/api'
 import { tokensFor } from '../utils/tokens'
 
 export interface SentenceState {
@@ -89,8 +89,8 @@ export function useAnalysis(): UseAnalysisReturn {
   const ensureTokens = useCallback(async (texts: string[]) => {
     const todo = [...new Set(texts)].filter(t => t.trim() && !tokenCache.current.has(t))
     if (todo.length > 0) {
-      const results = await Promise.all(todo.map(t => preprocess(t).catch(() => null)))
-      todo.forEach((t, i) => tokenCache.current.set(t, tokensFor(t, results[i])))
+      const results = await preprocessBatch(todo).catch(() => null)
+      todo.forEach((t, i) => tokenCache.current.set(t, tokensFor(t, results?.[i] ?? null)))
     }
     setSentences(prev => prev.map(s => {
       if (s.preprocessed.tokens.length > 0) return s

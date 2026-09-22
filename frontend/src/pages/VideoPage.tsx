@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import clsx from 'clsx'
 import { useLocation } from 'react-router-dom'
-import { getSubtitles, analyzeStream, preprocess } from '../services/api'
+import { getSubtitles, analyzeStream, preprocessBatch } from '../services/api'
 import type { SubtitleEntry } from '../services/api'
-import type { PreprocessedSentence } from '../types'
+import type { PreprocessedSentence, AskEntry, AskTarget } from '../types'
 import { tokensFor } from '../utils/tokens'
 import AnalysisCard from '../components/analysis/AnalysisCard'
+import SentenceCard from '../components/analysis/SentenceCard'
+import FollowUp, { AskContext } from '../components/analysis/AskPanel'
 import VideoURLBar from '../components/video/VideoURLBar'
 import VideoPlayer from '../components/video/VideoPlayer'
 import KaraokeBar from '../components/video/KaraokeBar'
@@ -78,6 +80,11 @@ export default function VideoPage() {
   // Latest subtitles for callbacks that shouldn't re-subscribe on every update
   const subtitlesRef = useRef<SubtitleState[]>([])
   useEffect(() => { subtitlesRef.current = subtitles }, [subtitles])
+  const selectedIdxRef = useRef<number | null>(null)
+  useEffect(() => { selectedIdxRef.current = selectedIdx }, [selectedIdx])
+  const composerRef = useRef<HTMLTextAreaElement>(null)
+  const [attached, setAttached] = useState<AskTarget[]>([])
+  useEffect(() => { setAttached([]) }, [selectedIdx])
 
   const playerRef  = useRef<YT.Player | null>(null)
   const rafRef     = useRef<number>(0)
@@ -147,6 +154,7 @@ export default function VideoPage() {
 
       const states: SubtitleState[] = data.subtitles.map(e => ({
         entry: e, preprocessed: null, tokenTimings: [], analysis: null, isAnalyzing: false,
+        analysisId: null, asks: [],
       }))
       setSubtitles(states)
       tokenizedRef.current = new Set()
@@ -165,28 +173,29 @@ export default function VideoPage() {
 
   const tokenizeAround = useCallback(async (idx: number, source?: SubtitleState[]) => {
     const list = source ?? subtitlesRef.current
-    const wanted = []
+    const wanted: number[] = []
     for (let i = Math.max(0, idx - 1); i <= Math.min(list.length - 1, idx + 3); i++) {
       if (!tokenizedRef.current.has(i)) { tokenizedRef.current.add(i); wanted.push(i) }
     }
-    await Promise.all(wanted.map(async i => {
-      const entry = list[i].entry
-      try {
-        const res = await preprocess(entry.text)
-        const tokens = tokensFor(entry.text, res)
-        const sent = tokens.length > 0
-          ? { index: 0, text: entry.text, tokens }
-          : res.sentences[0] ?? null
-        setSubtitles(prev => {
-          const next = [...prev]
-          if (!next[i]) return prev
+    if (wanted.length === 0) return
+    try {
+      const results = await preprocessBatch(wanted.map(i => list[i].entry.text))
+      setSubtitles(prev => {
+        const next = [...prev]
+        wanted.forEach((i, k) => {
+          if (!next[i]) return
+          const entry = list[i].entry
+          const tokens = tokensFor(entry.text, results[k])
+          const sent = tokens.length > 0
+            ? { index: 0, text: entry.text, tokens }
+            : results[k]?.sentences[0] ?? null
           next[i] = { ...next[i], preprocessed: sent, tokenTimings: sent ? computeTokenTimings(entry, sent) : [] }
-          return next
         })
-      } catch {
-        tokenizedRef.current.delete(i)   // let it be retried
-      }
-    }))
+        return next
+      })
+    } catch {
+      wanted.forEach(i => tokenizedRef.current.delete(i))   // let it be retried
+    }
   }, [])
 
   const handleSelectSubtitle = useCallback(async (idx: number) => {
@@ -205,7 +214,13 @@ export default function VideoPage() {
     })
 
     try {
-      const stream = analyzeStream({ text: subtitles[idx].entry.text, type: 'text' })
+      const stream = analyzeStream({ text: subtitles[idx].entry.text, type: 'text' }, {
+        onStart: id => setSubtitles(prev => {
+          const next = [...prev]
+          if (next[idx]) next[idx] = { ...next[idx], analysisId: id }
+          return next
+        }),
+      })
       for await (const sentence of stream) {
         setSubtitles(prev => {
           const next = [...prev]
@@ -227,6 +242,16 @@ export default function VideoPage() {
   useEffect(() => {
     if (currentIdx >= 0) void tokenizeAround(currentIdx)
   }, [currentIdx, tokenizeAround])
+
+  const addAsk = useCallback((entry: AskEntry) => {
+    setSubtitles(prev => {
+      const idx = selectedIdxRef.current
+      if (idx === null || !prev[idx]) return prev
+      const next = [...prev]
+      next[idx] = { ...next[idx], asks: [...next[idx].asks, entry] }
+      return next
+    })
+  }, [])
 
   const current  = currentIdx >= 0 ? subtitles[currentIdx] : null
   const selected = selectedIdx !== null ? subtitles[selectedIdx] : null
@@ -288,10 +313,25 @@ export default function VideoPage() {
             'card flex-1 min-h-0 overflow-y-auto px-4 md:px-5 py-4 md:py-5',
             mobileTab !== 'analysis' && 'hidden md:block',
           )}>
-            <AnalysisCard
-              preprocessed={selected?.preprocessed ?? null}
-              analysis={selected?.analysis ?? null}
-            />
+            <AskContext.Provider value={{
+              analysisId: selected?.analysisId ?? null,
+              sentenceIndex: selected ? 0 : null,
+              asks: selected?.asks ?? [],
+              addAsk,
+              busy: selected?.isAnalyzing ?? false,
+              attached, setAttached, composerRef,
+            }}>
+              {selected?.preprocessed && (
+                <div className="mb-4">
+                  <SentenceCard preprocessed={selected.preprocessed} analysis={selected.analysis} />
+                </div>
+              )}
+              <AnalysisCard
+                preprocessed={selected?.preprocessed ?? null}
+                analysis={selected?.analysis ?? null}
+              />
+              <FollowUp analysis={selected?.analysis ?? null} />
+            </AskContext.Provider>
           </div>
         </div>
 

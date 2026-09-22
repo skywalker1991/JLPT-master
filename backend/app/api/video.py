@@ -24,10 +24,28 @@ def _extract_video_id(url: str) -> str | None:
     return None
 
 
-async def _fetch_translation(transcript, lang: str) -> list | None:
+async def _none() -> None:
+    return None
+
+
+def _pick_language(transcript, wanted: list[str]) -> str | None:
+    """First of `wanted` this transcript can actually be translated into.
+    YouTube offers different codes per video (zh-Hans for one, zh-Hant for
+    another), so asking for a hard-coded code silently returns nothing."""
+    try:
+        offered = {l.language_code for l in transcript.translation_languages}
+    except Exception:
+        return None
+    return next((code for code in wanted if code in offered), None)
+
+
+async def _fetch_translation(transcript, lang: str | None) -> list | None:
+    if not lang:
+        return None
     try:
         return await asyncio.to_thread(lambda: transcript.translate(lang).fetch())
-    except Exception:
+    except Exception as e:
+        logger.warning("Subtitle translation to %s failed: %s", lang, e)
         return None
 
 
@@ -42,6 +60,7 @@ async def get_subtitles(url: str = Query(...)):
         transcript_list = await asyncio.to_thread(_ytt.list, video_id)
 
         transcript = None
+        native_ja = True            # Japanese comes from the video itself
         try:
             transcript = transcript_list.find_manually_created_transcript(["ja"])
         except Exception:
@@ -54,9 +73,13 @@ async def get_subtitles(url: str = Query(...)):
                 pass
 
         if transcript is None:
+            # No Japanese track: translate another language into Japanese.
+            # YouTube won't translate a translation, so skip zh/en entirely
+            # rather than firing requests that always fail.
             try:
                 first = next(iter(transcript_list))
                 transcript = first.translate("ja")
+                native_ja = False
             except Exception:
                 pass
 
@@ -64,10 +87,15 @@ async def get_subtitles(url: str = Query(...)):
             raise HTTPException(status_code=404, detail="No Japanese subtitles available for this video")
 
         # Fetch all three languages concurrently
+        # YouTube won't translate a translation, so only ask when the Japanese
+        # track came from the video itself.
+        translatable = native_ja and getattr(transcript, "is_translatable", False)
+        zh_lang = _pick_language(transcript, ["zh-Hans", "zh-CN", "zh", "zh-Hant", "zh-TW"]) if translatable else None
+        en_lang = _pick_language(transcript, ["en", "en-US", "en-GB"]) if translatable else None
         ja_data, zh_data, en_data = await asyncio.gather(
             asyncio.to_thread(transcript.fetch),
-            _fetch_translation(transcript, "zh-Hans"),
-            _fetch_translation(transcript, "en"),
+            _fetch_translation(transcript, zh_lang),
+            _fetch_translation(transcript, en_lang),
         )
 
         entries = []

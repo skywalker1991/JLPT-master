@@ -201,3 +201,19 @@ def test_ask_prompt_falls_back_to_a_window_for_a_long_passage():
     prompt = analysis_api._build_ask_prompt(LONG_SESSION, {"sentence_index": 5, "question": "?"}, long_text)
     assert "…第3文。第4文。第5文。第6文。第7文。…" in prompt
     assert "あああ" not in prompt                                          # the raw long text isn't sent
+
+
+def test_preprocess_batch_splits_each_text_independently():
+    from app.schemas.analysis import PreprocessBatchRequest
+    out = asyncio.run(analysis_api.preprocess_batch(
+        PreprocessBatchRequest(texts=["「ここ、いいね！」と友達が言った。", "私もそう思った。"])))
+    assert [len(r.sentences) for r in out.results] == [1, 1]
+    assert out.results[0].sentences[0].text == "「ここ、いいね！」と友達が言った。"
+    assert out.results[1].sentences[0].tokens[0].surface == "私"
+
+
+def test_preprocess_batch_rejects_an_oversized_request():
+    from app.schemas.analysis import PreprocessBatchRequest
+    import pytest
+    with pytest.raises(Exception):
+        asyncio.run(analysis_api.preprocess_batch(PreprocessBatchRequest(texts=["あ"] * 501)))

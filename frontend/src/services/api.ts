@@ -58,6 +58,14 @@ export async function preprocess(text: string): Promise<PreprocessResponse> {
 
 // ---- Analyze (SSE stream) ----
 
+export async function preprocessBatch(texts: string[]): Promise<PreprocessResponse[]> {
+  const res = await request<{ results: PreprocessResponse[] }>('/api/preprocess/batch', {
+    method: 'POST',
+    body: JSON.stringify({ texts }),
+  })
+  return res.results
+}
+
 export async function* analyzeStream(
   req: AnalyzeRequest,
   opts: { signal?: AbortSignal; onStart?: (analysisId: string) => void } = {},
