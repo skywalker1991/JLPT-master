@@ -77,11 +77,11 @@ export default function KaraokeBar({ timings, text, zh, en, currentTime }: Props
   const handleClose = useCallback(() => setPopover(null), [])
 
   return (
-    <div className="card px-6 py-4 flex flex-col gap-2">
+    <div className="card px-4 md:px-6 py-3 md:py-4 flex flex-col gap-2 shrink-0">
       <div className="flex items-center min-h-[2.5rem]">
         {text ? (
           timings.length > 0 ? (
-            <span className="flex flex-wrap gap-x-1 text-2xl leading-loose">
+            <span className="flex flex-wrap gap-x-1 text-lg md:text-2xl leading-loose">
               {timings.map((tt, i) => (
                 <KaraokeToken
                   key={i}
@@ -92,7 +92,7 @@ export default function KaraokeBar({ timings, text, zh, en, currentTime }: Props
               ))}
             </span>
           ) : (
-            <span className="text-2xl text-fg leading-loose">{text}</span>
+            <span className="text-lg md:text-2xl text-fg leading-loose">{text}</span>
           )
         ) : (
           <span className="text-sm text-fg-subtle">—</span>

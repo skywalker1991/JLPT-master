@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import clsx from 'clsx'
 import { useLocation } from 'react-router-dom'
 import { getSubtitles, analyzeStream, preprocess } from '../services/api'
 import type { SubtitleEntry } from '../services/api'
@@ -72,6 +73,11 @@ export default function VideoPage() {
   const [currentIdx, setCurrentIdx]   = useState<number>(-1)
   const [currentTime, setCurrentTime] = useState<number>(0)
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null)
+  const [mobileTab, setMobileTab] = useState<'subs' | 'analysis'>('subs')
+
+  // Latest subtitles for callbacks that shouldn't re-subscribe on every update
+  const subtitlesRef = useRef<SubtitleState[]>([])
+  useEffect(() => { subtitlesRef.current = subtitles }, [subtitles])
 
   const playerRef  = useRef<YT.Player | null>(null)
   const rafRef     = useRef<number>(0)
@@ -143,31 +149,8 @@ export default function VideoPage() {
         entry: e, preprocessed: null, tokenTimings: [], analysis: null, isAnalyzing: false,
       }))
       setSubtitles(states)
-
-      const batchSize = 5
-      for (let i = 0; i < states.length; i += batchSize) {
-        await Promise.all(
-          states.slice(i, i + batchSize).map(async (s, offset) => {
-            try {
-              const res = await preprocess(s.entry.text)
-              const tokens = tokensFor(s.entry.text, res)
-              const sent = tokens.length > 0
-                ? { index: 0, text: s.entry.text, tokens }
-                : res.sentences[0] ?? null
-              const idx = i + offset
-              setSubtitles(prev => {
-                const next = [...prev]
-                next[idx] = {
-                  ...next[idx],
-                  preprocessed: sent,
-                  tokenTimings: sent ? computeTokenTimings(s.entry, sent) : [],
-                }
-                return next
-              })
-            } catch { /* skip */ }
-          })
-        )
-      }
+      tokenizedRef.current = new Set()
+      void tokenizeAround(0, states)
     } catch (e) {
       setError(e instanceof Error ? e.message : '加载失败')
     } finally {
@@ -175,8 +158,41 @@ export default function VideoPage() {
     }
   }
 
+  // Tokenising every line up front meant one request per subtitle (60+ for a
+  // short video). Only the lines around the playhead — and whatever is tapped
+  // — are needed, so do those and remember what's done.
+  const tokenizedRef = useRef<Set<number>>(new Set())
+
+  const tokenizeAround = useCallback(async (idx: number, source?: SubtitleState[]) => {
+    const list = source ?? subtitlesRef.current
+    const wanted = []
+    for (let i = Math.max(0, idx - 1); i <= Math.min(list.length - 1, idx + 3); i++) {
+      if (!tokenizedRef.current.has(i)) { tokenizedRef.current.add(i); wanted.push(i) }
+    }
+    await Promise.all(wanted.map(async i => {
+      const entry = list[i].entry
+      try {
+        const res = await preprocess(entry.text)
+        const tokens = tokensFor(entry.text, res)
+        const sent = tokens.length > 0
+          ? { index: 0, text: entry.text, tokens }
+          : res.sentences[0] ?? null
+        setSubtitles(prev => {
+          const next = [...prev]
+          if (!next[i]) return prev
+          next[i] = { ...next[i], preprocessed: sent, tokenTimings: sent ? computeTokenTimings(entry, sent) : [] }
+          return next
+        })
+      } catch {
+        tokenizedRef.current.delete(i)   // let it be retried
+      }
+    }))
+  }, [])
+
   const handleSelectSubtitle = useCallback(async (idx: number) => {
     setSelectedIdx(idx)
+    setMobileTab('analysis')
+    void tokenizeAround(idx)
     playerRef.current?.seekTo(subtitles[idx].entry.start, true)
     playerRef.current?.pauseVideo()
 
@@ -207,11 +223,16 @@ export default function VideoPage() {
     }
   }, [subtitles])
 
+  // Keep the lines around the playhead tokenised as the video plays
+  useEffect(() => {
+    if (currentIdx >= 0) void tokenizeAround(currentIdx)
+  }, [currentIdx, tokenizeAround])
+
   const current  = currentIdx >= 0 ? subtitles[currentIdx] : null
   const selected = selectedIdx !== null ? subtitles[selectedIdx] : null
 
   return (
-    <div className="flex flex-col flex-1 min-h-0 p-4 gap-4 bg-bg overflow-hidden">
+    <div className="flex flex-col flex-1 min-h-0 p-2 md:p-4 gap-3 md:gap-4 bg-bg overflow-hidden">
 
       <VideoURLBar
         value={urlInput}
@@ -221,10 +242,11 @@ export default function VideoPage() {
         error={error}
       />
 
-      <div className="flex flex-1 min-h-0 gap-4 overflow-hidden">
+      <div className="flex flex-1 min-h-0 flex-col md:flex-row gap-3 md:gap-4 overflow-hidden">
 
-        {/* Left: Video + karaoke */}
-        <div className="flex flex-col gap-4 shrink-0 min-h-0 overflow-hidden" style={{ width: '60%' }}>
+        {/* Video + the line being spoken. Full width on phones, 60% beside the
+            list on desktop. */}
+        <div className="flex flex-col gap-3 md:gap-4 md:shrink-0 min-h-0 md:w-[60%]">
           <VideoPlayer videoId={videoId} />
           <KaraokeBar
             timings={current?.tokenTimings ?? []}
@@ -235,15 +257,37 @@ export default function VideoPage() {
           />
         </div>
 
-        {/* Right: Subtitle list + Analysis */}
-        <div className="flex flex-col flex-1 min-h-0 gap-4 overflow-hidden">
-          <SubtitleList
-            subtitles={subtitles}
-            currentIdx={currentIdx}
-            selectedIdx={selectedIdx}
-            onSelect={handleSelectSubtitle}
-          />
-          <div className="card flex-1 min-h-0 overflow-y-auto px-5 py-5">
+        {/* Phones show one of the two panes at a time; desktop stacks both. */}
+        <div className="md:hidden flex gap-1 p-1 rounded-xl bg-gray-100 shrink-0">
+          {([['subs', '字幕'], ['analysis', '解析']] as const).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setMobileTab(key)}
+              aria-pressed={mobileTab === key}
+              className={clsx(
+                'flex-1 rounded-lg py-1.5 text-xs font-semibold transition-colors',
+                mobileTab === key ? 'bg-surface text-fg shadow-sm' : 'text-fg-muted',
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex flex-col flex-1 min-h-0 gap-4">
+          <div className={clsx('flex flex-1 min-h-0', mobileTab !== 'subs' && 'hidden md:flex')}>
+            <SubtitleList
+              subtitles={subtitles}
+              currentIdx={currentIdx}
+              selectedIdx={selectedIdx}
+              onSelect={handleSelectSubtitle}
+            />
+          </div>
+          <div className={clsx(
+            'card flex-1 min-h-0 overflow-y-auto px-4 md:px-5 py-4 md:py-5',
+            mobileTab !== 'analysis' && 'hidden md:block',
+          )}>
             <AnalysisCard
               preprocessed={selected?.preprocessed ?? null}
               analysis={selected?.analysis ?? null}

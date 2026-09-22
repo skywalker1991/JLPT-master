@@ -4,7 +4,7 @@ interface Props {
 
 export default function VideoPlayer({ videoId }: Props) {
   return (
-    <div className="flex-1 min-h-0 bg-black rounded-xl overflow-hidden">
+    <div className="w-full aspect-video md:aspect-auto md:flex-1 md:min-h-0 bg-black rounded-xl overflow-hidden shrink-0">
       <div className="relative h-full">
         {videoId
           ? <div id="yt-player" className="absolute inset-0 w-full h-full" />
