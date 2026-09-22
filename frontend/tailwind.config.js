@@ -20,20 +20,22 @@ const hexToRgb = hex => {
 
 const SEMANTIC = {
   //  token            light       dark
-  'bg':             ['#FFFFFF', '#000000'],
-  'surface':        ['#FFFFFF', '#0E0E0E'],
-  'border':         ['#E6E4E1', '#262626'],
-  'fg':             ['#1C1917', '#EDEDED'],
-  'fg-muted':       ['#6B6560', '#A3A3A3'],
-  'fg-subtle':      ['#A3A09B', '#737373'],
+  // Dark mode sits just off pure black: cards can then be lighter than the
+  // page (layers read without extra borders) and colour stops glaring.
+  'bg':             ['#FFFFFF', '#0D0D0D'],
+  'surface':        ['#FFFFFF', '#1A1A1A'],
+  'border':         ['#E6E4E1', '#2E2E2E'],
+  'fg':             ['#1C1917', '#E8E8E8'],
+  'fg-muted':       ['#6B6560', '#A8A8A8'],
+  'fg-subtle':      ['#A3A09B', '#7A7A7A'],
   // Ink accent: the UI itself stays neutral so colour can carry meaning
   // (JLPT levels, parts of speech, right/wrong). Matches the logo.
   'accent':         ['#1C1917', '#E3E3E3'],
   'accent-hover':   ['#3A3532', '#FFFFFF'],
-  'accent-light':   ['#F5F4F2', '#171717'],
-  'accent-border':  ['#DBD8D4', '#333333'],
+  'accent-light':   ['#F5F4F2', '#232323'],
+  'accent-border':  ['#DBD8D4', '#3A3A3A'],
   'accent-fg':      ['#1C1917', '#EDEDED'],
-  'on-accent':      ['#FFFFFF', '#0E0E0E'],   // text/icons on an accent fill
+  'on-accent':      ['#FFFFFF', '#141414'],   // text/icons on an accent fill
   'success':        ['#10B981', '#10B981'],
   'success-light':  ['#ECFDF5', '#0B241B'],
   'success-fg':     ['#065F46', '#6EE7B7'],
@@ -60,7 +62,7 @@ const mirror = shade => SHADES[SHADES.length - 1 - SHADES.indexOf(shade)]
 // Pale tints (50/100) are used as badge/chip backgrounds; their mirrored
 // shades (950/900) are too saturated on a dark page, so mix them toward the
 // dark surface colour.
-const DARK_SURFACE = '#0E0E0E'
+const DARK_SURFACE = '#1A1A1A'
 const mix = (a, b, t) => {
   const [x, y] = [a, b].map(h => [0, 2, 4].map(i => parseInt(h.replace('#', '').slice(i, i + 2), 16)))
   return '#' + x.map((c, i) => Math.round(c * (1 - t) + y[i] * t).toString(16).padStart(2, '0')).join('')
