@@ -2,9 +2,12 @@ import asyncio
 import logging
 import re
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.ext.asyncio import AsyncSession
 from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api._errors import NoTranscriptFound, TranscriptsDisabled
+
+from app.models.db import VideoSubtitle, get_db
 
 logger = logging.getLogger(__name__)
 
@@ -49,13 +52,8 @@ async def _fetch_translation(transcript, lang: str | None) -> list | None:
         return None
 
 
-@router.get("/video/subtitles")
-async def get_subtitles(url: str = Query(...)):
-    """Fetch Japanese subtitles with Chinese and English translations."""
-    video_id = _extract_video_id(url)
-    if not video_id:
-        raise HTTPException(status_code=400, detail="Invalid YouTube URL or video ID")
-
+async def _fetch_from_youtube(video_id: str) -> list[dict]:
+    """Japanese subtitles with Chinese / English translations where offered."""
     try:
         transcript_list = await asyncio.to_thread(_ytt.list, video_id)
 
@@ -111,7 +109,7 @@ async def get_subtitles(url: str = Query(...)):
             }
             entries.append(entry)
 
-        return {"video_id": video_id, "subtitles": entries}
+        return entries
 
     except HTTPException:
         raise
@@ -120,3 +118,35 @@ async def get_subtitles(url: str = Query(...)):
     except Exception as e:
         logger.error("Failed to fetch subtitles for %s: %s", video_id, e)
         raise HTTPException(status_code=502, detail=f"Failed to fetch subtitles: {str(e)}")
+
+
+@router.get("/video/subtitles")
+async def get_subtitles(
+    url: str = Query(...),
+    refresh: bool = Query(default=False, description="Re-fetch even if cached"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Subtitles for a video, served from the cache when we already have them.
+    YouTube rate-limits repeated fetches (it starts refusing the server's IP),
+    and subtitles don't change, so the first fetch is kept.
+    """
+    video_id = _extract_video_id(url)
+    if not video_id:
+        raise HTTPException(status_code=400, detail="Invalid YouTube URL or video ID")
+
+    if not refresh:
+        cached = await db.get(VideoSubtitle, video_id)
+        if cached is not None:
+            return {"video_id": video_id, "subtitles": cached.subtitles, "cached": True}
+
+    entries = await _fetch_from_youtube(video_id)
+
+    try:
+        await db.merge(VideoSubtitle(video_id=video_id, subtitles=entries))
+        await db.commit()
+    except Exception as e:                       # caching is best-effort
+        logger.warning("Could not cache subtitles for %s: %s", video_id, e)
+        await db.rollback()
+
+    return {"video_id": video_id, "subtitles": entries, "cached": False}

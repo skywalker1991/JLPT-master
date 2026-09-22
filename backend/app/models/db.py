@@ -128,6 +128,18 @@ class AtomSrsState(Base):
     )
 
 
+class VideoSubtitle(Base):
+    """Subtitles fetched from YouTube, kept so a video isn't re-fetched every
+    time it is opened (and so repeated fetches don't get the server IP
+    blocked). Subtitles rarely change; refresh explicitly when needed."""
+
+    __tablename__ = "video_subtitles"
+
+    video_id = Column(String(20), primary_key=True)
+    subtitles = Column(JSONB, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+
+
 class Analysis(Base):
     __tablename__ = "analyses"
 
