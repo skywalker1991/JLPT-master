@@ -12,6 +12,8 @@ interface Props {
   onReveal?: (chunkIndex: number) => void
   /** Per-chunk result of a typing check: true = right, false = wrong */
   marks?: boolean[] | null
+  /** Show the kana reading above each word */
+  furigana?: boolean
 }
 
 /**
@@ -20,7 +22,7 @@ interface Props {
  * chunks — so the sentence's skeleton (〜は … 〜を … 述語) reads at a glance.
  */
 export default function TokenText({
-  tokens, fallback = '', className = '', hidden = false, revealed, onReveal, marks,
+  tokens, fallback = '', className = '', hidden = false, revealed, onReveal, marks, furigana = true,
 }: Props) {
   if (tokens.length === 0) {
     const blurred = hidden && !revealed?.has(0)
@@ -56,7 +58,7 @@ export default function TokenText({
           >
             {chunk.map((token, j) => {
               const fn = isFunctionToken(token)
-              const hasReading = token.reading && token.reading !== token.surface
+              const hasReading = furigana && token.reading && token.reading !== token.surface
               return (
                 <ruby
                   key={j}

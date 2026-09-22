@@ -55,6 +55,7 @@ export default function SentenceCard({ preprocessed, analysis }: Props) {
             revealed={revealed}
             onReveal={i => setRevealed(prev => new Set(prev).add(i))}
             marks={marks}
+            furigana={!settings.hideFurigana}
           />
         </div>
         <button
@@ -130,6 +131,11 @@ export default function SentenceCard({ preprocessed, analysis }: Props) {
           on={!settings.hideJa}
           label="日文"
           onClick={() => { updateSettings({ hideJa: !settings.hideJa }); setRevealed(new Set()) }}
+        />
+        <Toggle
+          on={!settings.hideFurigana}
+          label="假名"
+          onClick={() => updateSettings({ hideFurigana: !settings.hideFurigana })}
         />
         <Toggle
           on={!settings.hideZh}
