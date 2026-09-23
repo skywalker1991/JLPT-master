@@ -16,7 +16,8 @@ class GeminiClient(LLMClient):
         self._client = genai.Client(api_key=api_key)
 
     async def analyze_stream(
-        self, prompt: str, schema: dict, image_base64: str | None = None
+        self, prompt: str, schema: dict, image_base64: str | None = None,
+        image_mime: str = "image/png",
     ) -> AsyncIterator[str]:
         """Stream analysis, yield raw text chunks.
 
@@ -28,7 +29,7 @@ class GeminiClient(LLMClient):
             if image_base64:
                 image_bytes = base64.b64decode(image_base64)
                 contents = [
-                    types.Part.from_bytes(data=image_bytes, mime_type="image/png"),
+                    types.Part.from_bytes(data=image_bytes, mime_type=image_mime),
                     types.Part.from_text(text=prompt),
                 ]
             else:

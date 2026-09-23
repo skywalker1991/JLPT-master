@@ -134,6 +134,9 @@ class ExampleResult(BaseModel):
 class AnalyzeRequest(BaseModel):
     text: str | None = None
     image: str | None = None  # base64
+    # Screenshots are PNG, but a photo picked from a phone's library is JPEG or
+    # HEIC — sending those labelled as PNG confuses the model.
+    image_mime: str = "image/png"
     type: str = "text"  # text|image|jlpt_grammar|jlpt_reading|jlpt_ordering|jlpt_listening
 
 

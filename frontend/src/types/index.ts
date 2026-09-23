@@ -21,6 +21,7 @@ export interface PreprocessResponse {
 export interface AnalyzeRequest {
   text?: string
   image?: string
+  image_mime?: string
   type: string
 }
 

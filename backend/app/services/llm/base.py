@@ -5,7 +5,8 @@ from typing import AsyncIterator
 class LLMClient(ABC):
     @abstractmethod
     async def analyze_stream(
-        self, prompt: str, schema: dict, image_base64: str | None = None
+        self, prompt: str, schema: dict, image_base64: str | None = None,
+        image_mime: str = "image/png",
     ) -> AsyncIterator[str]:
         """Stream analysis results as JSON chunks."""
         ...

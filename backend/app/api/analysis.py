@@ -570,7 +570,7 @@ def _build_event_stream(request: AnalyzeRequest, analysis_id: UUID, db: AsyncSes
         emitted_sentences: list[dict] = []
 
         try:
-            async for chunk in llm.analyze_stream(prompt, schema, image_base64=request.image):
+            async for chunk in llm.analyze_stream(prompt, schema, image_base64=request.image, image_mime=request.image_mime):
                 full_json += chunk
                 yield {"event": "chunk", "data": chunk}
 

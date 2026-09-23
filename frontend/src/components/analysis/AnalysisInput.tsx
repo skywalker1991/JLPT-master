@@ -1,4 +1,5 @@
-import { X, Send, Loader2 } from 'lucide-react'
+import { useRef } from 'react'
+import { X, Send, Loader2, ImagePlus } from 'lucide-react'
 import clsx from 'clsx'
 
 const PHASE_LABEL: Record<string, string> = {
@@ -15,14 +16,16 @@ interface Props {
   phase: string
   error: string | null
   onTextChange: (v: string) => void
+  onImagePick: (file: File) => void
   onImageClear: () => void
   onSubmit: () => void
 }
 
 export default function AnalysisInput({
   text, imageData, isStreaming, hasResults, phase, error,
-  onTextChange, onImageClear, onSubmit,
+  onTextChange, onImagePick, onImageClear, onSubmit,
 }: Props) {
+  const fileRef = useRef<HTMLInputElement>(null)
 
   // ── Streaming: show progress ──
   if (isStreaming) {
@@ -74,7 +77,7 @@ export default function AnalysisInput({
               }
             }}
             rows={3}
-            placeholder="粘贴日语文本或截图…"
+            placeholder="粘贴日语文本，或选一张截图…"
             className="w-full resize-none bg-transparent px-3 pt-3 pb-3 text-sm leading-relaxed
                        text-fg placeholder:text-fg-subtle outline-none border-none block"
           />
@@ -82,6 +85,28 @@ export default function AnalysisInput({
       </div>
 
       <div className="flex items-center gap-2 mt-3">
+        {/* Pasting only ever worked on a desktop keyboard — a phone has no way
+            to paste a screenshot into the page, so it needs a real picker. */}
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={e => {
+            const file = e.target.files?.[0]
+            if (file) onImagePick(file)
+            e.target.value = ''        // let the same file be picked again
+          }}
+        />
+        <button
+          onClick={() => fileRef.current?.click()}
+          aria-label="选择图片"
+          className="h-11 w-11 shrink-0 rounded-xl border border-border text-fg-muted
+                     hover:text-fg hover:border-accent/40 flex items-center justify-center
+                     transition-colors"
+        >
+          <ImagePlus className="w-5 h-5" />
+        </button>
         <button
           onClick={onSubmit}
           disabled={!canSubmit}

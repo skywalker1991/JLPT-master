@@ -27,6 +27,7 @@ export default function AnalysisPage() {
 
   const [draftText, setDraftText] = useState('')
   const [imageData, setImageData] = useState<string | null>(null)
+  const [imageMime, setImageMime] = useState<string>('image/png')
   const [history, setHistory]     = useState<AnalysisRecord[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
@@ -56,7 +57,7 @@ export default function AnalysisPage() {
 
   const handleAnalyze = () => {
     if (isStreaming || (!imageData && !draftText.trim())) return
-    startAnalysis(draftText, imageData ?? undefined)
+    startAnalysis(draftText, imageData ?? undefined, imageMime)
   }
 
   const handleNew = () => {
@@ -86,6 +87,7 @@ export default function AnalysisPage() {
     reader.onload = e => {
       const dataUrl = e.target?.result as string
       setImageData(dataUrl.split(',')[1])
+      setImageMime(file.type || 'image/png')
       setDraftText('')
     }
     reader.readAsDataURL(file)
@@ -267,6 +269,7 @@ export default function AnalysisPage() {
             phase={phase}
             error={error}
             onTextChange={setDraftText}
+            onImagePick={loadImage}
             onImageClear={() => setImageData(null)}
             onSubmit={handleAnalyze}
           />

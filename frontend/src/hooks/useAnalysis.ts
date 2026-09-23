@@ -25,7 +25,7 @@ interface UseAnalysisReturn {
   phase: AnalysisPhase
   error: string | null
   setSelectedIndex: (index: number) => void
-  startAnalysis: (text: string, imageBase64?: string) => Promise<void>
+  startAnalysis: (text: string, imageBase64?: string, imageMime?: string) => Promise<void>
   restoreFromHistory: (record: AnalysisRecord) => void
   reset: () => void
 }
@@ -216,7 +216,7 @@ export function useAnalysis(): UseAnalysisReturn {
     void ensureTokens(rawSentences.map(s => s.text))
   }, [ensureTokens, resume, stopActivity])
 
-  const startAnalysis = useCallback(async (text: string, imageBase64?: string) => {
+  const startAnalysis = useCallback(async (text: string, imageBase64?: string, imageMime?: string) => {
     if (!imageBase64 && !text.trim()) return
     if (isStreaming) return
 
@@ -253,7 +253,7 @@ export function useAnalysis(): UseAnalysisReturn {
     let analysisId: string | null = null
     try {
       const stream = analyzeStream(
-        imageBase64 ? { image: imageBase64, type: 'image' } : { text, type: inputType },
+        imageBase64 ? { image: imageBase64, image_mime: imageMime, type: 'image' } : { text, type: inputType },
         {
           signal: controller.signal,
           onStart: id => { analysisId = id; savePending(id); setAnalysisId(id) },
