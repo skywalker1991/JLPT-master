@@ -3,4 +3,4 @@
 -- already produces one per sentence — it was simply never carried through to
 -- the occurrence.
 
-ALTER TABLE atom_occurrences ADD COLUMN sentence_translation TEXT;
+ALTER TABLE atom_occurrences ADD COLUMN IF NOT EXISTS sentence_translation TEXT;

@@ -10,18 +10,18 @@
 -- the result in the shape everything downstream reads, and `report` holds what
 -- validation and answer-merging had to say about it.
 
-CREATE TABLE exam_draft_sources (
-    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    draft_id      UUID NOT NULL REFERENCES exam_drafts(id) ON DELETE CASCADE,
-    filename      TEXT NOT NULL,
-    role          VARCHAR(20) NOT NULL DEFAULT 'unknown',
-    page_count    INTEGER NOT NULL DEFAULT 0,
-    text_pages    INTEGER NOT NULL DEFAULT 0,
-    text_raw      TEXT,
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+CREATE TABLE IF NOT EXISTS exam_draft_sources (
+ id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+ draft_id UUID NOT NULL REFERENCES exam_drafts(id) ON DELETE CASCADE,
+ filename TEXT NOT NULL,
+ role VARCHAR(20) NOT NULL DEFAULT 'unknown',
+ page_count INTEGER NOT NULL DEFAULT 0,
+ text_pages INTEGER NOT NULL DEFAULT 0,
+ text_raw TEXT,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX ix_exam_draft_sources_draft_id ON exam_draft_sources(draft_id);
+CREATE INDEX IF NOT EXISTS ix_exam_draft_sources_draft_id ON exam_draft_sources(draft_id);
 
-ALTER TABLE exam_drafts ADD COLUMN canonical JSONB;
-ALTER TABLE exam_drafts ADD COLUMN report JSONB;
+ALTER TABLE exam_drafts ADD COLUMN IF NOT EXISTS canonical JSONB;
+ALTER TABLE exam_drafts ADD COLUMN IF NOT EXISTS report JSONB;

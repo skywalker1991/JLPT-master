@@ -10,23 +10,23 @@
 
 DROP TABLE IF EXISTS analysis_atoms;
 
-CREATE TABLE atom_occurrences (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    atom_id         UUID NOT NULL REFERENCES atoms(id) ON DELETE CASCADE,
-    -- SET NULL, not CASCADE: the sentence is the memory anchor and should
-    -- outlive housekeeping on the analysis history.
-    analysis_id     UUID REFERENCES analyses(id) ON DELETE SET NULL,
-    sentence_index  SMALLINT,
-    surface         VARCHAR(100),   -- the form in the text, e.g. 尊ばれた
-    surface_meaning TEXT,           -- what it meant there, e.g. 受到尊重
-    sentence_text   TEXT NOT NULL,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+CREATE TABLE IF NOT EXISTS atom_occurrences (
+ id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+ atom_id UUID NOT NULL REFERENCES atoms(id) ON DELETE CASCADE,
+ -- SET NULL, not CASCADE: the sentence is the memory anchor and should
+ -- outlive housekeeping on the analysis history.
+ analysis_id UUID REFERENCES analyses(id) ON DELETE SET NULL,
+ sentence_index SMALLINT,
+ surface VARCHAR(100), -- the form in the text, e.g. 尊ばれた
+ surface_meaning TEXT, -- what it meant there, e.g. 受到尊重
+ sentence_text TEXT NOT NULL,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX ix_atom_occurrences_atom_id ON atom_occurrences(atom_id);
+CREATE INDEX IF NOT EXISTS ix_atom_occurrences_atom_id ON atom_occurrences(atom_id);
 
 -- One record per (word, sentence, form). Re-analysing the same text, or
 -- tapping the same word twice, must not pile up duplicates. md5() because
 -- sentence_text can exceed the btree key limit.
-CREATE UNIQUE INDEX uq_atom_occurrences
-    ON atom_occurrences(atom_id, md5(sentence_text), coalesce(surface, ''));
+CREATE UNIQUE INDEX IF NOT EXISTS uq_atom_occurrences
+ ON atom_occurrences(atom_id, md5(sentence_text), coalesce(surface, ''));

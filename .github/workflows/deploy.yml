@@ -28,6 +28,7 @@ jobs:
               "cd /opt/app",
               "git fetch origin && git reset --hard origin/main",
               "docker compose up --build -d",
+              "sh scripts/migrate.sh",
               "docker image prune -f",
               "docker builder prune -f --keep-storage 1gb",
               "df -h /"
