@@ -18,7 +18,7 @@ const JLPT_BADGE: Record<string, string> = {
 
 
 export default function VocabChip({ item }: Props) {
-  const occurrence = useOccurrence(item.surface)
+  const occurrence = useOccurrence(item.surface, item.surface_meaning)
   const [expanded, setExpanded] = useState(false)
   const [status, setStatus]     = useState<Status>('idle')
   const [atomId, setAtomId]     = useState<string | null>(null)

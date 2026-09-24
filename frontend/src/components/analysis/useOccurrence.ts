@@ -15,6 +15,7 @@ import type { CreateAtomRequest } from '../../types'
  */
 export function useOccurrence(
   surface?: string | null,
+  surfaceMeaning?: string | null,
 ): Pick<CreateAtomRequest, 'analysis_id' | 'occurrence'> {
   const ctx = useContext(AskContext)
   if (!ctx?.sentenceText) return {}
@@ -24,6 +25,7 @@ export function useOccurrence(
       sentence_text: ctx.sentenceText,
       sentence_index: ctx.sentenceIndex,
       surface: surface ?? null,
+      surface_meaning: surfaceMeaning ?? null,
     },
   }
 }

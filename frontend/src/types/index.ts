@@ -29,7 +29,9 @@ export interface VocabItem {
   surface: string
   base: string
   reading: string | null
+  /** The dictionary form's own meaning — not what the inflected form meant here */
   meaning: string
+  surface_meaning?: string | null
   part_of_speech: string | null
   jlpt_level: string | null
   register: string | null

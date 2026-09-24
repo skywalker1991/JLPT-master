@@ -50,16 +50,19 @@ router = APIRouter(tags=["analysis"])
 _VOCAB_ITEM_SCHEMA = {
     "type": "object",
     "properties": {
-        "surface": {"type": "string"},
-        "base": {"type": "string"},
-        "reading": {"type": "string"},
-        "meaning": {"type": "string"},
+        "surface": {"type": "string", "description": "句中出现的形态，如「尊ばれた」"},
+        "base": {"type": "string", "description": "辞書形（基本形），如「尊ぶ」"},
+        "reading": {"type": "string", "description": "base 辞書形的平假名读音，不是 surface 的读音"},
+        # Left unqualified, this silently becomes the meaning of whatever form
+        # appeared in the text — so the card shows 尊ぶ and teaches 受到尊重.
+        "meaning": {"type": "string", "description": "base 辞書形本身的含义，与句中活用无关"},
+        "surface_meaning": {"type": "string", "description": "surface 在本句中的具体含义（活用带来的差别，如被动/使役/条件）"},
         "part_of_speech": {"type": "string", "description": "日文词性名称：名詞/動詞/形容詞/副詞/助詞/助動詞/接続詞 等"},
         "jlpt_level": {"type": "string"},
         "register": {"type": "string"},
         "usage": {"type": "string"},
         "nuance": {"type": "string"},
-        "example": {"type": "string"},
+        "example": {"type": "string", "description": "日语例句＋中文翻译，格式：「例句」→中文翻译"},
     },
     "required": ["surface", "base", "meaning", "part_of_speech", "example"],
 }
