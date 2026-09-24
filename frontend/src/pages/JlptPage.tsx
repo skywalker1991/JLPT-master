@@ -9,6 +9,7 @@ import {
 } from '../services/api'
 import { useSettings } from '../context/SettingsContext'
 import ExamSession from '../components/exam/ExamSession'
+import MistakeList from '../components/exam/MistakeList'
 import type {
   ExamPaperList, ExamPaperDetail, AccuracyStats, AttemptSummary,
 } from '../types'
@@ -623,6 +624,7 @@ export default function JlptPage() {
   const [stats, setStats] = useState<AccuracyStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [tab, setTab] = useState<'papers' | 'mistakes'>('papers')
 
   useEffect(() => {
     Promise.all([listExams(), getAccuracyStats()])
@@ -654,17 +656,31 @@ export default function JlptPage() {
         <StatsSidebar stats={stats} />
       </div>
 
-      {/* Right: exam bank */}
+      {/* Right: exam bank, or the mistakes gathered across every record */}
       <div className="card flex-1 flex flex-col min-h-0 overflow-hidden">
-        {loading && (
+        <div className="shrink-0 flex gap-1 px-5 pt-4">
+          {([['papers', '试卷'], ['mistakes', '错题']] as const).map(([k, label]) => (
+            <button
+              key={k}
+              onClick={() => setTab(k)}
+              className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                tab === k ? 'bg-fg/10 text-fg font-semibold' : 'text-fg-muted hover:text-fg'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {tab === 'mistakes' && <MistakeList />}
+        {tab === 'papers' && loading && (
           <div className="flex items-center justify-center flex-1 gap-2 text-fg-muted">
             <Loader2 className="w-4 h-4 animate-spin" />
           </div>
         )}
-        {error && (
+        {tab === 'papers' && error && (
           <div className="flex items-center justify-center flex-1 text-danger text-sm">{error}</div>
         )}
-        {!loading && !error && (
+        {tab === 'papers' && !loading && !error && (
           <div className="flex-1 overflow-y-auto p-5">
             <ExamBank papers={papers} onSelect={setSelected} />
           </div>

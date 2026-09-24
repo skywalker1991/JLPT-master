@@ -206,6 +206,31 @@ class AttemptReview(BaseModel):
     sections: list[ReviewSection]
 
 
+class MistakeItem(BaseModel):
+    """A question answered wrongly, and how often.
+
+    The explanation is not carried here — it hangs off the question, so it is
+    fetched when the question is opened and is already there for one met
+    before. `has_analysis` says which it will be.
+    """
+    item_id: UUID
+    problem_id: UUID
+    paper_title: str
+    problem_name: str
+    problem_type: str
+    category: str
+    num: int | None
+    stem: str
+    options: dict
+    correct_answer: str | None
+    #: The wrong options actually picked, across records.
+    wrong_answers: list[str] = []
+    wrong_count: int
+    seen_count: int
+    last_seen: datetime
+    has_analysis: bool
+
+
 # ── Admin: Draft ──────────────────────────────────────────────────────────────
 
 class DraftSummary(BaseModel):

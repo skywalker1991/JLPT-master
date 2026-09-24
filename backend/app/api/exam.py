@@ -3,7 +3,7 @@ import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import delete, select, func, update
+from sqlalchemy import delete, distinct, select, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.db import (
@@ -18,6 +18,7 @@ from app.schemas.exam import (
     SectionScore, SectionAnswerDetail, SubmitSectionResponse,
     AttemptStatus, RelationSuggestion, QuestionAnalysisResponse, AccuracyStats,
     AttemptSummary, AttemptReview, ReviewSection, ReviewProblem, ReviewItem,
+    MistakeItem,
 )
 from app.services.llm.factory import get_llm_client
 from app.services import exam_edit
@@ -1318,6 +1319,79 @@ async def list_paper_attempts(paper_id: UUID, db: AsyncSession = Depends(get_db)
         )
         for r in rows
     ]
+
+
+# ── 错题 ────────────────────────────────────────────────────────────────────
+
+@router.get("/mistakes", response_model=list[MistakeItem])
+async def list_mistakes(
+    category: str | None = None,
+    paper_id: UUID | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Every question answered wrongly, worst first.
+
+    Gathered across records rather than inside one. A mistake made once is
+    worth another look; the same mistake three times is the thing to work on,
+    and that only shows when the records are read together.
+
+    The explanation is not fetched here — it hangs off the question, so a
+    question met again brings the one already generated with it.
+    """
+    rows = (await db.execute(
+        select(
+            ExamItem, ExamProblem, ExamPaper,
+            func.count().filter(AttemptAnswer.is_correct.is_(False)).label("wrong"),
+            func.count().label("seen"),
+            func.max(ExamAttempt.started_at).label("last_seen"),
+            func.count(QuestionAnalysis.id).label("analyses"),
+            # Which wrong option was picked. Distinct across records, because
+            # picking 2 twice and picking 3 once are different mistakes.
+            func.array_agg(distinct(AttemptAnswer.user_answer))
+                .filter(AttemptAnswer.is_correct.is_(False)).label("picked"),
+        )
+        .join(AttemptAnswer, AttemptAnswer.item_id == ExamItem.id)
+        .join(ExamAttempt, AttemptAnswer.attempt_id == ExamAttempt.id)
+        .join(ExamProblem, ExamItem.problem_id == ExamProblem.id)
+        .join(ExamSection, ExamProblem.section_id == ExamSection.id)
+        .join(ExamPaper, ExamSection.paper_id == ExamPaper.id)
+        .outerjoin(QuestionAnalysis, QuestionAnalysis.item_id == ExamItem.id)
+        .group_by(ExamItem.id, ExamProblem.id, ExamPaper.id)
+        .having(func.count().filter(AttemptAnswer.is_correct.is_(False)) > 0)
+    )).all()
+
+    out = []
+    for item, problem, paper, wrong, seen, last_seen, analyses, picked in rows:
+        cat = _category_of(problem.type)
+        if category and cat != category:
+            continue
+        if paper_id and paper.id != paper_id:
+            continue
+        out.append(MistakeItem(
+            item_id=item.id, problem_id=problem.id,
+            paper_title=paper.title, problem_name=problem.name,
+            problem_type=problem.type, category=cat,
+            num=item.num, stem=item.stem, options=item.options or {},
+            correct_answer=item.correct_answer,
+            wrong_count=wrong, seen_count=seen, last_seen=last_seen,
+            has_analysis=analyses > 0,
+            wrong_answers=sorted(picked or []),
+        ))
+    # Worst first: the same mistake three times is the thing to work on.
+    out.sort(key=lambda m: (-m.wrong_count, m.last_seen), reverse=False)
+    return out
+
+
+def _category_of(problem_type: str) -> str:
+    if problem_type in _VOCAB_TYPES:
+        return "vocab"
+    if problem_type in _GRAMMAR_TYPES:
+        return "grammar"
+    if problem_type in _READING_TYPES:
+        return "reading"
+    if problem_type in _LISTENING_TYPES:
+        return "listening"
+    return "other"
 
 
 # ── 完成考试 ──────────────────────────────────────────────────────────────────

@@ -296,6 +296,26 @@ export interface AttemptSummary {
   in_scope: number | null
 }
 
+/** A question answered wrongly, gathered across records. */
+export interface MistakeItem {
+  item_id: string
+  problem_id: string
+  paper_title: string
+  problem_name: string
+  problem_type: string
+  category: string
+  num: number | null
+  stem: string
+  options: Record<string, string>
+  correct_answer: string | null
+  /** The wrong options actually picked, across records. */
+  wrong_answers: string[]
+  wrong_count: number
+  seen_count: number
+  last_seen: string
+  has_analysis: boolean
+}
+
 // Review types (returned after section submit + getAttemptReview)
 export interface ReviewItem {
   id: string

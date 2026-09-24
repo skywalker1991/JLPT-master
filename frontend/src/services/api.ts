@@ -19,6 +19,7 @@ import {
   QuestionAnalysisResponse,
   AccuracyStats,
   AttemptSummary,
+  MistakeItem,
   AttemptReviewData,
   DraftSummary,
   DraftDetail,
@@ -309,6 +310,11 @@ export async function getExam(paperId: string): Promise<ExamPaperDetail> {
 }
 
 /** `problemIds` is what this run sets out to cover; omitted, it is the paper. */
+export async function listMistakes(category?: string): Promise<MistakeItem[]> {
+  const q = category ? `?category=${category}` : ''
+  return request<MistakeItem[]>(`/api/mistakes${q}`)
+}
+
 export async function startAttempt(
   paperId: string, problemIds?: string[],
 ): Promise<AttemptStatus> {
