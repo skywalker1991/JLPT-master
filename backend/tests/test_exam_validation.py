@@ -44,9 +44,22 @@ def test_a_clean_paper_needs_nobody_to_look_at_it():
     assert validate(written(item(1), item(2))).clean
 
 
-def test_an_item_with_three_options_is_rejected():
-    report = check_hard(written(item(1, options=3)))
+def test_an_item_that_departs_from_its_problem_is_rejected():
+    """The count is not fixed at four: 聴解問題4 is 即時応答, one line of audio
+    and three replies, and a fixed four files thirteen findings a paper against
+    correct questions. What holds is that one 問題 prints one shape, so the odd
+    item out is the one worth looking at."""
+    report = check_hard(written(item(1), item(2), item(3, options=3)))
     assert "选项数为 3" in report.hard[0].message
+    assert "第3题" in report.hard[0].where
+
+
+def test_a_problem_whose_questions_all_print_three_options_is_accepted():
+    p = paper(section("聴解", problem("問題4", "listening", [
+        {"num": n, "stem": "", "options": {"1": "a", "2": "b", "3": "c"},
+         "correct_answer": "2"} for n in (1, 2, 3)
+    ])))
+    assert check_hard(p).clean
 
 
 def test_a_listening_item_may_print_no_options_at_all():
@@ -85,7 +98,7 @@ def test_a_sentence_order_item_with_one_star_passes():
 def test_only_the_broken_problem_is_retried_not_the_whole_paper():
     p = paper(section("言語知識",
         problem("問題1", "kanji_reading", [item(1), item(2)]),
-        problem("問題2", "vocab_fill", [item(3, options=2)]),
+        problem("問題2", "vocab_fill", [item(3), item(4), item(5, options=2)]),
     ))
     assert check_hard(p).problems_to_retry == ["問題2"]
 

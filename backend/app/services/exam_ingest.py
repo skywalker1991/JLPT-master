@@ -18,7 +18,7 @@ from dataclasses import asdict, dataclass, field
 from app.services.exam_answer_reader import read_answer_sheet
 from app.services.exam_answers import parse_explanations
 from app.services.exam_canonical import (
-    CanonicalPaper, CanonicalSection,
+    CanonicalItem, CanonicalPaper, CanonicalSection,
 )
 from app.services.exam_extract import extract_block_with_retry
 from app.services.exam_merge import merge_answers
@@ -146,6 +146,84 @@ async def _read_scanned_sheet(
     return None
 
 
+def _expand(slots: list) -> list:
+    """One entry per printed question, rather than per piece of audio.
+
+    They are usually the same, but 問題5's 統合理解 plays one conversation and
+    then asks two questions about it: the paper numbers those separately while
+    the booklet prints them under a single 番. Zipping questions against 番
+    without this shifts every following question onto the wrong dialogue.
+    """
+    expanded = []
+    for slot in slots:
+        expanded.append(slot)
+        if slot.transcript.count("質問") >= 2:
+            expanded.append(slot)
+    return expanded
+
+
+def _fill_listening(paper: CanonicalPaper, sources: list[Source], report: IngestReport) -> None:
+    """Put the listening questions and dialogue onto the paper."""
+    from app.services.exam_listening import parse_listening, pick_transcript_source
+
+    source = pick_transcript_source(sources)
+    if source is None:
+        return
+
+    heard = parse_listening(source.text)
+    if not heard:
+        return
+
+    filled = added = 0
+    for _section, problem in paper.problems():
+        if problem.type != "listening":
+            continue
+        number = _problem_number(problem.name)
+        if number is None:
+            continue
+
+        slots = _expand([h for h in sorted(heard, key=lambda h: h.ban) if h.problem == number])
+        if not slots:
+            continue
+
+        # A 問題 the paper printed nothing for has no items at all yet.
+        if not problem.items:
+            for seq, slot in enumerate(slots, 1):
+                problem.items.append(CanonicalItem(
+                    num=seq, seq=seq, stem="", options=dict(slot.options),
+                    correct_answer=slot.answer, transcript=slot.transcript,
+                ))
+                added += 1
+            continue
+
+        for item, slot in zip(problem.items, slots):
+            item.transcript = slot.transcript
+            if not item.options and slot.options:
+                item.options = dict(slot.options)
+            if not item.correct_answer and slot.answer:
+                item.correct_answer = slot.answer
+            filled += 1
+
+        # The booklet can simply be missing one: 2018年07月 prints 問題4 as
+        # 1*14 on the paper and stops at 13番 in the 解析. Those questions stay
+        # on the paper without audio, and saying so beats a silent hole.
+        if len(slots) < len(problem.items):
+            report.notes.append(
+                f"听力：{problem.name} 试卷上有 {len(problem.items)} 题，"
+                f"解析只印到第 {len(slots)} 题，其余没有原文"
+            )
+
+    if added or filled:
+        report.notes.append(
+            f"听力：从 {source.filename} 补入 {added} 道题、{filled} 段原文"
+        )
+
+
+def _problem_number(name: str) -> int | None:
+    digits = "".join(c for c in name if c.isdigit())
+    return int(digits) if digits else None
+
+
 async def ingest(
     files: list[tuple[str, bytes]],
     *,
@@ -196,6 +274,14 @@ async def ingest(
 
     # The answer sheet gives listening answers as one run of digits and never
     # says where a 問題 ends, so the counts come from the paper just extracted.
+    # 聴解問題3 and 問題4 print nothing on the question paper, so nineteen
+    # questions exist only in whichever file carries the listening section.
+    # This has to happen before the counts are taken: they are what divides the
+    # answer sheet's run of listening digits between the 問題, and counts read
+    # off a paper still missing those nineteen send every later answer to the
+    # wrong question.
+    _fill_listening(paper, sources, report)
+
     counts = paper.listening_counts()
     written_expected = sum(
         1 for _, problem, _ in paper.items() if problem.type != "listening"

@@ -96,6 +96,22 @@ def _option_count(options: Any) -> int:
     return 0
 
 
+def _expected_options(items: list[dict]) -> int:
+    """How many options this 問題 prints per question.
+
+    Four almost everywhere, but 聴解問題4 is 即時応答 — one line of audio and
+    three replies — so a fixed four files thirteen findings a paper against
+    questions that are perfectly correct. What is actually true is that the
+    questions inside one 問題 all have the same number, so the 問題 is asked
+    rather than told: the commonest count is the shape, and an item that
+    departs from it is the one worth looking at.
+    """
+    counts = Counter(
+        n for n in (_option_count(i.get("options")) for i in items) if n
+    )
+    return counts.most_common(1)[0][0] if counts else 4
+
+
 def check_hard(paper: dict) -> Report:
     """Violations of what a question type means. Year-independent."""
     report = Report()
@@ -111,6 +127,8 @@ def check_hard(paper: dict) -> Report:
                 report.add("hard", pname, "题组没有任何小题", pname)
                 continue
 
+            expected_opts = _expected_options(items)
+
             for item in items:
                 num = item.get("num")
                 where = f"{pname} / 第{num}题"
@@ -123,8 +141,11 @@ def check_hard(paper: dict) -> Report:
                 n_opts = _option_count(item.get("options"))
                 if ptype in AUDIO_ONLY_TYPES and n_opts == 0:
                     pass
-                elif n_opts != 4:
-                    report.add("hard", where, f"选项数为 {n_opts}，应为 4", pname)
+                elif n_opts != expected_opts:
+                    report.add(
+                        "hard", where,
+                        f"选项数为 {n_opts}，同组其他题是 {expected_opts}", pname,
+                    )
 
                 answer = str(item.get("correct_answer") or "")
                 if not answer:
