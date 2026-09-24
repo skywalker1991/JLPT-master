@@ -370,11 +370,59 @@ export interface DraftSummary {
   updated_at: string
 }
 
+export interface CanonicalItem {
+  num: number | null
+  seq: number
+  stem: string
+  options: Record<string, string>
+  correct_answer: string | null
+  answer_order: string | null
+  meta: Record<string, unknown>
+}
+
+export interface CanonicalProblem {
+  name: string
+  type: string
+  seq: number
+  instruction: string | null
+  passage: string | null
+  passage_translation: string | null
+  items: CanonicalItem[]
+}
+
+export interface CanonicalPaper {
+  level: string
+  title: string
+  source: string | null
+  sections: { name: string; seq: number; problems: CanonicalProblem[] }[]
+  gaps: string[]
+}
+
+export interface IngestReport {
+  sources: { filename: string; role: string; pages: number; text_pages: number }[]
+  gaps: string[]
+  hard: { where: string; message: string; problem?: string | null }[]
+  soft: { where: string; message: string }[]
+  invented: string[]
+  answers: { method?: string; agreed?: boolean | null; answered?: number; unanswered?: number; orders?: number }
+  notes: string[]
+}
+
+export interface DraftSourceInfo {
+  filename: string
+  role: string
+  page_count: number
+  text_pages: number
+}
+
 export interface DraftDetail {
   id: string
   filename: string | null
   markdown_raw: string | null
   draft_json: DraftJson | null
+  canonical: CanonicalPaper | null
+  report: IngestReport | null
+  sources: DraftSourceInfo[]
   status: string
   paper_id: string | null
   created_at: string

@@ -3,6 +3,7 @@ import asyncio
 import json
 import logging
 import uuid as _uuid
+from copy import deepcopy
 from pathlib import Path
 from datetime import datetime
 
@@ -12,6 +13,7 @@ from sqlalchemy import select, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.db import (
+    ExamItemRevision,
     ExamPaper, ExamSection, ExamProblem, ExamItem, ExamDraft, get_db,
     async_session_factory,
 )
@@ -326,106 +328,137 @@ async def _run_convert_exam(markdown: str, api_key: str) -> dict:
 
 # ── Confirm: Draft → ExamPaper tree ──────────────────────────────────────────
 
+@router.patch("/drafts/{draft_id}/items", response_model=DraftDetail)
+async def edit_draft_item(
+    draft_id: _uuid.UUID, body: dict, db: AsyncSession = Depends(get_db),
+):
+    """Correct a question before the paper is imported.
+
+    Cheaper than importing and fixing afterwards, and it keeps a known-wrong
+    answer from ever being attempted. Addressed by 問題 and item number rather
+    than by index, so it survives a re-extraction reordering things.
+    """
+    draft = await db.get(ExamDraft, draft_id)
+    if draft is None or not draft.canonical:
+        raise HTTPException(status_code=404, detail="Draft not found or not read yet")
+
+    problem_name = body.get("problem")
+    seq = body.get("seq")
+    changes = {
+        k: v for k, v in body.items()
+        if k in {"stem", "options", "correct_answer", "answer_order", "transcript"}
+    }
+    if not problem_name or seq is None or not changes:
+        raise HTTPException(status_code=400, detail="Need problem, seq and at least one field")
+
+    canonical = deepcopy(draft.canonical)
+    found = False
+    for section in canonical.get("sections", []):
+        for problem in section.get("problems", []):
+            if problem.get("name") != problem_name:
+                continue
+            for item in problem.get("items", []):
+                if item.get("seq") == seq:
+                    item.update(changes)
+                    found = True
+    if not found:
+        raise HTTPException(status_code=404, detail="Item not found in draft")
+
+    # The report is about the paper as it was read; it no longer describes this.
+    report = deepcopy(draft.report or {})
+    report.setdefault("notes", []).append(
+        f"{problem_name} 第{seq}题已人工修改：{'、'.join(changes)}"
+    )
+
+    draft.canonical = canonical
+    draft.report = report
+    await db.commit()
+    await db.refresh(draft)
+    return await _draft_detail(db, draft)
+
+
 @router.post("/drafts/{draft_id}/confirm", response_model=DraftDetail)
 async def confirm_draft(draft_id: _uuid.UUID, db: AsyncSession = Depends(get_db)):
+    """Import the reviewed paper.
+
+    Reads the canonical paper rather than the old draft_json, so everything the
+    sources carry actually lands: 並べ替え orderings, the form each item was
+    printed in, and which file it came from.
+    """
+    from app.services.exam_canonical import from_dict
+
     draft = await db.get(ExamDraft, draft_id)
     if draft is None:
         raise HTTPException(status_code=404, detail="Draft not found")
-    if not draft.draft_json:
-        raise HTTPException(status_code=400, detail="Draft has no structured data")
+    if not draft.canonical:
+        raise HTTPException(status_code=400, detail="Draft has not been read yet")
 
-    data = draft.draft_json
-    level = data.get("level", "")
-    source = data.get("source", "")
-    if not level:
-        raise HTTPException(status_code=400, detail="draft_json missing level")
-    title = f"日本語能力試験{level}" + (f" {source}" if source else "")
+    paper_data = from_dict(draft.canonical)
+    if not paper_data.level:
+        raise HTTPException(status_code=400, detail="Paper has no level")
 
-    # Idempotent: delete existing paper with same level+source
+    # Re-importing a sitting replaces it, so a corrected draft does not leave
+    # two copies of the same paper behind.
     existing = (await db.execute(
-        select(ExamPaper).where(ExamPaper.level == level, ExamPaper.source == source)
+        select(ExamPaper).where(
+            ExamPaper.level == paper_data.level,
+            ExamPaper.source == (paper_data.source or ""),
+        )
     )).scalar_one_or_none()
     if existing:
         await db.execute(delete(ExamPaper).where(ExamPaper.id == existing.id))
         await db.flush()
 
-    paper = ExamPaper(title=title, level=level, source=source)
+    paper = ExamPaper(
+        title=paper_data.title, level=paper_data.level, source=paper_data.source or "",
+    )
     db.add(paper)
     await db.flush()
 
-    for sec_idx, sec_data in enumerate(data.get("sections", [])):
+    for section_data in paper_data.sections:
         section = ExamSection(
-            paper_id=paper.id, name=sec_data["name"], seq=sec_idx + 1,
+            paper_id=paper.id, name=section_data.name, seq=section_data.seq,
         )
         db.add(section)
         await db.flush()
 
-        for prob_idx, prob_data in enumerate(sec_data.get("problems", [])):
+        for problem_data in section_data.problems:
             problem = ExamProblem(
-                section_id=section.id,
-                seq=prob_idx + 1,
-                name=prob_data["name"],
-                type=prob_data["type"],
-                instruction=prob_data.get("instruction"),
-                passage=prob_data.get("passage"),
-                transcript=prob_data.get("transcript"),
+                section_id=section.id, seq=problem_data.seq,
+                name=problem_data.name, type=problem_data.type,
+                instruction=problem_data.instruction,
+                passage=problem_data.passage,
+                passage_translation=problem_data.passage_translation,
+                transcript=problem_data.transcript,
             )
             db.add(problem)
             await db.flush()
 
-            for item_idx, item_data in enumerate(prob_data.get("items", []), start=1):
-                seq = item_data.get("seq") or item_idx
-                is_listening = prob_data.get("type") == "listening"
-                raw_stem = item_data.get("stem", "")
-                stem = raw_stem or (f"{seq}番" if is_listening else "")
-                raw_options = item_data.get("options", {})
-                options = raw_options or ({"1": "", "2": "", "3": "", "4": ""} if is_listening else {})
-                db.add(ExamItem(
-                    problem_id=problem.id,
-                    seq=seq,
-                    num=item_data.get("num"),
-                    stem=stem,
-                    transcript=item_data.get("transcript"),
-                    options=options,
-                    correct_answer=item_data.get("correct_answer"),
-                    meta=item_data.get("meta"),
+            for item_data in problem_data.items:
+                item = ExamItem(
+                    problem_id=problem.id, seq=item_data.seq, num=item_data.num,
+                    stem=item_data.stem, options=item_data.options or {},
+                    correct_answer=item_data.correct_answer,
+                    answer_order=item_data.answer_order,
+                    transcript=item_data.transcript,
+                    meta=item_data.meta or None,
+                )
+                db.add(item)
+                await db.flush()
+                # Where it came from, recorded as the first revision, so a
+                # question that is later corrected shows what it started as.
+                db.add(ExamItemRevision(
+                    item_id=item.id, field="imported",
+                    new_value=item_data.provenance.extractor or "ingest",
+                    source="ingest",
+                    note=f"来源：{item_data.provenance.source or '未知'}",
                 ))
-            await db.flush()
 
     draft.paper_id = paper.id
     draft.status = "confirmed"
-    draft.updated_at = datetime.utcnow()
     await db.commit()
     await db.refresh(draft)
-
     return await _draft_detail(db, draft)
-
-
-# ── Import answers from answer PDF ───────────────────────────────────────────
-
-_ANSWER_PROMPT = """这是 JLPT 试卷的参考答案页，格式为表格：每个問題占两行，第一行是题号（n番），第二行是对应答案（1/2/3/4）。
-
-读取规则：
-1. 言語知識（文字・語彙 / 文法・読解）各題：使用表格中显示的全局番号（如 1番=Q1、46番=Q46）
-2. 聴解各題：使用 C{组号}Q{番号} 格式（聴解1的1番=C1Q1，聴解2的1番=C2Q1，依此类推）
-3. 逐列对应：番号行与答案行严格一一对应，不跳行
-
-输出格式示例（言語知識用Q，聴解用C{n}Q）：
-Q1: 1
-Q2: 2
-...
-C1Q1: 1
-C1Q2: 4
-...
-C2Q1: 2
-C2Q2: 4
-...
-
-要求：
-- 言語知識严格用 `Q{番号}: {数字}`
-- 聴解严格用 `C{组号}Q{番号}: {数字}`，组号从1开始
-- 番号和答案数字必须与表格完全一致
-- 只输出这两种格式的行，不输出任何其他内容"""
 
 
 @router.post("/drafts/{draft_id}/import-answers", response_model=DraftDetail)

@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { FileText, Loader2, Trash2, Upload } from 'lucide-react'
-import { listDrafts, createDraftFromPdf, getDraft, deleteDraft } from '../services/api'
+import { listDrafts, createDraftFromPdf, getDraft, deleteDraft, confirmDraft } from '../services/api'
 import type { DraftSummary, DraftDetail } from '../types'
 import DraftEditor from '../components/admin/DraftEditor'
 import ReportQueue from '../components/admin/ReportQueue'
+import DraftReview from '../components/admin/DraftReview'
 
 // ─── Draft list sidebar ───────────────────────────────────────────────────────
 
@@ -176,6 +177,22 @@ export default function AdminIngestPage() {
     alert('入库成功！试卷已添加到考试列表。')
   }
 
+  const [confirming, setConfirming] = useState(false)
+
+  async function handleConfirm() {
+    if (!selectedId) return
+    setConfirming(true)
+    try {
+      const updated = await confirmDraft(selectedId)
+      setDraft(updated)
+      refresh()
+    } catch (e) {
+      alert(`入库失败：${(e as Error).message}`)
+    } finally {
+      setConfirming(false)
+    }
+  }
+
   async function handleDelete(id: string) {
     if (!confirm('确认删除该草稿？')) return
     try {
@@ -240,7 +257,19 @@ export default function AdminIngestPage() {
         </div>
       )}
 
-      {selectedId && draft && draft.status !== 'processing' && draft.status !== 'failed' && (
+      {/* Read through the new pipeline: review the findings, then confirm.
+          The older draft_json path stays for drafts made before it existed. */}
+      {selectedId && draft?.canonical && draft.status !== 'processing' && (
+        <DraftReview
+          draft={draft}
+          onConfirm={handleConfirm}
+          confirming={confirming}
+          onUpdated={setDraft}
+        />
+      )}
+
+      {selectedId && draft && !draft.canonical
+        && draft.status !== 'processing' && draft.status !== 'failed' && (
         <div className="flex-1 flex min-h-0 overflow-hidden">
           <div className="w-2/5 shrink-0 border-r border-border flex flex-col">
             <div className="px-4 py-2 border-b border-border bg-surface shrink-0">

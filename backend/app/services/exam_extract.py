@@ -41,16 +41,26 @@ _TYPE_RULES = (
 
 PROMPT = """从下面这段 JLPT 试题中提取出所有小题，输出 JSON。
 
-要求：
-- stem 和 options 必须**逐字照抄原文**，不要改写、补全或修正，包括标点
-- 题号用原文中的编号（可能是半角、全角，或带「．」）
-- 排序题：stem 中的空格保留成 [_1_] [_2_] [_3_] [_4_]，★ 所在的空写成 [_N★_]，
-  并在 meta.star_position 填该空的序号（1-4）
-- 听力题若题目用纸上没有印选项，options 留空对象 {{}}
-- 听力「N番」下若有「質問1」「質問2」两问，算作**两个小题**，num 按番号顺延
-  （例：3番有質問1和質問2，则它们是本題組的第3、第4小题），
-  并在 meta 里记 {{"ban": 3, "question": 1}} 和 {{"ban": 3, "question": 2}}
-- 若本题组有共同的文章或说明，放进 passage / instruction，不要重复进每个小题
+**最重要：stem 和 options 必须逐字照抄原文**，不改写、不补全、不修正错别字、不调整标点。
+提取结果会和原文做逐字比对，对不上的会被打回。
+
+已知的坑（都真实出现过，请逐条注意）：
+
+1. 题号写法不统一：可能是「1」「1.」「１．」「(1)」。num 只填数字，不要带符号。
+2. 选项可能排成 2×2（1、2 在一行，3、4 在下一行）。按 1234 的编号读，
+   不要按视觉上的列去读，否则会变成 1、3、2、4。
+3. 排序题（問題6 一类）：stem 里的空格写成 [_1_] [_2_] [_3_] [_4_]，
+   ★ 所在的那个空写成 [_N★_]，并在 meta.star_position 填该空序号（1-4）。
+   ★ 决定答案填哪个空，丢了这道题就无法判分。
+4. 聴解「N番」下若有「質問1」「質問2」两问，算**两个**小题，num 按番号顺延，
+   meta 记 {{"ban": 番号, "question": 第几问}}。这时番数和小题数不相等。
+5. 聴解有些題組试卷上什么都不印：
+   - 若只列了「1番 2番 3番…」，就按列出的番号产出对应数量的空小题（stem 和 options 留空）
+   - 若连番号都没列，**产出空的 items 数组**，不要根据说明文字推测有几题
+   绝不要凭空补出没有依据的小题。
+6. 読解的「（注）…」是正文的一部分，属于 passage，不是页眉页脚，不要丢。
+7. 页码、「（1*6）」这类配分标记不属于任何字段，忽略即可。
+8. 若本题组有共同的文章或指示语，放进 passage / instruction，不要重复进每个小题。
 
 只输出 JSON：
 {{"type": "{type_hint}",
@@ -125,6 +135,48 @@ def check_invented_blanks(problem: CanonicalProblem, source: str) -> list[str]:
     return [
         f"{problem.name}：提取出 {len(blank)} 个没有题干也没有选项的小题，"
         f"但原文只列出 {printed} 个番号"
+    ]
+
+
+#: An item number as papers print them: at the start of a line, one or two
+#: digits, optionally followed by a separator. Deliberately loose — this is
+#: counting, not parsing, and a false positive costs a query while a missed one
+#: costs a question.
+_ITEM_NUMBER = re.compile(r"(?:^|\n)\s*([0-9]{1,2}|[０-９]{1,2})\s*[.．、]?\s*(?=\S)", re.M)
+
+
+def check_missing_items(problem: CanonicalProblem, source: str) -> list[str]:
+    """Numbers printed in the source that never became an item.
+
+    Every other check passes when the model simply skips a question: verbatim
+    matching has nothing to say about text that was not returned, and the
+    structural rules only inspect what is there. Counting the numbers on the
+    page catches a dropped item whatever the reason — a layout nobody
+    anticipated, a page break, a long passage running out of attention — which
+    is what enumerating traps in a prompt can never do.
+    """
+    if not problem.items:
+        return []
+
+    extracted = {i.num for i in problem.items if i.num is not None}
+    if not extracted:
+        return []
+
+    printed = set()
+    for match in _ITEM_NUMBER.finditer(source):
+        value = int(match.group(1).translate(str.maketrans("０１２３４５６７８９", "0123456789")))
+        printed.add(value)
+
+    # Only numbers inside the run this 問題 covers: option markers and page
+    # numbers use the same shapes, and nothing outside the range is ours.
+    low, high = min(extracted), max(extracted)
+    expected = {n for n in printed if low <= n <= high}
+    missing = sorted(expected - extracted)
+    if not missing:
+        return []
+    return [
+        f"{problem.name}：原文中出现了第 {', '.join(map(str, missing[:10]))} 题的编号，"
+        f"但没有提取到对应的小题"
     ]
 
 
@@ -203,7 +255,9 @@ async def extract_block(
 
     problem = build_problem(block, payload, seq, source_name)
     return BlockResult(problem, invented=(
-        check_verbatim(problem, block.text) + check_invented_blanks(problem, block.text)
+        check_verbatim(problem, block.text)
+        + check_invented_blanks(problem, block.text)
+        + check_missing_items(problem, block.text)
     ))
 
 

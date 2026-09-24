@@ -406,6 +406,15 @@ export async function deleteDraft(draftId: string): Promise<void> {
   await request<void>(`/api/admin/drafts/${draftId}`, { method: 'DELETE' })
 }
 
+export async function editDraftItem(
+  draftId: string,
+  body: { problem: string; seq: number } & Record<string, unknown>,
+): Promise<DraftDetail> {
+  return request(`/api/admin/drafts/${draftId}/items`, {
+    method: 'PATCH', body: JSON.stringify(body),
+  })
+}
+
 export async function confirmDraft(draftId: string): Promise<DraftDetail> {
   return request<DraftDetail>(`/api/admin/drafts/${draftId}/confirm`, { method: 'POST' })
 }
