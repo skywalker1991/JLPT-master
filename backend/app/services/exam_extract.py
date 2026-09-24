@@ -47,6 +47,9 @@ PROMPT = """从下面这段 JLPT 试题中提取出所有小题，输出 JSON。
 - 排序题：stem 中的空格保留成 [_1_] [_2_] [_3_] [_4_]，★ 所在的空写成 [_N★_]，
   并在 meta.star_position 填该空的序号（1-4）
 - 听力题若题目用纸上没有印选项，options 留空对象 {{}}
+- 听力「N番」下若有「質問1」「質問2」两问，算作**两个小题**，num 按番号顺延
+  （例：3番有質問1和質問2，则它们是本題組的第3、第4小题），
+  并在 meta 里记 {{"ban": 3, "question": 1}} 和 {{"ban": 3, "question": 2}}
 - 若本题组有共同的文章或说明，放进 passage / instruction，不要重复进每个小题
 
 只输出 JSON：
@@ -96,6 +99,33 @@ class BlockResult:
     @property
     def ok(self) -> bool:
         return self.problem is not None and not self.invented and not self.error
+
+
+#: 聴解 problems that print nothing carry only a list of 番 numbers, which is
+#: the only evidence those items exist at all.
+_BAN = re.compile(r"([0-9０-９]{1,2})\s*番")
+
+
+def check_invented_blanks(problem: CanonicalProblem, source: str) -> list[str]:
+    """Empty items conjured out of an instruction.
+
+    A 聴解 問題 that prints nothing is a real case — the page lists "1番 2番
+    3番 …" and nothing else — but an item with no stem and no options slips
+    past every other check: verbatim matching has nothing to match and the
+    four-option rule exempts listening. So the count has to be backed by 番
+    numbers actually printed, or the block genuinely has no items to extract.
+    """
+    blank = [i for i in problem.items if not (i.stem or "").strip() and not i.options]
+    if not blank:
+        return []
+    printed = len({int(n.translate(str.maketrans("０１２３４５６７８９", "0123456789")))
+                   for n in _BAN.findall(source)})
+    if len(blank) <= printed:
+        return []
+    return [
+        f"{problem.name}：提取出 {len(blank)} 个没有题干也没有选项的小题，"
+        f"但原文只列出 {printed} 个番号"
+    ]
 
 
 def check_verbatim(problem: CanonicalProblem, source: str) -> list[str]:
@@ -172,7 +202,9 @@ async def extract_block(
         return BlockResult(None, error=f"{block.name} 提取失败：{e}")
 
     problem = build_problem(block, payload, seq, source_name)
-    return BlockResult(problem, invented=check_verbatim(problem, block.text))
+    return BlockResult(problem, invented=(
+        check_verbatim(problem, block.text) + check_invented_blanks(problem, block.text)
+    ))
 
 
 async def extract_block_with_retry(

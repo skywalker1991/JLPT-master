@@ -162,3 +162,49 @@ def test_normalise_drops_only_spacing_and_markup_never_content():
     page really carries and has to keep matching."""
     assert normalise("あの　態度 には[_1_]★") == "あの態度には"
     assert normalise("（注）性善説") == "注性善説"
+
+
+# --- blank items ----------------------------------------------------------------
+#
+# A 聴解 問題 that prints nothing is real: the page lists "1番 2番 3番 …" and
+# leaves the rest to the audio. But an item with no stem and no options slips
+# past everything else — verbatim matching has nothing to match, and the
+# four-option rule exempts listening — so the count needs backing.
+
+from app.services.exam_canonical import CanonicalItem, CanonicalProblem
+from app.services.exam_extract import check_invented_blanks
+
+LISTED = "問題３では、何も印刷されていません。\n1 番 2 番 3 番 4 番 5 番 6 番\n―メモ―"
+NOT_LISTED = "問題３では、問題用紙に何も印刷されていません。まず話を聞いてください。"
+
+
+def blank_problem(count):
+    return CanonicalProblem(
+        name="問題3", type="listening", seq=3,
+        items=[CanonicalItem(num=i, seq=i) for i in range(1, count + 1)],
+    )
+
+
+def test_blank_items_matching_the_printed_ban_numbers_are_fine():
+    """2018年07月 prints exactly this and the six items are real."""
+    assert check_invented_blanks(blank_problem(6), LISTED) == []
+
+
+def test_more_blank_items_than_ban_numbers_is_reported():
+    found = check_invented_blanks(blank_problem(8), LISTED)
+    assert found and "只列出 6 个番号" in found[0]
+
+
+def test_blank_items_with_no_ban_numbers_at_all_are_reported():
+    """2019年07月 prints only the instruction, so there is nothing to extract
+    and six blank items would be the model filling in from the answer sheet."""
+    found = check_invented_blanks(blank_problem(6), NOT_LISTED)
+    assert found and "0 个番号" in found[0]
+
+
+def test_items_that_carry_text_are_not_judged_as_blanks():
+    problem = CanonicalProblem(
+        name="問題1", type="listening", seq=1,
+        items=[CanonicalItem(num=1, seq=1, stem="質問", options={"1": "あ"})],
+    )
+    assert check_invented_blanks(problem, NOT_LISTED) == []
