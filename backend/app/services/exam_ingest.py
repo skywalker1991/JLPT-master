@@ -20,7 +20,7 @@ from app.services.exam_answers import parse_booklet_table, parse_explanations
 from app.services.exam_canonical import (
     CanonicalItem, CanonicalPaper, CanonicalSection,
 )
-from app.services.exam_categories import type_by_number
+from app.services.exam_categories import part_of_type, type_by_number
 from app.services.exam_extract import (
     extract_block_with_retry, mark_blanks, split_passages,
 )
@@ -130,10 +130,15 @@ async def build_paper(
         if result.problem.type == "reading_comp":
             invented.extend(split_passages(result.problem, block.text))
 
-        section = sections.get(block.section)
+        # A paper is practised in four parts, not three: 言語知識 is 文字・語彙
+        # and 文法, and nobody sits 45 questions of it in one go. The part comes
+        # from the question type, which is what the accuracy bars already
+        # count by; the block's own heading is the fallback.
+        part = part_of_type(result.problem.type) or block.section
+        section = sections.get(part)
         if section is None:
-            section = CanonicalSection(name=block.section, seq=len(sections) + 1)
-            sections[block.section] = section
+            section = CanonicalSection(name=part, seq=len(sections) + 1)
+            sections[part] = section
         result.problem.seq = len(section.problems) + 1
         section.problems.append(result.problem)
 

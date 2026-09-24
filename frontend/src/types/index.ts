@@ -288,6 +288,12 @@ export interface AttemptSummary {
   started_at: string
   completed_at: string | null
   section_names: string[]
+  /** The 問題 this run set out to cover; empty for runs recorded before a run
+   *  stated its range. */
+  problem_names: string[]
+  /** Answered so far, and how many the chosen range holds. */
+  answered: number
+  in_scope: number | null
 }
 
 // Review types (returned after section submit + getAttemptReview)

@@ -230,9 +230,16 @@ function AttemptListPanel({
                     <p className="text-xs text-fg-muted">
                       {date.getMonth() + 1}/{date.getDate()} {String(date.getHours()).padStart(2, '0')}:{String(date.getMinutes()).padStart(2, '0')}
                     </p>
+                    {/* Which parts, and how far in. A run is usually one part
+                        picked up in a gap, so both belong on the row. */}
                     {(a.section_names ?? []).length > 0 && (
                       <p className="text-[11px] text-fg truncate mt-0.5">
                         {a.section_names.map(n => SEC_SHORT[n] ?? n).join(' · ')}
+                      </p>
+                    )}
+                    {inProgress && a.in_scope != null && (
+                      <p className="text-[11px] text-fg-muted mt-0.5">
+                        进度 {a.answered}/{a.in_scope}
                       </p>
                     )}
                   </div>
@@ -256,6 +263,14 @@ function AttemptListPanel({
                 }`}>
                   {inProgress ? '进行中' : '完成'}
                 </span>
+                {inProgress && a.in_scope ? (
+                  <div className="h-1 bg-border rounded-full overflow-hidden mt-1.5">
+                    <div
+                      className="h-full bg-accent rounded-full"
+                      style={{ width: `${Math.round(a.answered / a.in_scope * 100)}%` }}
+                    />
+                  </div>
+                ) : null}
               </div>
 
               <div className="px-4 pb-2.5">
@@ -317,7 +332,12 @@ function ExamConfigPanel({
     if (selected.length === 0) return
     setStarting(true)
     try {
-      const attempt = await startAttempt(detail.id)
+      // The run records what it set out to cover, so a record left untouched
+      // still says what it was for.
+      const problemIds = detail.sections
+        .filter(s => selected.includes(s.id))
+        .flatMap(s => s.problems.map(p => p.id))
+      const attempt = await startAttempt(detail.id, problemIds)
       onStart(selected, attempt.attempt_id)
     } finally {
       setStarting(false)

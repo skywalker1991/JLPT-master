@@ -480,6 +480,12 @@ class ExamAttempt(Base):
     paper_id = Column(UUID(as_uuid=True), ForeignKey("exam_papers.id", ondelete="CASCADE"), nullable=False)
     status = Column(String(20), nullable=False, server_default=text("'in_progress'"))
     score = Column(JSONB, nullable=True)
+    # The 問題 this sitting set out to cover, as a list of problem ids. A run is
+    # usually one or two of them — N1 is 170 minutes and almost nobody sits it
+    # whole. Inferring the range from the answers instead cannot tell a range
+    # chosen and left blank from no range at all, and cannot say what a paper
+    # still has left in it.
+    scope = Column(JSONB, nullable=True)
     started_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
     completed_at = Column(DateTime(timezone=True), nullable=True)
 

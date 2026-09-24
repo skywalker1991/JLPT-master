@@ -14,7 +14,7 @@ from app.models.db import (
 from app.schemas.exam import (
     ExamPaperList, ExamPaperDetail, SectionDetail, ProblemDetail,
     ItemSchema, ExamMediaItem,
-    StartAttemptResponse, SubmitAnswerRequest, SubmitAnswerResponse,
+    StartAttemptRequest, StartAttemptResponse, SubmitAnswerRequest, SubmitAnswerResponse,
     SectionScore, SectionAnswerDetail, SubmitSectionResponse,
     AttemptStatus, RelationSuggestion, QuestionAnalysisResponse, AccuracyStats,
     AttemptSummary, AttemptReview, ReviewSection, ReviewProblem, ReviewItem,
@@ -867,10 +867,20 @@ async def get_exam(paper_id: UUID, db: AsyncSession = Depends(get_db)):
 # ── 开始答题 ──────────────────────────────────────────────────────────────────
 
 @router.post("/exams/{paper_id}/attempts", response_model=StartAttemptResponse)
-async def start_attempt(paper_id: UUID, db: AsyncSession = Depends(get_db)):
+async def start_attempt(
+    paper_id: UUID,
+    body: StartAttemptRequest | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Begin a sitting over the 問題 chosen for it.
+
+    `problem_ids` is what this run set out to cover. Omitted, the run covers
+    the whole paper — which is what starting one used to mean.
+    """
     if not await db.get(ExamPaper, paper_id):
         raise HTTPException(status_code=404, detail="Exam paper not found")
-    attempt = ExamAttempt(paper_id=paper_id)
+    scope = [str(p) for p in (body.problem_ids if body else None) or []] or None
+    attempt = ExamAttempt(paper_id=paper_id, scope=scope)
     db.add(attempt)
     await db.flush()
     await db.commit()
@@ -1232,6 +1242,37 @@ async def list_paper_attempts(paper_id: UUID, db: AsyncSession = Depends(get_db)
     if not rows:
         return []
 
+    # What each run covers. A run says so itself now; runs recorded before it
+    # did are read backwards from the answers, which is all they can offer.
+    scoped = {str(pid) for r in rows for pid in (r.scope or [])}
+
+    # How far through its own range each run got. Counted against the range it
+    # chose, not the paper: a run over 文字・語彙 is finished at 25 of 25.
+    answered_counts = dict((await db.execute(
+        select(AttemptAnswer.attempt_id, func.count())
+        .where(AttemptAnswer.attempt_id.in_([r.id for r in rows]))
+        .group_by(AttemptAnswer.attempt_id)
+    )).all())
+    in_scope_totals: dict[str, int] = {}
+    if scoped:
+        in_scope_totals = dict((await db.execute(
+            select(ExamItem.problem_id, func.count())
+            .where(ExamItem.problem_id.in_(scoped), ExamItem.options != {})
+            .group_by(ExamItem.problem_id)
+        )).all())
+        in_scope_totals = {str(k): v for k, v in in_scope_totals.items()}
+    problem_names: dict[str, tuple[str, int]] = {}
+    scope_parts: dict[str, tuple[str, int]] = {}
+    if scoped:
+        for pid, name, seq, part, part_seq in (await db.execute(
+            select(ExamProblem.id, ExamProblem.name, ExamProblem.seq,
+                   ExamSection.name, ExamSection.seq)
+            .join(ExamSection, ExamProblem.section_id == ExamSection.id)
+            .where(ExamProblem.id.in_(scoped))
+        )).all():
+            problem_names[str(pid)] = (name, seq)
+            scope_parts[str(pid)] = (part, part_seq)
+
     # Fetch section names per attempt (ordered by section seq)
     attempt_ids = [r.id for r in rows]
     sec_rows = (await db.execute(
@@ -1255,7 +1296,25 @@ async def list_paper_attempts(paper_id: UUID, db: AsyncSession = Depends(get_db)
         AttemptSummary(
             attempt_id=r.id, paper_id=r.paper_id, status=r.status,
             score=r.score, started_at=r.started_at, completed_at=r.completed_at,
-            section_names=sec_map.get(r.id, []),
+            # From the range the run chose, so a run left untouched still says
+            # what it was for; from the answers only for runs recorded before
+            # a run stated its range.
+            section_names=(
+                [n for n, _ in sorted(
+                    {scope_parts[str(p)] for p in (r.scope or []) if str(p) in scope_parts},
+                    key=lambda x: x[1],
+                )]
+                or sec_map.get(r.id, [])
+            ),
+            answered=answered_counts.get(r.id, 0),
+            in_scope=sum(in_scope_totals.get(str(p), 0) for p in (r.scope or [])) or None,
+            problem_names=[
+                problem_names[str(pid)][0]
+                for pid in sorted(
+                    r.scope or [], key=lambda x: problem_names.get(str(x), ("", 0))[1],
+                )
+                if str(pid) in problem_names
+            ],
         )
         for r in rows
     ]

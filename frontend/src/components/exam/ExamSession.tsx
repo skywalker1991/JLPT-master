@@ -29,10 +29,6 @@ function buildUnits(sections: SectionDetail[], sectionIds: string[]): QuizUnit[]
   return units
 }
 
-function formatTime(s: number) {
-  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '00')}`
-}
-
 // ─── Question navigation grid ─────────────────────────────────────────────────
 
 function QuestionNav({
@@ -285,17 +281,11 @@ export default function ExamSession({
   const [submitted, setSubmitted] = useState<Set<string>>(
     reviewMode ? new Set(sectionIds) : new Set(initialSubmitted ?? []),
   )
-  const [elapsed, setElapsed] = useState(0)
   const [submitting, setSubmitting] = useState(false)
   const [analysisItemId, setAnalysisItemId] = useState<string | null>(null)
   const [analysisProblemId, setAnalysisProblemId] = useState<string | null>(null)
   const [navOpen, setNavOpen] = useState(false)
 
-  useEffect(() => {
-    if (reviewMode) return
-    const t = setInterval(() => setElapsed(e => e + 1), 1000)
-    return () => clearInterval(t)
-  }, [reviewMode])
 
   const unit = units[unitIdx]
   const prob = unit.problem
@@ -364,9 +354,6 @@ export default function ExamSession({
             </span>
           ) : null
         })()}
-        {!reviewMode && (
-          <span className="text-sm font-mono text-fg-muted shrink-0">{formatTime(elapsed)}</span>
-        )}
         {!reviewMode && !sectionAlreadySubmitted && (
           <button
             onClick={handleSubmitSection}

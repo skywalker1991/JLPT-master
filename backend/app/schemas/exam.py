@@ -141,6 +141,11 @@ class AccuracyStats(BaseModel):
 
 # ── Attempt history ───────────────────────────────────────────────────────────
 
+class StartAttemptRequest(BaseModel):
+    """The 問題 a sitting covers. Empty means the whole paper."""
+    problem_ids: list[UUID] = []
+
+
 class AttemptSummary(BaseModel):
     attempt_id: UUID
     paper_id: UUID
@@ -148,7 +153,14 @@ class AttemptSummary(BaseModel):
     score: dict | None
     started_at: datetime
     completed_at: datetime | None
-    section_names: list[str] = []
+    section_names: list[str]
+    #: The 問題 this run set out to cover. Empty for runs recorded before a run
+    #: said so, and for runs over the whole paper.
+    problem_names: list[str] = []
+    #: Answered so far, and how many the chosen range holds. `in_scope` is None
+    #: for a run recorded before runs stated their range.
+    answered: int = 0
+    in_scope: int | None = None
 
 
 class ReviewItem(BaseModel):

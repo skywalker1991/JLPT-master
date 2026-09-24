@@ -44,3 +44,29 @@ def type_by_number(level: str | None, section: str, problem_name: str) -> str | 
         return None
     number = _number(problem_name)
     return BY_NUMBER.get(level or "", {}).get(number) if number else None
+
+
+#: The four parts a paper is practised in. N1 runs 170 minutes and almost
+#: nobody sits it whole, so the part is the unit someone actually picks up:
+#: 文字・語彙 on a commute, 読解 at a desk.
+#:
+#: Derived from the question type rather than from the 問題 number, because the
+#: app already scores accuracy in exactly these four buckets by type — a second
+#: rule keyed on numbering could only drift away from the first. It also
+#: survives a level whose numbering differs.
+VOCAB = "言語知識（文字・語彙）"
+GRAMMAR = "言語知識（文法）"
+READING = "読解"
+LISTENING = "聴解"
+
+_PART_OF_TYPE = {
+    "kanji_reading": VOCAB, "vocab_fill": VOCAB, "synonym": VOCAB, "usage": VOCAB,
+    "grammar_fill": GRAMMAR, "sentence_order": GRAMMAR, "passage_fill": GRAMMAR,
+    "reading_comp": READING,
+    "listening": LISTENING,
+}
+
+
+def part_of_type(problem_type: str) -> str | None:
+    """Which of the four parts this 問題 belongs to, or None if unrecognised."""
+    return _PART_OF_TYPE.get(problem_type)

@@ -308,8 +308,14 @@ export async function getExam(paperId: string): Promise<ExamPaperDetail> {
   return request<ExamPaperDetail>(`/api/exams/${paperId}`)
 }
 
-export async function startAttempt(paperId: string): Promise<AttemptStatus> {
-  return request<AttemptStatus>(`/api/exams/${paperId}/attempts`, { method: 'POST' })
+/** `problemIds` is what this run sets out to cover; omitted, it is the paper. */
+export async function startAttempt(
+  paperId: string, problemIds?: string[],
+): Promise<AttemptStatus> {
+  return request<AttemptStatus>(`/api/exams/${paperId}/attempts`, {
+    method: 'POST',
+    body: JSON.stringify({ problem_ids: problemIds ?? [] }),
+  })
 }
 
 export async function submitAnswer(
