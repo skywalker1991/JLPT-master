@@ -94,14 +94,27 @@ def _split_columns(words) -> list[list]:
     return [left, right]
 
 
-def page_text(page) -> str:
-    """One page, read the way it is printed."""
+def page_text(page, *, mark_underlines: bool = True) -> str:
+    """One page, read the way it is printed.
+
+    Underlined words are wrapped in `__…__`. Three of the written 問題 say
+    which word they are asking about by underlining it, and that is a drawn
+    line rather than anything the text carries — without it 「鈴木氏は当時を
+    回顧して、次のように語った。」 is four candidate words and no question.
+    """
     words = page.get_text("words")
     if not words:
         return ""
-    return "\n".join(
+    text = "\n".join(
         "\n".join(_lines(column)) for column in _split_columns(words)
     )
+    if mark_underlines:
+        from app.services.exam_underline import mark_underlines as _mark
+        try:
+            text = _mark(page, text)
+        except Exception:      # never lose a page over a decoration
+            pass
+    return text
 
 
 def read_pdf(data: bytes) -> list[PageText]:

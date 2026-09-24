@@ -1,16 +1,24 @@
-import { useState } from 'react'
-import { AlertTriangle, HelpCircle, Check, ChevronRight, Loader2 } from 'lucide-react'
-import ItemByItem from './ItemByItem'
+import { useMemo, useRef, useState } from 'react'
+import { AlertTriangle, Check, ChevronDown, Loader2 } from 'lucide-react'
 import clsx from 'clsx'
-import type { DraftDetail } from '../../types'
+import { editDraftItem } from '../../services/api'
+import type { CanonicalItem, DraftDetail } from '../../types'
+
+const OPTS = ['1', '2', '3', '4']
+
+/** A finding belongs to a question when it names one. */
+function itemKey(problem: string, num: number | null, seq: number) {
+  return `${problem}#${num ?? `s${seq}`}`
+}
 
 /**
- * Deciding whether an imported paper is fit to keep.
+ * Reviewing an imported paper by reading it.
  *
- * The checks exist so that a paper does not have to be read question by
- * question — so this leads with what they flagged and keeps the paper itself
- * folded away underneath. A sitting with nothing flagged should take one
- * glance and a click; only the flagged questions are worth opening.
+ * The checks are not there to be browsed — they are there so that reading the
+ * paper can be a scroll rather than an audit. Everything is on one page in the
+ * order it is printed; what needs a decision is marked where it sits, and can
+ * be fixed without leaving the line it is on. A correction made here never
+ * becomes an attempt answered against a wrong key.
  */
 export default function DraftReview({
   draft, onConfirm, confirming, onUpdated,
@@ -20,226 +28,283 @@ export default function DraftReview({
   confirming?: boolean
   onUpdated: (d: DraftDetail) => void
 }) {
-  // A clean paper should take one glance; an unfamiliar one is worth reading
-  // properly. Neither mode is the right default for both.
-  const [mode, setMode] = useState<'summary' | 'items'>('summary')
   const report = draft.report
   const paper = draft.canonical
+  const scroller = useRef<HTMLDivElement>(null)
+
+  // Findings, indexed by the question they name, so each one can be shown
+  // against its own line instead of in a list to be cross-referenced.
+  const byItem = useMemo(() => {
+    const map = new Map<string, string[]>()
+    if (!report) return map
+    const add = (key: string, message: string) => {
+      map.set(key, [...(map.get(key) ?? []), message])
+    }
+    for (const finding of report.hard ?? []) {
+      const m = /^(問題\d+)\s*\/\s*第(\d+)题/.exec(finding.where)
+      if (m) add(itemKey(m[1], Number(m[2]), 0), finding.message)
+    }
+    for (const line of report.invented ?? []) {
+      const m = /^(問題\d+)/.exec(line) ?? /第(\d+)题/.exec(line)
+      if (m) add(itemKey(m[1], null, 0), line)
+    }
+    for (const conflict of (report.hard ?? []).filter(f => f.where === '答案')) {
+      const m = /第(\d+)题/.exec(conflict.message)
+      if (m) {
+        for (const [key] of map) void key
+        add(`ANY#${m[1]}`, conflict.message)
+      }
+    }
+    return map
+  }, [report])
+
   if (!report || !paper) return null
 
-  if (mode === 'items') {
-    return (
-      <div className="flex-1 flex flex-col min-h-0">
-        <ModeTabs mode={mode} onChange={setMode} />
-        <ItemByItem draft={draft} onUpdated={onUpdated} />
-      </div>
-    )
-  }
+  const findingsFor = (problem: string, item: CanonicalItem) =>
+    [
+      ...(byItem.get(itemKey(problem, item.num, item.seq)) ?? []),
+      ...(item.num != null ? byItem.get(`ANY#${item.num}`) ?? [] : []),
+    ]
 
-  const hard = report.hard ?? []
-  const soft = report.soft ?? []
-  const invented = report.invented ?? []
-  const blocking = hard.length + invented.length
-  const answers = report.answers ?? {}
+  const needsAttention = (problem: string, item: CanonicalItem) =>
+    findingsFor(problem, item).length > 0 || !item.correct_answer
+
+  const total = paper.sections.reduce(
+    (n, s) => n + s.problems.reduce((m, p) => m + p.items.length, 0), 0)
+  // A 問題 that produced no items needs a decision as much as a question with
+  // no answer does — it is the shape 聴解問題3 and 問題4 take when the paper
+  // prints nothing for them.
+  const flagged = paper.sections.reduce(
+    (n, s) => n + s.problems.reduce(
+      (m, p) => m + (p.items.length === 0 ? 1 : 0)
+        + p.items.filter(i => needsAttention(p.name, i)).length, 0), 0)
+
+  const jumpToNext = () => {
+    const marks = scroller.current?.querySelectorAll('[data-flagged="1"]')
+    if (!marks?.length) return
+    const top = scroller.current!.scrollTop
+    const next = Array.from(marks).find(el => (el as HTMLElement).offsetTop > top + 10)
+      ?? marks[0]
+    ;(next as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      <ModeTabs mode={mode} onChange={setMode} />
-      <div className="flex-1 overflow-y-auto">
-      <div className="max-w-3xl mx-auto p-5 space-y-5">
-        <header className="space-y-1">
-          <h1 className="text-lg font-semibold text-fg">{paper.title}</h1>
-          <p className="text-xs text-fg-muted">
-            {paper.sections.reduce((n, s) => n + s.problems.reduce((m, p) => m + p.items.length, 0), 0)} 题
-            {' · '}答案 {answers.answered ?? 0}
-            {answers.unanswered ? ` · ${answers.unanswered} 题无答案` : ''}
-            {answers.method === 'image' && ' · 答案由图片读出'}
-          </p>
-        </header>
-
-        {/* What the sources could not supply. Not a defect — a limit. */}
-        {(report.gaps ?? []).length > 0 && (
-          <section className="rounded-xl border border-border bg-bg p-4 space-y-1.5">
-            <h2 className="section-label">这套文件的限制</h2>
-            {report.gaps.map((g, i) => (
-              <p key={i} className="text-xs text-fg-muted">· {g}</p>
-            ))}
-          </section>
-        )}
-
-        <Findings
-          title="必须处理"
-          hint="这些会让题目无法判分或内容不可信"
-          tone="danger"
-          icon={AlertTriangle}
-          items={[
-            ...invented.map(m => ({ where: '提取', message: m })),
-            ...hard.map(h => ({ where: h.where, message: h.message })),
-          ]}
-        />
-
-        <Findings
-          title="请确认"
-          hint="与该级别以往的卷子不同，可能只是本届的差异"
-          tone="warn"
-          icon={HelpCircle}
-          items={soft.map(f => ({ where: f.where, message: f.message }))}
-        />
-
-        {(report.notes ?? []).length > 0 && (
-          <section className="rounded-xl border border-border bg-bg p-4 space-y-1.5">
-            <h2 className="section-label">说明</h2>
-            {report.notes.map((n, i) => (
-              <p key={i} className="text-xs text-fg-muted leading-relaxed">· {n}</p>
-            ))}
-          </section>
-        )}
-
-        {/* The paper itself, folded. Open a 問題 to spot-check it. */}
-        <section className="space-y-2">
-          <h2 className="section-label">全卷（抽查用）</h2>
-          {paper.sections.map(section => (
-            <div key={section.name} className="space-y-1.5">
-              <p className="text-xs font-medium text-fg-muted">{section.name}</p>
-              {section.problems.map(problem => (
-                <ProblemRow key={problem.name + problem.seq} problem={problem} />
-              ))}
-            </div>
-          ))}
-        </section>
-
-        <div className="sticky bottom-0 bg-bg/95 backdrop-blur border-t border-border py-3 flex items-center gap-3">
-          {blocking > 0 ? (
-            <p className="text-xs text-danger flex-1">
-              有 {blocking} 处必须处理的问题，确认入库前请先修正
-            </p>
-          ) : (
-            <p className="text-xs text-fg-muted flex-1">没有必须处理的问题</p>
-          )}
+      <header className="px-5 py-3 border-b border-border shrink-0 flex items-baseline gap-3 flex-wrap">
+        <h1 className="text-base font-semibold text-fg">{paper.title}</h1>
+        <span className="text-xs text-fg-muted">
+          {total} 题 · 答案 {report.answers?.answered ?? 0}
+          {report.answers?.method === 'image' && ' · 答案由图片读出'}
+        </span>
+        {flagged > 0 && (
           <button
-            onClick={onConfirm}
-            disabled={confirming}
-            className={clsx('btn h-9 text-sm gap-1.5',
-              blocking > 0 ? 'btn-ghost border border-border' : 'btn-primary')}
+            onClick={jumpToNext}
+            className="ml-auto text-xs text-danger hover:underline flex items-center gap-1"
           >
-            {confirming ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-            {blocking > 0 ? '仍然入库' : '确认入库'}
+            <ChevronDown className="w-3 h-3" />{flagged} 处需要确认
           </button>
+        )}
+      </header>
+
+      <div ref={scroller} className="flex-1 overflow-y-auto">
+        <div className="max-w-3xl mx-auto px-5 py-4 space-y-5">
+          {(report.gaps ?? []).length > 0 && (
+            <section className="rounded-lg border border-border bg-bg px-4 py-3 space-y-1">
+              <p className="section-label">这套文件的限制</p>
+              {report.gaps.map((g, i) => (
+                <p key={i} className="text-xs text-fg-muted">· {g}</p>
+              ))}
+            </section>
+          )}
+          {(report.notes ?? []).length > 0 && (
+            <section className="rounded-lg border border-border bg-bg px-4 py-3 space-y-1">
+              <p className="section-label">说明</p>
+              {report.notes.map((n, i) => (
+                <p key={i} className="text-xs text-fg-muted leading-relaxed">· {n}</p>
+              ))}
+            </section>
+          )}
+
+          {paper.sections.map(section => (
+            <section key={section.name} className="space-y-3">
+              <h2 className="text-sm font-semibold text-fg sticky top-0 bg-bg py-1.5 z-10">
+                {section.name}
+              </h2>
+              {section.problems.map(problem => (
+                <div key={`${problem.name}-${problem.seq}`} className="space-y-2">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-sm font-medium text-fg">{problem.name}</span>
+                    <span className="text-xs text-fg-subtle">{problem.type}</span>
+                    <span className="text-xs text-fg-subtle">{problem.items.length} 题</span>
+                  </div>
+                  {problem.passage && (
+                    <details className="rounded-lg border border-border">
+                      <summary className="px-3 py-1.5 text-xs text-fg-muted cursor-pointer">文章</summary>
+                      <p className="px-3 pb-2.5 text-xs text-fg-muted leading-relaxed whitespace-pre-wrap">
+                        {problem.passage}
+                      </p>
+                    </details>
+                  )}
+                  {problem.items.length === 0 && (
+                    <p data-flagged="1"
+                       className="text-xs text-danger pl-3 border-l-2 border-danger py-1 scroll-mt-16">
+                      这个题组没有提取到任何小题——试卷上未印内容，题目和原文只能从解析文件补齐
+                    </p>
+                  )}
+                  {problem.items.map(item => (
+                    <ItemRow
+                      key={`${item.num}-${item.seq}`}
+                      draftId={draft.id}
+                      problem={problem.name}
+                      type={problem.type}
+                      item={item}
+                      findings={findingsFor(problem.name, item)}
+                      onUpdated={onUpdated}
+                    />
+                  ))}
+                </div>
+              ))}
+            </section>
+          ))}
         </div>
       </div>
-      </div>
-    </div>
-  )
-}
 
-function ModeTabs({
-  mode, onChange,
-}: {
-  mode: 'summary' | 'items'
-  onChange: (m: 'summary' | 'items') => void
-}) {
-  return (
-    <div className="flex gap-1 px-5 py-2 border-b border-border shrink-0">
-      {([['summary', '概览'], ['items', '逐题确认']] as const).map(([value, label]) => (
+      <div className="border-t border-border px-5 py-3 flex items-center gap-3 shrink-0">
+        <p className="text-xs flex-1">
+          {flagged > 0
+            ? <span className="text-danger">{flagged} 处需要确认</span>
+            : <span className="text-fg-muted">没有需要确认的地方</span>}
+        </p>
         <button
-          key={value}
-          onClick={() => onChange(value)}
-          className={clsx(
-            'text-xs px-3 py-1.5 rounded-lg transition-colors',
-            mode === value ? 'bg-accent text-on-accent font-medium' : 'text-fg-muted hover:text-fg',
-          )}
+          onClick={onConfirm}
+          disabled={confirming}
+          className={clsx('btn h-9 text-sm gap-1.5',
+            flagged > 0 ? 'btn-ghost border border-border' : 'btn-primary')}
         >
-          {label}
+          {confirming ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+          {flagged > 0 ? '仍然入库' : '确认入库'}
         </button>
-      ))}
+      </div>
     </div>
   )
 }
 
-function Findings({
-  title, hint, tone, icon: Icon, items,
-}: {
-  title: string
-  hint: string
-  tone: 'danger' | 'warn'
-  icon: typeof AlertTriangle
-  items: { where: string; message: string }[]
-}) {
-  if (items.length === 0) return null
+/** The paper underlines the word a question is about; `__…__` carries that
+ *  through extraction, and here it goes back to being an underline. */
+function Stem({ text }: { text: string }) {
+  const parts = text.split(/__(.+?)__/g)
   return (
-    <section className={clsx(
-      'rounded-xl border p-4 space-y-2',
-      tone === 'danger' ? 'border-danger/30 bg-danger-light/40' : 'border-border bg-bg',
-    )}>
-      <div className="flex items-baseline gap-2">
-        <Icon className={clsx('w-4 h-4 shrink-0 translate-y-0.5',
-          tone === 'danger' ? 'text-danger' : 'text-fg-muted')} />
-        <h2 className="text-sm font-semibold text-fg">{title}</h2>
-        <span className="text-xs text-fg-subtle">{items.length}</span>
-      </div>
-      <p className="text-xs text-fg-subtle">{hint}</p>
-      <ul className="space-y-1.5 pt-1">
-        {items.map((f, i) => (
-          <li key={i} className="text-xs text-fg leading-relaxed flex gap-2">
-            <span className="text-fg-subtle shrink-0 font-mono">{f.where}</span>
-            <span>{f.message}</span>
-          </li>
-        ))}
-      </ul>
-    </section>
+    <>
+      {parts.map((part, i) =>
+        i % 2 === 1
+          ? <span key={i} className="underline decoration-2 underline-offset-2 font-medium">{part}</span>
+          : <span key={i}>{part}</span>,
+      )}
+    </>
   )
 }
 
-function ProblemRow({ problem }: { problem: DraftDetail['canonical']['sections'][0]['problems'][0] }) {
-  const [open, setOpen] = useState(false)
-  const unanswered = problem.items.filter(i => !i.correct_answer).length
+
+function ItemRow({
+  draftId, problem, type, item, findings, onUpdated,
+}: {
+  draftId: string
+  problem: string
+  type: string
+  item: CanonicalItem
+  findings: string[]
+  onUpdated: (d: DraftDetail) => void
+}) {
+  const [answer, setAnswer] = useState(item.correct_answer ?? '')
+  const [order, setOrder] = useState(item.answer_order ?? '')
+  const [saving, setSaving] = useState(false)
+
+  const flagged = findings.length > 0 || !item.correct_answer
+  const dirty = answer !== (item.correct_answer ?? '') || order !== (item.answer_order ?? '')
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      onUpdated(await editDraftItem(draftId, {
+        problem, seq: item.seq,
+        ...(answer !== (item.correct_answer ?? '') ? { correct_answer: answer || null } : {}),
+        ...(order !== (item.answer_order ?? '') ? { answer_order: order || null } : {}),
+      }))
+    } catch (e) {
+      alert(`保存失败：${(e as Error).message}`)
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
-    <div className="rounded-lg border border-border overflow-hidden">
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-accent-light/30 transition-colors"
-      >
-        <ChevronRight className={clsx('w-3.5 h-3.5 text-fg-subtle transition-transform', open && 'rotate-90')} />
-        <span className="text-sm font-medium text-fg">{problem.name}</span>
-        <span className="text-xs text-fg-subtle">{problem.type}</span>
-        <span className="text-xs text-fg-muted ml-auto">{problem.items.length} 题</span>
-        {unanswered > 0 && (
-          <span className="badge bg-danger-light text-danger-fg">{unanswered} 无答案</span>
-        )}
-      </button>
+    <div
+      data-flagged={flagged ? '1' : undefined}
+      className={clsx(
+        'rounded-lg px-3 py-2 space-y-1.5 scroll-mt-16',
+        flagged ? 'border-l-2 border-danger bg-danger-light/20' : 'border-l-2 border-transparent',
+      )}
+    >
+      {findings.map((f, i) => (
+        <p key={i} className="text-xs text-danger flex items-start gap-1.5">
+          <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" />{f}
+        </p>
+      ))}
 
-      {open && (
-        <div className="px-3 pb-3 space-y-3 border-t border-border pt-3">
-          {problem.passage && (
-            <p className="text-xs text-fg-muted leading-relaxed whitespace-pre-wrap bg-bg rounded-lg p-2.5 max-h-48 overflow-y-auto">
-              {problem.passage}
-            </p>
+      <p className="text-sm text-fg leading-relaxed">
+        <span className="text-xs text-fg-subtle mr-1.5">{item.num ?? item.seq}.</span>
+        {item.stem
+          ? <Stem text={item.stem} />
+          : <span className="text-fg-subtle italic">（试卷上未印内容）</span>}
+      </p>
+
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pl-5">
+        {OPTS.filter(k => k in item.options).map(k => (
+          <button
+            key={k}
+            onClick={() => setAnswer(k)}
+            className={clsx('text-xs text-left transition-colors',
+              k === answer ? 'text-success font-medium' : 'text-fg-muted hover:text-fg')}
+          >
+            <span className="font-bold mr-1">{k}</span>{item.options[k]}
+          </button>
+        ))}
+        {Object.keys(item.options).length === 0 && (
+          <span className="text-xs text-fg-subtle italic">（音声のみ）</span>
+        )}
+      </div>
+
+      {(flagged || dirty || type === 'sentence_order') && (
+        <div className="flex items-center gap-3 pl-5 pt-0.5">
+          <label className="text-xs text-fg-muted flex items-center gap-1.5">
+            答案
+            <select
+              value={answer}
+              onChange={e => setAnswer(e.target.value)}
+              className="bg-bg border border-border rounded px-1.5 py-0.5 text-xs text-fg"
+            >
+              <option value="">—</option>
+              {OPTS.map(k => <option key={k} value={k}>{k}</option>)}
+            </select>
+          </label>
+          {type === 'sentence_order' && (
+            <label className="text-xs text-fg-muted flex items-center gap-1.5">
+              语序
+              <input
+                value={order}
+                onChange={e => setOrder(e.target.value)}
+                placeholder="3412" maxLength={8}
+                className="w-16 bg-bg border border-border rounded px-1.5 py-0.5 text-xs font-mono text-fg"
+              />
+            </label>
           )}
-          {problem.items.map(item => (
-            <div key={`${item.num}-${item.seq}`} className="space-y-1">
-              <p className="text-sm text-fg">
-                <span className="text-xs text-fg-subtle mr-1.5">{item.num ?? item.seq}.</span>
-                {item.stem || <span className="text-fg-subtle italic">（试卷上未印内容）</span>}
-              </p>
-              <div className="flex flex-wrap gap-x-4 gap-y-0.5 pl-5">
-                {Object.entries(item.options).map(([k, v]) => (
-                  <span key={k} className={clsx(
-                    'text-xs',
-                    k === item.correct_answer ? 'text-success font-medium' : 'text-fg-muted',
-                  )}>
-                    {k} {v}
-                  </span>
-                ))}
-              </div>
-              {item.answer_order && (
-                <p className="text-xs text-fg-subtle pl-5">正确语序 {item.answer_order}</p>
-              )}
-              {!item.correct_answer && (
-                <p className="text-xs text-danger pl-5">没有答案，这题无法判分</p>
-              )}
-            </div>
-          ))}
+          {dirty && (
+            <button onClick={save} disabled={saving}
+                    className="text-xs text-accent hover:underline flex items-center gap-1">
+              {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+              保存
+            </button>
+          )}
         </div>
       )}
     </div>

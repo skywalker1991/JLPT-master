@@ -47,6 +47,8 @@ PROMPT = """从下面这段 JLPT 试题中提取出所有小题，输出 JSON。
 已知的坑（都真实出现过，请逐条注意）：
 
 1. 题号写法不统一：可能是「1」「1.」「１．」「(1)」。num 只填数字，不要带符号。
+1b. 原文里 __这样包起来的词__ 是试卷上加了下划线的地方，标出题目问的是哪个词。
+   **必须原样保留这对下划线标记**，它决定了这道题在问什么。
 2. 选项可能排成 2×2（1、2 在一行，3、4 在下一行）。按 1234 的编号读，
    不要按视觉上的列去读，否则会变成 1、3、2、4。
 3. 排序题（問題6 一类）：stem 里的空格写成 [_1_] [_2_] [_3_] [_4_]，
@@ -95,6 +97,7 @@ def normalise(text: str) -> str:
     """
     text = unicodedata.normalize("NFKC", text or "")
     text = re.sub(r"\[_\d+★?_\]", "", text)
+    text = text.replace("__", "")      # the underline marker, added on both sides
     text = re.sub(r"[\s　]+", "", text)
     text = re.sub(r"[_＿※★（）()「」『』、。，．・]", "", text)
     return text
