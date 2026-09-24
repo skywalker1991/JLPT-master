@@ -174,9 +174,14 @@ function ItemDisplay({
       {isSentenceOrder && (
         <p className="text-xs text-fg-muted">选择填入 <span className="inline-flex items-center justify-center w-5 h-5 rounded bg-accent text-on-accent text-[10px] font-bold align-middle">★</span> 处的词语：</p>
       )}
-      {item.transcript && (
-        <div className="bg-bg border border-border rounded-xl p-3 text-sm text-fg leading-relaxed whitespace-pre-wrap">
-          <p className="text-[10px] font-semibold text-fg-muted mb-1.5 uppercase tracking-wide">聴解原文</p>
+      {/* Only once the section is answered. 聴解 is answered from the audio;
+          printing the dialogue beside the choices turns every listening
+          question into a reading one — which is what it did the moment the
+          transcripts started arriving from the 解析 booklet. */}
+      {reviewMode && item.transcript && (
+        <div className="font-jp bg-bg border border-border rounded-lg px-4 py-3 text-sm text-fg
+                        leading-loose whitespace-pre-wrap">
+          <p className="font-sans text-[10px] font-semibold text-fg-muted mb-1.5 tracking-wide">聴解原文</p>
           {item.transcript}
         </div>
       )}
