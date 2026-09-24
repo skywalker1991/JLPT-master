@@ -552,20 +552,36 @@ export default function ExamSession({
           <ChevronLeft className="w-4 h-4" />
           上一屏
         </button>
-        {/* Scoped to the section, like the header — one counter said 41/106
-            while the other said 0/45, and neither was wrong. */}
+        {/* Where you are, the way the analysis pages show it: a figure to read
+            and a bar to glance at. How many are answered is in the header
+            already, so this is position and nothing else. Still the way into
+            the numbers — an exam is jumped around in, unlike a text that is
+            read through. */}
         <button
           onClick={() => setNavOpen(o => !o)}
-          className="flex items-center gap-1.5 text-xs text-fg-muted hover:text-fg transition-colors"
+          className="flex-1 max-w-[16rem] mx-4 flex items-center gap-2.5 group"
         >
-          <ChevronDown className={`w-3.5 h-3.5 transition-transform ${navOpen ? '' : 'rotate-180'}`} />
-          {/* Counted in questions, not screens: a 読解 text holds three. */}
-          第 {sectionItems.findIndex(i => i.id === unit.items[0].id) + 1}
-          {unit.items.length > 1 && `-${sectionItems.findIndex(i => i.id === unit.items[unit.items.length - 1].id) + 1}`} 题
-          <span className="text-fg-subtle">
-            / 本节 {totalInSection} · 已答 {answeredInSection}
+          <span className="text-xs font-semibold text-fg-muted tabular-nums shrink-0">
+            <span className="text-fg">
+              {sectionItems.findIndex(i => i.id === unit.items[0].id) + 1}
+              {unit.items.length > 1
+                && `-${sectionItems.findIndex(i => i.id === unit.items[unit.items.length - 1].id) + 1}`}
+            </span>
+            {' / '}{sectionItems.length}
           </span>
+          <span className="flex-1 h-1 rounded-full bg-border overflow-hidden">
+            <span
+              className="block h-full rounded-full bg-accent transition-[width] duration-200"
+              style={{
+                width: `${((sectionItems.findIndex(i => i.id === unit.items[unit.items.length - 1].id) + 1)
+                  / sectionItems.length) * 100}%`,
+              }}
+            />
+          </span>
+          <ChevronDown className={`w-3.5 h-3.5 shrink-0 text-fg-subtle transition-transform
+                                   group-hover:text-fg ${navOpen ? '' : 'rotate-180'}`} />
         </button>
+
         <button
           onClick={() => setUnitIdx(i => Math.min(units.length - 1, i + 1))}
           disabled={unitIdx === units.length - 1}
