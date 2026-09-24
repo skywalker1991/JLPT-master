@@ -275,11 +275,27 @@ function ItemRow({
         <span className="text-xs text-fg-subtle mr-1.5">{item.num ?? item.seq}.</span>
         {item.stem
           ? <Stem text={item.stem} />
+          : type === 'listening' && item.transcript
+            ? <span className="text-fg-subtle">（音声のみ — 原文见下）</span>
           : type === 'passage_fill' && item.num != null
             // The question is the gap in the passage above, not a missing stem.
             ? <span className="text-fg-subtle">文章中的第 {item.num} 个空</span>
             : <span className="text-fg-subtle italic">（试卷上未印内容）</span>}
       </p>
+
+      {/* For 聴解 the dialogue is the question — the paper prints nothing.
+          Filled in from the 解析 booklet, this is the only place to see it
+          landed on the right 番. */}
+      {item.transcript && (
+        <details className="ml-5 rounded-lg border border-border">
+          <summary className="px-2.5 py-1 text-xs text-fg-subtle cursor-pointer">
+            聴解原文（{item.transcript.length} 字）
+          </summary>
+          <p className="px-2.5 pb-2 text-xs text-fg-muted leading-relaxed whitespace-pre-wrap">
+            {item.transcript}
+          </p>
+        </details>
+      )}
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pl-5">
         {OPTS.filter(k => k in item.options).map(k => (
