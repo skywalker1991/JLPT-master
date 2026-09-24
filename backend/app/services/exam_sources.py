@@ -12,6 +12,7 @@ that simply cannot be scored yet; the point is to say so rather than fail.
 from __future__ import annotations
 
 import re
+from collections import Counter
 from dataclasses import dataclass
 from enum import Enum
 
@@ -111,6 +112,48 @@ def classify_all(sources: list[Source]) -> list[Source]:
             source.role = classify(source, has_text_twin=True)
 
     return sources
+
+
+#: The level, printed on every cover and every answer sheet.
+_LEVEL = re.compile(r"(?<![A-Za-z])[NＮ]\s*([1-5１-５])(?![0-9０-９])")
+
+#: The sitting. Digits get spaced apart by the text layer — "2019 年1 2 月" is
+#: December, not January — so spaces inside the number are closed up first.
+_SITTING = re.compile(r"(20[0-9]{2})\s*年\s*([0-9]{1,2}(?:\s*[0-9])?)\s*月")
+
+
+def _digits(raw: str) -> str:
+    table = str.maketrans("０１２３４５６７８９", "0123456789")
+    return re.sub(r"\s+", "", raw).translate(table)
+
+
+def detect_identity(sources: list[Source]) -> tuple[str | None, str | None]:
+    """The level and sitting, read off the files rather than typed in.
+
+    Every cover and every answer sheet carries both, so asking for them is one
+    more thing to get wrong — and a paper whose title is wrong is a paper you
+    cannot find in the list afterwards.
+
+    Where files disagree the commonest reading wins: a 解析 booklet quotes
+    other sittings in its examples, and a cover does not.
+    """
+    levels: Counter[str] = Counter()
+    sittings: Counter[str] = Counter()
+
+    for source in sources:
+        # The identity is printed at the top; the body is where other years
+        # get mentioned in passing.
+        head = source.text[:600]
+        for match in _LEVEL.finditer(head):
+            levels[f"N{_digits(match.group(1))}"] += 1
+        for match in _SITTING.finditer(head):
+            year, month = _digits(match.group(1)), _digits(match.group(2))
+            if 1 <= int(month) <= 12:
+                sittings[f"{year}年{int(month):02d}月"] += 1
+
+    level = levels.most_common(1)[0][0] if levels else None
+    sitting = sittings.most_common(1)[0][0] if sittings else None
+    return level, sitting
 
 
 @dataclass

@@ -99,7 +99,7 @@ async def _draft_detail(db: AsyncSession, draft) -> DraftDetail:
 @router.post("/drafts", response_model=DraftDetail)
 async def create_draft(
     files: list[UploadFile] = File(...),
-    level: str = Form("N1"),
+    level: str | None = Form(None),
     source_label: str | None = Form(None),
     db: AsyncSession = Depends(get_db),
 ):
@@ -150,9 +150,11 @@ async def _run_ingest(
                 ExamDraft.canonical.is_not(None), ExamDraft.status == "confirmed"
             )
         )).scalars().all()
+        # Only papers of the same level are a baseline; without a level yet,
+        # the first paper of a new level should not be judged against N1's.
         baseline = baseline_for([
-            p for p in previous if (p or {}).get("level") == level
-        ])
+            p for p in previous if not level or (p or {}).get("level") == level
+        ]) if level else {}
 
     try:
         paper, report = await ingest(

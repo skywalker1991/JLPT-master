@@ -388,13 +388,17 @@ export async function updateDraft(draftId: string, draftJson: object): Promise<D
   })
 }
 
-export async function createDraftFromPdf(file: File): Promise<DraftDetail> {
+export async function createDraft(
+  files: File[],
+  opts?: { level?: string; sourceLabel?: string },
+): Promise<DraftDetail> {
   const form = new FormData()
-  form.append('file', file)
-  const res = await fetch(`${BASE_URL}/api/admin/drafts`, {
-    method: 'POST',
-    body: form,
-  })
+  for (const file of files) form.append('files', file)
+  // Left out unless overridden: the level and sitting are printed on every
+  // cover and answer sheet, so the server reads them off the files.
+  if (opts?.level) form.append('level', opts.level)
+  if (opts?.sourceLabel) form.append('source_label', opts.sourceLabel)
+  const res = await fetch(`${BASE_URL}/api/admin/drafts`, { method: 'POST', body: form })
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
     throw new Error(body.detail ?? `HTTP ${res.status}`)

@@ -22,7 +22,7 @@ from app.services.exam_canonical import (
 )
 from app.services.exam_extract import extract_block_with_retry
 from app.services.exam_merge import merge_answers
-from app.services.exam_sources import Role, Source, assess, classify_all
+from app.services.exam_sources import Role, Source, assess, classify_all, detect_identity
 from app.services.exam_split import split_problems
 from app.services.exam_text import joined, read_pdf
 from app.services.exam_validation import learn_baseline, validate
@@ -149,7 +149,7 @@ async def _read_scanned_sheet(
 async def ingest(
     files: list[tuple[str, bytes]],
     *,
-    level: str = "N1",
+    level: str | None = None,
     source_label: str | None = None,
     baseline: dict | None = None,
     verify_answers: bool = False,
@@ -162,6 +162,13 @@ async def ingest(
     sources = read_sources(files)
     files_by_name = dict(files)
     capability = assess(sources)
+
+    # Every cover and answer sheet prints the level and the sitting, so they are
+    # read rather than asked for — a paper titled wrongly is a paper that cannot
+    # be found in the list afterwards. Anything passed in still wins.
+    detected_level, detected_sitting = detect_identity(sources)
+    level = level or detected_level
+    source_label = source_label or detected_sitting
     report = IngestReport(
         sources=[
             {"filename": s.filename, "role": s.role.value,
@@ -171,13 +178,18 @@ async def ingest(
         gaps=capability.missing,
     )
 
+    if not level:
+        report.notes.append("文件里没有找到级别（N1-N5），请手动指定")
+    if not source_label:
+        report.notes.append("文件里没有找到考试年月，请手动指定")
+
     questions = _pick(sources, Role.QUESTIONS)
     if questions is None:
         report.notes.append("没有可用的試題文件，无法建卷")
         return None, report
 
     paper, invented = await build_paper(
-        questions, level=level, source_label=source_label,
+        questions, level=level or "", source_label=source_label,
     )
     report.invented = invented
     paper.gaps = capability.missing

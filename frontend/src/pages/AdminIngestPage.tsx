@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { FileText, Loader2, Trash2, Upload } from 'lucide-react'
-import { listDrafts, createDraftFromPdf, getDraft, deleteDraft, confirmDraft } from '../services/api'
+import { listDrafts, createDraft, getDraft, deleteDraft, confirmDraft } from '../services/api'
 import type { DraftSummary, DraftDetail } from '../types'
 import DraftEditor from '../components/admin/DraftEditor'
 import ReportQueue from '../components/admin/ReportQueue'
@@ -14,7 +14,7 @@ function DraftList({
   drafts: DraftSummary[]
   selectedId: string | null
   onSelect: (id: string) => void
-  onUpload: (file: File) => void
+  onUpload: (files: File[]) => void
   onDelete: (id: string) => void
   uploading: boolean
 }) {
@@ -29,16 +29,19 @@ function DraftList({
           className="w-full flex items-center justify-center gap-2 py-2 rounded-lg border border-dashed border-border text-xs text-fg-muted hover:border-accent/50 hover:text-accent transition-colors disabled:opacity-40"
         >
           {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-          {uploading ? '识别中…' : '上传 PDF'}
+          {uploading ? '识别中…' : '上传一次考试的文件'}
         </button>
         <input
           ref={fileRef}
           type="file"
           accept="application/pdf"
+          multiple
           className="hidden"
           onChange={e => {
-            const f = e.target.files?.[0]
-            if (f) onUpload(f)
+            // A sitting is 試題 + 解析 + 答案表; which is which is worked out
+            // from the files, so they go up together.
+            const picked = Array.from(e.target.files ?? [])
+            if (picked.length) onUpload(picked)
             e.target.value = ''
           }}
         />
@@ -150,10 +153,10 @@ export default function AdminIngestPage() {
     }
   }
 
-  async function handleUpload(file: File) {
+  async function handleUpload(files: File[]) {
     setUploading(true)
     try {
-      const d = await createDraftFromPdf(file)
+      const d = await createDraft(files)
       setDrafts(prev => [
         { id: d.id, filename: d.filename, status: d.status, paper_id: d.paper_id, created_at: d.created_at, updated_at: d.updated_at },
         ...prev,
@@ -228,7 +231,10 @@ export default function AdminIngestPage() {
           <div className="max-w-3xl mx-auto space-y-4">
             <div className="text-center text-fg-muted py-6 space-y-2">
               <FileText className="w-10 h-10 mx-auto opacity-20" />
-              <p className="text-sm">上传 PDF 或选择草稿开始校对</p>
+              <p className="text-sm">上传一次考试的全部 PDF，或选择草稿开始校对</p>
+              <p className="text-xs text-fg-subtle">
+                試題 / 解析 / 答案表一起选，级别和年月会从文件里读出来
+              </p>
             </div>
             <h2 className="section-label">做题时标记的问题</h2>
             <ReportQueue />
