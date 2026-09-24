@@ -201,11 +201,24 @@ class DraftSummary(BaseModel):
     updated_at: datetime
 
 
+class DraftSource(BaseModel):
+    """One uploaded file of a sitting, and what it turned out to be."""
+    filename: str
+    role: str                 # questions | explanations | answer_sheet | scanned
+    page_count: int
+    text_pages: int
+
+
 class DraftDetail(BaseModel):
     id: UUID
     filename: str | None
     markdown_raw: str | None
     draft_json: dict | None
+    #: The paper in the shape everything downstream reads (exam_canonical).
+    canonical: dict | None = None
+    #: What checking it turned up: gaps in the file set, findings, answer stats.
+    report: dict | None = None
+    sources: list[DraftSource] = []
     status: str
     paper_id: UUID | None
     created_at: datetime

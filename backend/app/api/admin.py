@@ -7,15 +7,15 @@ from pathlib import Path
 from datetime import datetime
 
 import aiofiles
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from sqlalchemy import select, delete
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from sqlalchemy import select, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.db import (
     ExamPaper, ExamSection, ExamProblem, ExamItem, ExamDraft, get_db,
     async_session_factory,
 )
-from app.schemas.exam import DraftSummary, DraftDetail, MediaUploadResponse
+from app.schemas.exam import DraftSummary, DraftDetail, DraftSource, MediaUploadResponse
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -46,12 +46,7 @@ async def get_draft(draft_id: _uuid.UUID, db: AsyncSession = Depends(get_db)):
     draft = await db.get(ExamDraft, draft_id)
     if draft is None:
         raise HTTPException(status_code=404, detail="Draft not found")
-    return DraftDetail(
-        id=draft.id, filename=draft.filename,
-        markdown_raw=draft.markdown_raw, draft_json=draft.draft_json,
-        status=draft.status, paper_id=draft.paper_id,
-        created_at=draft.created_at, updated_at=draft.updated_at,
-    )
+    return await _draft_detail(db, draft)
 
 
 @router.delete("/drafts/{draft_id}", status_code=204)
@@ -74,47 +69,126 @@ async def update_draft(draft_id: _uuid.UUID, body: dict, db: AsyncSession = Depe
         flag_modified(draft, "draft_json")
     draft.updated_at = datetime.utcnow()
     await db.commit()
+    return await _draft_detail(db, draft)
+
+
+# ── PDF Ingest ────────────────────────────────────────────────────────────────
+
+async def _draft_detail(db: AsyncSession, draft) -> DraftDetail:
+    from app.models.db import ExamDraftSource
+    rows = (await db.execute(
+        select(ExamDraftSource).where(ExamDraftSource.draft_id == draft.id)
+        .order_by(ExamDraftSource.created_at)
+    )).scalars().all()
     return DraftDetail(
         id=draft.id, filename=draft.filename,
         markdown_raw=draft.markdown_raw, draft_json=draft.draft_json,
+        canonical=draft.canonical, report=draft.report,
+        sources=[
+            DraftSource(filename=r.filename, role=r.role,
+                        page_count=r.page_count, text_pages=r.text_pages)
+            for r in rows
+        ],
         status=draft.status, paper_id=draft.paper_id,
         created_at=draft.created_at, updated_at=draft.updated_at,
     )
 
 
-# ── PDF Ingest ────────────────────────────────────────────────────────────────
-
 @router.post("/drafts", response_model=DraftDetail)
-async def create_draft_from_pdf(
-    file: UploadFile = File(...),
+async def create_draft(
+    files: list[UploadFile] = File(...),
+    level: str = Form("N1"),
+    source_label: str | None = Form(None),
     db: AsyncSession = Depends(get_db),
 ):
-    """Upload PDF → create draft immediately → parse async in background."""
-    pdf_bytes = await file.read()
-    if not pdf_bytes:
-        raise HTTPException(status_code=400, detail="Empty file")
+    """Upload a sitting's files and read it.
+
+    A sitting is 試題 + 解析 + 答案表, not one PDF, and which is which is worked
+    out from the files rather than asked for. None of them is required: a
+    question paper alone imports fine and the report says what it cannot do.
+    """
+    uploads: list[tuple[str, bytes]] = []
+    for upload in files:
+        data = await upload.read()
+        if data:
+            uploads.append((upload.filename or "unnamed.pdf", data))
+    if not uploads:
+        raise HTTPException(status_code=400, detail="No readable files")
 
     draft = ExamDraft(
-        filename=file.filename,
-        markdown_raw=None,
-        draft_json=None,
+        filename=", ".join(name for name, _ in uploads),
         status="processing",
     )
     db.add(draft)
     await db.commit()
     await db.refresh(draft)
 
-    settings = get_settings()
-    asyncio.create_task(
-        _process_draft_pdf(draft.id, pdf_bytes, file.filename, settings.LLM_API_KEY)
-    )
+    asyncio.create_task(_run_ingest(draft.id, uploads, level, source_label))
+    return await _draft_detail(db, draft)
 
-    return DraftDetail(
-        id=draft.id, filename=draft.filename,
-        markdown_raw=draft.markdown_raw, draft_json=draft.draft_json,
-        status=draft.status, paper_id=draft.paper_id,
-        created_at=draft.created_at, updated_at=draft.updated_at,
-    )
+
+async def _run_ingest(
+    draft_id: _uuid.UUID,
+    uploads: list[tuple[str, bytes]],
+    level: str,
+    source_label: str | None,
+) -> None:
+    """Read the sitting in the background and store what came of it."""
+    from app.models.db import ExamDraftSource, async_session_factory
+    from app.services.exam_canonical import from_dict
+    from app.services.exam_ingest import baseline_for, ingest
+    from app.services.exam_sources import Source, classify_all
+    from app.services.exam_text import joined, read_pdf
+
+    async with async_session_factory() as session:
+        # What papers of this level have looked like so far, so a difference
+        # can be queried instead of every paper looking unfamiliar.
+        previous = (await session.execute(
+            select(ExamDraft.canonical).where(
+                ExamDraft.canonical.is_not(None), ExamDraft.status == "confirmed"
+            )
+        )).scalars().all()
+        baseline = baseline_for([
+            p for p in previous if (p or {}).get("level") == level
+        ])
+
+    try:
+        paper, report = await ingest(
+            uploads, level=level, source_label=source_label, baseline=baseline,
+        )
+    except Exception as e:
+        logger.error("Ingest failed for draft %s: %s", draft_id, e)
+        async with async_session_factory() as session:
+            await session.execute(
+                update(ExamDraft).where(ExamDraft.id == draft_id)
+                .values(status="failed", report={"notes": [f"读取失败：{e}"]})
+            )
+            await session.commit()
+        return
+
+    async with async_session_factory() as session:
+        # Keep the text of each file: improving the extractor then means
+        # re-running over these rows rather than asking for the PDFs again.
+        for name, data in uploads:
+            pages = read_pdf(data)
+            session.add(ExamDraftSource(
+                draft_id=draft_id, filename=name,
+                page_count=len(pages),
+                text_pages=sum(1 for p in pages if p.has_text_layer),
+                text_raw=joined(pages),
+                role=next(
+                    (s["role"] for s in report.sources if s["filename"] == name),
+                    "unknown",
+                ),
+            ))
+        await session.execute(
+            update(ExamDraft).where(ExamDraft.id == draft_id).values(
+                canonical=paper.to_dict() if paper else None,
+                report=report.to_dict(),
+                status="pending" if paper else "failed",
+            )
+        )
+        await session.commit()
 
 
 async def _process_draft_pdf(draft_id: _uuid.UUID, pdf_bytes: bytes, filename: str, api_key: str) -> None:
@@ -324,12 +398,7 @@ async def confirm_draft(draft_id: _uuid.UUID, db: AsyncSession = Depends(get_db)
     await db.commit()
     await db.refresh(draft)
 
-    return DraftDetail(
-        id=draft.id, filename=draft.filename,
-        markdown_raw=draft.markdown_raw, draft_json=draft.draft_json,
-        status=draft.status, paper_id=draft.paper_id,
-        created_at=draft.created_at, updated_at=draft.updated_at,
-    )
+    return await _draft_detail(db, draft)
 
 
 # ── Import answers from answer PDF ───────────────────────────────────────────
@@ -454,12 +523,7 @@ async def import_answers(
     await db.refresh(draft)
 
     logger.info("Imported %d answers into draft %s", len(answers), draft_id)
-    return DraftDetail(
-        id=draft.id, filename=draft.filename,
-        markdown_raw=draft.markdown_raw, draft_json=draft.draft_json,
-        status=draft.status, paper_id=draft.paper_id,
-        created_at=draft.created_at, updated_at=draft.updated_at,
-    )
+    return await _draft_detail(db, draft)
 
 
 # ── Media Upload ──────────────────────────────────────────────────────────────
