@@ -37,7 +37,7 @@ export default function SubtitleList({ subtitles, currentIdx, selectedIdx, onSel
         return (
           <button
             key={i}
-            ref={el => { itemRefs.current[i] = el }}
+            ref={(el: HTMLButtonElement | null) => { itemRefs.current[i] = el }}
             onClick={() => onSelect(i)}
             className={clsx(
               'w-full text-left px-3 py-2 transition-colors border-l-2 flex items-start gap-2',
