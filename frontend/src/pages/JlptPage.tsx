@@ -208,7 +208,7 @@ const SEC_SHORT: Record<string, string> = {
 
 function AttemptListPanel({
   paperId, refreshKey, activeAttemptId,
-  onViewResult, onContinue, onDelete, onCount,
+  onViewResult, onContinue, onDelete,
 }: {
   paperId: string
   refreshKey: number
@@ -216,8 +216,6 @@ function AttemptListPanel({
   onViewResult: (id: string) => void
   onContinue: (id: string) => void
   onDelete: (id: string) => void
-  /** So a phone can drop the whole card when there is nothing in it. */
-  onCount?: (n: number) => void
 }) {
   const [attempts, setAttempts] = useState<AttemptSummary[]>([])
   const [loading, setLoading] = useState(true)
@@ -225,9 +223,9 @@ function AttemptListPanel({
   useEffect(() => {
     setLoading(true)
     listPaperAttempts(paperId)
-      .then(list => { setAttempts(list); onCount?.(list.length) })
+      .then(setAttempts)
       .finally(() => setLoading(false))
-  }, [paperId, refreshKey, onCount])
+  }, [paperId, refreshKey])
 
   return (
     <div className="flex flex-col h-full">
@@ -329,48 +327,58 @@ function AttemptListPanel({
 
 // ─── Exam config panel ────────────────────────────────────────────────────────
 
+/** What a part is in the middle of, or what it came to last time. */
+interface PartState {
+  running?: AttemptSummary            // left unfinished
+  score?: { correct: number; total: number; at: string }
+}
+
+/**
+ * The four parts a paper is practised in, each carrying its own state.
+ *
+ * There used to be a separate history panel beside this, which said the same
+ * things twice: the part rows already knew what had been scored, and the
+ * history knew which run was unfinished. Two views of one fact, a 継続 button
+ * in each, and on a phone the history sat above the thing you opened the page
+ * to do. A part is the object here, so its state belongs on it.
+ */
 function ExamConfigPanel({
-  detail, onStart, onContinue,
+  detail, onStart, onContinue, onShowHistory,
 }: {
   detail: ExamPaperDetail
   onStart: (sectionIds: string[], attemptId: string) => void
   onContinue: (attemptId: string) => void
+  onShowHistory: () => void
 }) {
   const [selected, setSelected] = useState<string[]>([])
   const [starting, setStarting] = useState(false)
-  // Starting always made a new attempt, so every look at the paper left another
-  // 进行中 row behind. An unfinished one is almost always what was wanted.
-  const [unfinished, setUnfinished] = useState<AttemptSummary | null>(null)
-  // Until this has answered there is no honest button to show: rendering
-  // 开始考试 and swapping it for 继续 a moment later means a quick hand starts
-  // a second attempt over the first.
+  const [parts, setParts] = useState<Record<string, PartState>>({})
+  // Until the records are in there is no honest row to draw: showing a part as
+  // untouched and correcting it a moment later is how a quick hand starts a
+  // second run over one already going.
   const [looked, setLooked] = useState(false)
-
-  // What each part has already scored, so picking one up does not mean doing
-  // it twice. The scores are already on the records — an attempt keeps them
-  // keyed by part — so this needs nothing new from the server.
-  const [done, setDone] = useState<Record<string, { correct: number; total: number; at: string }>>({})
 
   useEffect(() => {
     listPaperAttempts(detail.id)
       .then(list => {
-        setUnfinished(list.find(a => a.status === 'in_progress') ?? null)
-        const seen: Record<string, { correct: number; total: number; at: string }> = {}
-        // Newest first from the server, so the first score for a part is the
-        // latest and later ones are not written over it.
+        const state: Record<string, PartState> = {}
+        // Newest first from the server, so the first of each is the latest.
         for (const a of list) {
+          for (const name of a.section_names ?? []) {
+            const part = (state[name] ??= {})
+            if (a.status === 'in_progress' && !part.running) part.running = a
+          }
           for (const [name, sc] of Object.entries(a.score ?? {})) {
-            if (name !== 'total' && !seen[name] && sc.total > 0) {
-              seen[name] = { ...sc, at: a.completed_at ?? a.started_at }
-            }
+            if (name === 'total' || sc.total === 0) continue
+            const part = (state[name] ??= {})
+            if (!part.score) part.score = { ...sc, at: a.completed_at ?? a.started_at }
           }
         }
-        setDone(seen)
-        // Start on what is left rather than on everything: the whole paper is
-        // 170 minutes, and a part already scored is the least useful thing to
-        // hand someone opening this page.
-        const undone = detail.sections.filter(s => !seen[s.name]).map(s => s.id)
-        setSelected(undone.length > 0 ? undone : detail.sections.map(s => s.id))
+        setParts(state)
+        // Start on what is left. The whole paper is 170 minutes, and a part
+        // already scored is the least useful thing to offer.
+        const fresh = detail.sections.filter(s => !state[s.name]?.score).map(s => s.id)
+        setSelected(fresh.length > 0 ? fresh : detail.sections.map(s => s.id))
       })
       .catch(() => setSelected(detail.sections.map(s => s.id)))
       .finally(() => setLooked(true))
@@ -397,73 +405,74 @@ function ExamConfigPanel({
   }
 
   return (
-    <div className="flex flex-col items-center md:justify-center h-full px-6 py-6 md:px-8 overflow-y-auto">
-      <div className="w-full max-w-sm space-y-6">
-        <div>
-          <h3 className="text-lg font-bold text-fg mb-1">选择考试范围</h3>
-          <p className="text-sm text-fg-muted">可选单节练习，也可全部作答</p>
+    <div className="flex-1 min-h-0 overflow-y-auto px-6 py-6 md:px-8">
+      <div className="w-full max-w-md mx-auto space-y-5">
+        <div className="flex items-baseline gap-3">
+          <h3 className="text-lg font-bold text-fg">选择范围</h3>
+          <button
+            onClick={onShowHistory}
+            className="ml-auto text-xs text-fg-muted hover:text-fg transition-colors"
+          >
+            全部记录 →
+          </button>
         </div>
 
         <div className="space-y-2">
-          {detail.sections.map(s => (
-            <label
-              key={s.id}
-              className={[
-                'flex items-center gap-3 px-4 py-3 rounded-xl border cursor-pointer transition-all',
-                selected.includes(s.id) ? 'border-accent bg-accent-light' : 'border-border hover:border-accent/40',
-              ].join(' ')}
-            >
-              <input
-                type="checkbox"
-                checked={selected.includes(s.id)}
-                onChange={() => toggle(s.id)}
-                className="accent-accent w-4 h-4 shrink-0"
-              />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-fg">{s.name}</p>
-                <p className="text-xs text-fg-muted">
-                  {s.problems.reduce((n, p) => n + p.items.length, 0)} 题
-                </p>
+          {detail.sections.map(s => {
+            const state = parts[s.name]
+            const count = s.problems.reduce((n, p) => n + p.items.length, 0)
+            const pct = state?.score
+              ? Math.round(state.score.correct / state.score.total * 100)
+              : null
+            return (
+              <div
+                key={s.id}
+                className={[
+                  'flex items-center gap-3 px-4 py-3 rounded-xl border transition-all',
+                  selected.includes(s.id)
+                    ? 'border-accent bg-accent-light' : 'border-border',
+                ].join(' ')}
+              >
+                <input
+                  type="checkbox"
+                  checked={selected.includes(s.id)}
+                  onChange={() => toggle(s.id)}
+                  className="accent-accent w-4 h-4 shrink-0"
+                />
+                <label className="flex-1 min-w-0 cursor-pointer" onClick={() => toggle(s.id)}>
+                  <p className="text-sm font-medium text-fg">{s.name}</p>
+                  <p className="text-xs text-fg-muted">
+                    {count} 题
+                    {state?.running && (
+                      <span className="text-accent"> · 进度 {state.running.answered}/
+                        {state.running.in_scope ?? count}</span>
+                    )}
+                    {pct !== null && !state?.running && (
+                      <span className={pct >= 80 ? 'text-success-fg' : pct >= 60 ? 'text-accent' : 'text-danger-fg'}>
+                        {' '}· {pct}% ({state!.score!.correct}/{state!.score!.total}) ·{' '}
+                        {new Date(state!.score!.at).getMonth() + 1}/{new Date(state!.score!.at).getDate()}
+                      </span>
+                    )}
+                  </p>
+                </label>
+                {/* The one run worth resuming lives on the part it belongs to,
+                    not in a list of every run ever made. */}
+                {state?.running && (
+                  <button
+                    onClick={() => onContinue(state.running!.attempt_id)}
+                    className="shrink-0 text-xs text-accent font-medium hover:underline"
+                  >
+                    继续 →
+                  </button>
+                )}
               </div>
-              {done[s.name] && (
-                <div className="shrink-0 text-right">
-                  <p className={`text-xs font-bold ${
-                    done[s.name].correct / done[s.name].total >= 0.8 ? 'text-success-fg'
-                      : done[s.name].correct / done[s.name].total >= 0.6 ? 'text-accent'
-                      : 'text-danger-fg'
-                  }`}>
-                    {Math.round(done[s.name].correct / done[s.name].total * 100)}%
-                  </p>
-                  <p className="text-[10px] text-fg-subtle">
-                    {done[s.name].correct}/{done[s.name].total} ·{' '}
-                    {new Date(done[s.name].at).getMonth() + 1}/{new Date(done[s.name].at).getDate()}
-                  </p>
-                </div>
-              )}
-            </label>
-          ))}
+            )
+          })}
         </div>
 
         {!looked ? (
           <div className="w-full py-3 flex items-center justify-center">
             <Loader2 className="w-4 h-4 animate-spin text-fg-muted" />
-          </div>
-        ) : unfinished ? (
-          <div className="space-y-2">
-            <button
-              onClick={() => onContinue(unfinished.attempt_id)}
-              className="w-full py-3 bg-accent text-on-accent rounded-xl font-semibold hover:bg-accent-hover transition-colors"
-            >
-              继续上次作答
-            </button>
-            <button
-              onClick={handleStart}
-              disabled={starting || selected.length === 0}
-              className="w-full py-2 text-sm text-fg-muted hover:text-fg disabled:opacity-40 transition-colors flex items-center justify-center gap-2"
-            >
-              {starting && <Loader2 className="w-4 h-4 animate-spin" />}
-              重新开始一次
-            </button>
           </div>
         ) : (
           <button
@@ -472,7 +481,8 @@ function ExamConfigPanel({
             className="w-full py-3 bg-accent text-on-accent rounded-xl font-semibold hover:bg-accent-hover disabled:opacity-40 transition-colors flex items-center justify-center gap-2"
           >
             {starting && <Loader2 className="w-4 h-4 animate-spin" />}
-            开始考试
+            开始{selected.length > 0 && selected.length < detail.sections.length
+              ? `（${selected.length} 个部分）` : ''}
           </button>
         )}
       </div>
@@ -500,7 +510,9 @@ function ExamDetailView({ paper, onBack }: { paper: ExamPaperList; onBack: () =>
   const [detailLoading, setDetailLoading] = useState(true)
   const [mode, setMode] = useState<DetailMode>({ type: 'config' })
   const [refreshKey, setRefreshKey] = useState(0)
-  const [attemptCount, setAttemptCount] = useState<number | null>(null)
+  // Every run ever made, behind one tap. Which run to resume lives on the part
+  // it belongs to; this is for looking back over several.
+  const [showHistory, setShowHistory] = useState(false)
 
   useEffect(() => {
     getExam(paper.id)
@@ -583,56 +595,17 @@ function ExamDetailView({ paper, onBack }: { paper: ExamPaperList; onBack: () =>
 
   return (
     <>
-      {/* Left card: paper info + attempt history. Answering on a phone needs
-          the whole width — 208px of it went to a sidebar and left the question
-          in a column too narrow to hold its own buttons. */}
-      <div className={[
-        'card w-full md:w-52 shrink-0 flex-col overflow-hidden',
-        mode.type === 'session' ? 'hidden md:flex'
-          // Nothing in it is worth nothing of a phone screen.
-          : attemptCount === 0 ? 'hidden md:flex'
-          : 'flex max-h-[45vh] md:max-h-none',
-      ].join(' ')}>
-        {/* On a phone the way back and the title are already in the card
-            below; repeating them here costs half the height the records
-            themselves need. */}
-        <div className="hidden md:block px-4 py-3 border-b border-border shrink-0">
-          <button
-            onClick={onBack}
-            className="flex items-center gap-1 text-xs text-fg-muted hover:text-fg transition-colors mb-2"
-          >
-            <ChevronLeft className="w-3.5 h-3.5" />
-            返回列表
-          </button>
-          <div className="flex items-start justify-between gap-2">
-            <p className="font-bold text-fg text-sm leading-snug">{paper.title}</p>
-            <LevelBadge level={paper.level} />
-          </div>
-          {paper.source && <p className="text-xs text-fg-muted mt-0.5">{paper.source}</p>}
-        </div>
-        <AttemptListPanel
-          onCount={setAttemptCount}
-          paperId={paper.id}
-          refreshKey={refreshKey}
-          activeAttemptId={activeAttemptId}
-          onViewResult={handleViewResult}
-          onContinue={handleContinue}
-          onDelete={handleDelete}
-        />
-      </div>
-
-      {/* Right card: config / session */}
+      {/* One card. Two of them was a desktop shape stacked onto a phone, and
+          the second one repeated what the first already said. */}
       <div className="card flex-1 flex flex-col min-h-0 overflow-hidden">
-        {/* The way back lives in the left card, which a phone does not show
-            while answering or before there is any history to show. */}
         {mode.type !== 'session' && (
-          <div className="md:hidden shrink-0 flex items-center gap-2 px-4 py-2.5 border-b border-border">
+          <div className="shrink-0 flex items-center gap-2 px-4 py-2.5 border-b border-border">
             <button
-              onClick={onBack}
-              className="flex items-center gap-1 text-xs text-fg-muted hover:text-fg transition-colors"
+              onClick={showHistory ? () => setShowHistory(false) : onBack}
+              className="flex items-center gap-1 text-xs text-fg-muted hover:text-fg transition-colors shrink-0"
             >
               <ChevronLeft className="w-3.5 h-3.5" />
-              返回
+              {showHistory ? '返回' : '返回列表'}
             </button>
             <p className="text-xs font-semibold text-fg truncate">{paper.title}</p>
             <LevelBadge level={paper.level} />
@@ -644,7 +617,23 @@ function ExamDetailView({ paper, onBack }: { paper: ExamPaperList; onBack: () =>
           </div>
         )}
         {!detailLoading && detail && mode.type === 'config' && (
-          <ExamConfigPanel detail={detail} onStart={handleSessionStart} onContinue={handleContinue} />
+          showHistory ? (
+            <AttemptListPanel
+              paperId={paper.id}
+              refreshKey={refreshKey}
+              activeAttemptId={activeAttemptId}
+              onViewResult={handleViewResult}
+              onContinue={handleContinue}
+              onDelete={handleDelete}
+            />
+          ) : (
+            <ExamConfigPanel
+              detail={detail}
+              onStart={handleSessionStart}
+              onContinue={handleContinue}
+              onShowHistory={() => setShowHistory(true)}
+            />
+          )
         )}
         {!detailLoading && detail && mode.type === 'session' && (
           <ExamSession
