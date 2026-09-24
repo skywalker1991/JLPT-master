@@ -7,7 +7,7 @@ from sqlalchemy import select, func, or_, and_, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.db import (
-    Atom, AtomProperty, AtomRelation, AtomTag, Trace, AnalysisAtom, Analysis, get_db
+    Atom, AtomProperty, AtomRelation, AtomTag, Trace, get_db
 )
 from app.schemas.atoms import (
     CreateAtomRequest,
@@ -45,6 +45,21 @@ def _validate_jlpt(value: str | None) -> str | None:
 # ---------------------------------------------------------------------------
 # POST /atoms
 # ---------------------------------------------------------------------------
+
+async def _record_occurrence(db: AsyncSession, atom_id: UUID, request: CreateAtomRequest) -> None:
+    """Meeting a word again is worth recording even when the atom already
+    exists — that growing list of sentences is the point."""
+    if request.occurrence is None:
+        return
+    occ = request.occurrence
+    await atom_service.record_occurrence(
+        db, atom_id, occ.sentence_text,
+        analysis_id=request.analysis_id,
+        sentence_index=occ.sentence_index,
+        surface=occ.surface,
+        surface_meaning=occ.surface_meaning,
+    )
+
 
 @router.post("/atoms", response_model=CreateAtomResponse)
 async def create_atom(request: CreateAtomRequest, db: AsyncSession = Depends(get_db)):
@@ -86,6 +101,8 @@ async def create_atom(request: CreateAtomRequest, db: AsyncSession = Depends(get
             )
             for p in props
         ]
+        await _record_occurrence(db, existing.id, request)
+        await db.commit()
         return CreateAtomResponse(
             atom_id=existing.id,
             status="exists",
@@ -122,6 +139,8 @@ async def create_atom(request: CreateAtomRequest, db: AsyncSession = Depends(get
                             )
                             for p in props
                         ]
+                        await _record_occurrence(db, db_atom.id, request)
+                        await db.commit()
                         return CreateAtomResponse(
                             atom_id=db_atom.id,
                             status="exists",
@@ -159,9 +178,7 @@ async def create_atom(request: CreateAtomRequest, db: AsyncSession = Depends(get
             source_ref=request.analysis_id,
         )
 
-    # Link to analysis
-    if request.analysis_id:
-        await atom_service.link_atom_to_analysis(db, atom.id, request.analysis_id)
+    await _record_occurrence(db, atom.id, request)
 
     # Write trace
     await atom_service.add_trace(db, atom.id, "added", {"key": key, "type": atom_type})
@@ -441,22 +458,19 @@ async def get_atom(atom_id: UUID, db: AsyncSession = Depends(get_db)):
     tags_result = await db.execute(select(AtomTag).where(AtomTag.atom_id == atom_id))
     tags = [t.tag for t in tags_result.scalars().all()]
 
-    # Linked analyses
-    analysis_result = await db.execute(
-        select(Analysis)
-        .join(AnalysisAtom, AnalysisAtom.analysis_id == Analysis.id)
-        .where(AnalysisAtom.atom_id == atom_id)
-        .order_by(Analysis.created_at.desc())
-        .limit(10)
-    )
-    analyses_list = [
+    # Where this word was actually met — the sentences are the memory anchors,
+    # so they are returned whether or not the analysis they came from survives.
+    occurrences = [
         {
-            "id": str(a.id),
-            "input_type": a.input_type,
-            "status": a.status,
-            "created_at": a.created_at.isoformat() if a.created_at else None,
+            "id": str(o.id),
+            "analysis_id": str(o.analysis_id) if o.analysis_id else None,
+            "sentence_index": o.sentence_index,
+            "surface": o.surface,
+            "surface_meaning": o.surface_meaning,
+            "sentence_text": o.sentence_text,
+            "created_at": o.created_at.isoformat() if o.created_at else None,
         }
-        for a in analysis_result.scalars().all()
+        for o in await atom_service.get_occurrences(db, atom_id)
     ]
 
     # Traces summary
@@ -517,7 +531,7 @@ async def get_atom(atom_id: UUID, db: AsyncSession = Depends(get_db)):
             }
             for r in relations
         ],
-        "analyses": analyses_list,
+        "occurrences": occurrences,
         "traces_summary": traces_summary,
     }
 

@@ -8,11 +8,21 @@ class PropertyInput(BaseModel):
     value: str
 
 
+class OccurrenceInput(BaseModel):
+    """Where this atom was met. `key` is the dictionary form and carries the
+    stable meaning; everything tied to this one encounter belongs here."""
+    sentence_text: str
+    sentence_index: int | None = None
+    surface: str | None = None          # the form in the text, e.g. 尊ばれた
+    surface_meaning: str | None = None  # what it meant there, e.g. 受到尊重
+
+
 class CreateAtomRequest(BaseModel):
     type: str  # 'vocabulary' | 'grammar'
     key: str
     properties: list[PropertyInput] = []
     analysis_id: UUID | None = None
+    occurrence: OccurrenceInput | None = None
     force_create: bool = False  # skip similarity check when user confirms "not the same"
 
     @field_validator("type", mode="before")

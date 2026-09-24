@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import clsx from 'clsx'
 import type { GrammarItem } from '../../types'
 import { createAtom } from '../../services/api'
+import { useOccurrence } from './useOccurrence'
 import { AttachButton } from './AskPanel'
 import { useToast } from '../../context/ToastContext'
 
@@ -33,6 +34,7 @@ const grammarProperties = (item: GrammarItem) => [
 ]
 
 export default function GrammarCard({ item }: Props) {
+  const occurrence = useOccurrence()
   const [expanded, setExpanded]     = useState(false)
   const [status, setStatus]         = useState<Status>('idle')
   const [atomId, setAtomId]         = useState<string | null>(null)
@@ -54,6 +56,7 @@ export default function GrammarCard({ item }: Props) {
       const res = await createAtom({
         type: 'grammar',
         key: item.pattern,
+        ...occurrence,
         properties: grammarProperties(item),
       })
       if (res.status === 'created') {
@@ -88,6 +91,7 @@ export default function GrammarCard({ item }: Props) {
       const res = await createAtom({
         type: 'grammar',
         key: item.pattern,
+        ...occurrence,
         properties: grammarProperties(item),
         force_create: true,
       })

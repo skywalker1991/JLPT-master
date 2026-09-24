@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import clsx from 'clsx'
 import type { VocabItem } from '../../types'
 import { createAtom } from '../../services/api'
+import { useOccurrence } from './useOccurrence'
 import { useToast } from '../../context/ToastContext'
 import { AttachButton } from './AskPanel'
 
@@ -17,6 +18,7 @@ const JLPT_BADGE: Record<string, string> = {
 
 
 export default function VocabChip({ item }: Props) {
+  const occurrence = useOccurrence(item.surface)
   const [expanded, setExpanded] = useState(false)
   const [status, setStatus]     = useState<Status>('idle')
   const [atomId, setAtomId]     = useState<string | null>(null)
@@ -47,6 +49,7 @@ export default function VocabChip({ item }: Props) {
       const res = await createAtom({
         type: 'vocabulary',
         key: atomKey,
+        ...occurrence,
         properties: [
           ...(item.reading        ? [{ kind: 'reading',        value: item.reading,        source_type: 'ai' }] : []),
           { kind: 'meaning',        value: item.meaning,                                    source_type: 'ai' },

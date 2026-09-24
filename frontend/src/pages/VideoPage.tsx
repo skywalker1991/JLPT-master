@@ -315,7 +315,8 @@ export default function VideoPage() {
           )}>
             <AskContext.Provider value={{
               analysisId: selected?.analysisId ?? null,
-              sentenceIndex: selected ? 0 : null,
+              sentenceIndex: selected ? selectedIdx : null,
+              sentenceText: selected?.entry.text ?? null,
               asks: selected?.asks ?? [],
               addAsk,
               busy: selected?.isAnalyzing ?? false,

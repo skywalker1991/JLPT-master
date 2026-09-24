@@ -97,14 +97,33 @@ export interface AtomDetail {
   atom: { id: string; type: string; key: string; created_at: string }
   properties: PropertyResponse[]
   relations: RelationResponse[]
-  analyses: { id: string; input_type: string; created_at: string }[]
+  occurrences: {
+    id: string
+    analysis_id: string | null
+    sentence_index: number | null
+    surface: string | null
+    surface_meaning: string | null
+    sentence_text: string
+    created_at: string
+  }[]
   traces_summary: { added_at: string; duplicate_count: number; property_count: number }
+}
+
+export interface OccurrenceInput {
+  sentence_text: string
+  sentence_index?: number | null
+  /** The form the word took in the text, e.g. 尊ばれた */
+  surface?: string | null
+  /** What it meant there, e.g. 受到尊重 — kept apart from the atom's own meaning */
+  surface_meaning?: string | null
 }
 
 export interface CreateAtomRequest {
   type: string
   key: string
   properties?: { kind: string; value: string; source_type?: string }[]
+  analysis_id?: string | null
+  occurrence?: OccurrenceInput
   force_create?: boolean
 }
 

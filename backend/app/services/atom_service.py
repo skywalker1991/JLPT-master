@@ -5,7 +5,7 @@ from uuid import UUID
 from sqlalchemy import select, func, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.db import Atom, AtomProperty, AtomRelation, AtomTag, Trace, AnalysisAtom, Analysis
+from app.models.db import Atom, AtomProperty, AtomRelation, AtomTag, Trace, AtomOccurrence, Analysis
 from app.schemas.atoms import PropertyInput
 
 logger = logging.getLogger(__name__)
@@ -243,24 +243,48 @@ async def add_trace(
     await db.flush()
 
 
-async def link_atom_to_analysis(
+async def record_occurrence(
     db: AsyncSession,
     atom_id: UUID,
-    analysis_id: UUID,
+    sentence_text: str,
+    *,
+    analysis_id: UUID | None = None,
+    sentence_index: int | None = None,
+    surface: str | None = None,
+    surface_meaning: str | None = None,
 ) -> None:
-    """Link an atom to an analysis via the analysis_atoms junction table (idempotent)."""
-    result = await db.execute(
-        select(AnalysisAtom).where(
+    """Record where an atom was met. Idempotent per (atom, sentence, form), so
+    re-analysing the same text or tapping the same word twice adds nothing."""
+    existing = await db.execute(
+        select(AtomOccurrence).where(
             and_(
-                AnalysisAtom.analysis_id == analysis_id,
-                AnalysisAtom.atom_id == atom_id,
+                AtomOccurrence.atom_id == atom_id,
+                AtomOccurrence.sentence_text == sentence_text,
+                AtomOccurrence.surface.is_not_distinct_from(surface),
             )
         )
     )
-    if result.scalar_one_or_none() is None:
-        link = AnalysisAtom(analysis_id=analysis_id, atom_id=atom_id)
-        db.add(link)
-        await db.flush()
+    if existing.scalar_one_or_none() is not None:
+        return
+
+    db.add(AtomOccurrence(
+        atom_id=atom_id,
+        analysis_id=analysis_id,
+        sentence_index=sentence_index,
+        surface=surface,
+        surface_meaning=surface_meaning,
+        sentence_text=sentence_text,
+    ))
+    await db.flush()
+
+
+async def get_occurrences(db: AsyncSession, atom_id: UUID) -> list[AtomOccurrence]:
+    result = await db.execute(
+        select(AtomOccurrence)
+        .where(AtomOccurrence.atom_id == atom_id)
+        .order_by(AtomOccurrence.created_at)
+    )
+    return list(result.scalars().all())
 
 
 async def compute_maturity(property_count: int, relation_count: int) -> float:

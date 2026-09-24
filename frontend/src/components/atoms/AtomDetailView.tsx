@@ -49,7 +49,7 @@ function KindBadge({ kind }: { kind: string }) {
 
 export default function AtomDetailView({ detail }: AtomDetailViewProps) {
   const navigate = useNavigate()
-  const { atom, properties, relations, analyses, traces_summary } = detail
+  const { atom, properties, relations, occurrences, traces_summary } = detail
 
   const grouped = properties.reduce<Record<string, typeof properties>>((acc, p) => {
     const key = p.source_ref ?? '__direct__'
@@ -151,18 +151,26 @@ export default function AtomDetailView({ detail }: AtomDetailViewProps) {
         </div>
       )}
 
-      {/* Linked analyses */}
-      {analyses.length > 0 && (
+      {/* Where this word was actually met. The list grows as the same word
+          turns up again, which is the point — an isolated gloss is far weaker
+          than the sentences you personally read it in. */}
+      {occurrences.length > 0 && (
         <div className="card p-5 space-y-3">
-          <h2 className="section-label">关联分析</h2>
-          <div className="space-y-1">
-            {analyses.map((a) => (
-              <div
-                key={a.id}
-                className="flex items-center gap-3 py-2.5 border-b border-border last:border-0"
-              >
-                <span className="badge bg-gray-100 text-fg-muted">{a.input_type}</span>
-                <span className="text-xs text-fg-subtle ml-auto">{formatDate(a.created_at)}</span>
+          <h2 className="section-label">遇到过 {occurrences.length} 次</h2>
+          <div className="space-y-3">
+            {occurrences.map((o) => (
+              <div key={o.id} className="border-b border-border last:border-0 pb-3 last:pb-0">
+                {(o.surface || o.surface_meaning) && (
+                  <div className="flex items-baseline gap-2 flex-wrap mb-1">
+                    {o.surface && (
+                      <span className="text-sm font-semibold text-fg">{o.surface}</span>
+                    )}
+                    {o.surface_meaning && (
+                      <span className="text-xs text-fg-muted">{o.surface_meaning}</span>
+                    )}
+                  </div>
+                )}
+                <p className="text-sm text-fg-muted leading-relaxed">{o.sentence_text}</p>
               </div>
             ))}
           </div>

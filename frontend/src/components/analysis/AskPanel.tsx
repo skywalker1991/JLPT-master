@@ -6,11 +6,15 @@ import type { AskEntry, AskNewItem, AskTarget, SentenceAnalysis } from '../../ty
 import { askTargets } from '../../types'
 import { ask, createAtom } from '../../services/api'
 import { useToast } from '../../context/ToastContext'
+import { useOccurrence } from './useOccurrence'
 
 /** Follow-up state for the sentence being shown. Provided by AnalysisPage. */
 interface AskContextValue {
   analysisId: string | null
   sentenceIndex: number | null
+  /** The sentence on screen — saved with any word added from it, so the
+   *  knowledge base keeps the context the word was met in. */
+  sentenceText: string | null
   asks: AskEntry[]
   addAsk: (entry: AskEntry) => void
   /** The analysis is still running: its record can't be updated yet */
@@ -202,6 +206,7 @@ export function AttachButton({ target }: { target: AskTarget }) {
 
 /** A word / grammar point the answer introduced; one tap adds it to the knowledge base. */
 function NewItemChip({ item }: { item: AskNewItem }) {
+  const occurrence = useOccurrence()
   const { toast } = useToast()
   const navigate = useNavigate()
   const [state, setState] = useState<'idle' | 'loading' | 'done'>('idle')
@@ -218,6 +223,7 @@ function NewItemChip({ item }: { item: AskNewItem }) {
       const res = await createAtom({
         type: item.kind === 'vocab' ? 'vocabulary' : 'grammar',
         key: item.key,
+        ...occurrence,
         properties: [
           ...(item.reading ? [{ kind: 'reading', value: item.reading, source_type: 'ai' }] : []),
           { kind: 'meaning', value: item.meaning, source_type: 'ai' },

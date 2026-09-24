@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 from sqlalchemy import (
     Column, String, Text, DateTime, ForeignKey, UniqueConstraint,
-    CheckConstraint, Index, Integer, SmallInteger, Boolean, text
+    CheckConstraint, Index, Integer, SmallInteger, Boolean, text, func
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
@@ -28,7 +28,7 @@ class Atom(Base):
     srs_state = relationship("AtomSrsState", back_populates="atom", uselist=False, cascade="all, delete-orphan")
     relations_from = relationship("AtomRelation", foreign_keys="AtomRelation.from_id", back_populates="from_atom", cascade="all, delete-orphan")
     relations_to = relationship("AtomRelation", foreign_keys="AtomRelation.to_id", back_populates="to_atom", cascade="all, delete-orphan")
-    analysis_atoms = relationship("AnalysisAtom", back_populates="atom", cascade="all, delete-orphan")
+    occurrences = relationship("AtomOccurrence", back_populates="atom", cascade="all, delete-orphan")
 
     __table_args__ = (
         UniqueConstraint("type", "key", name="uq_atoms_type_key"),
@@ -152,7 +152,7 @@ class Analysis(Base):
     session_data = Column(JSONB, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
 
-    analysis_atoms = relationship("AnalysisAtom", back_populates="analysis", cascade="all, delete-orphan")
+    occurrences = relationship("AtomOccurrence", back_populates="analysis")
 
     __table_args__ = (
         Index("ix_analyses_status", "status"),
@@ -161,18 +161,42 @@ class Analysis(Base):
     )
 
 
-class AnalysisAtom(Base):
-    __tablename__ = "analysis_atoms"
+class AtomOccurrence(Base):
+    """Where an atom was actually met: the sentence, the form the word took in
+    it, and what it meant there.
 
-    analysis_id = Column(UUID(as_uuid=True), ForeignKey("analyses.id", ondelete="CASCADE"), primary_key=True)
-    atom_id = Column(UUID(as_uuid=True), ForeignKey("atoms.id", ondelete="CASCADE"), primary_key=True)
+    The atom carries the dictionary form and its stable meaning; everything
+    tied to one encounter lives here. Keeping them apart is what stops a card
+    reading 尊ぶ on the front and 受到尊重 — the meaning of 尊ばれた — on the back.
+    """
 
-    analysis = relationship("Analysis", back_populates="analysis_atoms")
-    atom = relationship("Atom", back_populates="analysis_atoms")
+    __tablename__ = "atom_occurrences"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    atom_id = Column(UUID(as_uuid=True), ForeignKey("atoms.id", ondelete="CASCADE"), nullable=False)
+    # SET NULL, not CASCADE: the sentence is the memory anchor and should
+    # outlive housekeeping on the analysis history.
+    analysis_id = Column(UUID(as_uuid=True), ForeignKey("analyses.id", ondelete="SET NULL"), nullable=True)
+    sentence_index = Column(SmallInteger, nullable=True)
+    surface = Column(String(100), nullable=True)          # the form in the text, e.g. 尊ばれた
+    surface_meaning = Column(Text, nullable=True)         # what it meant there, e.g. 受到尊重
+    sentence_text = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+
+    analysis = relationship("Analysis", back_populates="occurrences")
+    atom = relationship("Atom", back_populates="occurrences")
 
     __table_args__ = (
-        Index("ix_analysis_atoms_analysis_id", "analysis_id"),
-        Index("ix_analysis_atoms_atom_id", "atom_id"),
+        Index("ix_atom_occurrences_atom_id", "atom_id"),
+        # One record per (word, sentence, form) — re-analysing the same text,
+        # or tapping the same word twice, must not pile up duplicates.
+        Index(
+            "uq_atom_occurrences",
+            "atom_id",
+            func.md5(text("sentence_text")),
+            func.coalesce(text("surface"), text("''")),
+            unique=True,
+        ),
     )
 
 
