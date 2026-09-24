@@ -8,7 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.db import (
     ExamPaper, ExamSection, ExamProblem, ExamItem, ExamMedia,
-    QuestionAnalysis, ProblemAnalysis, ExamAttempt, AttemptAnswer, get_db,
+    QuestionAnalysis, ProblemAnalysis, ExamAttempt, AttemptAnswer,
+    ExamItemRevision, ExamItemReport, get_db,
 )
 from app.schemas.exam import (
     ExamPaperList, ExamPaperDetail, SectionDetail, ProblemDetail,
@@ -19,6 +20,7 @@ from app.schemas.exam import (
     AttemptSummary, AttemptReview, ReviewSection, ReviewProblem, ReviewItem,
 )
 from app.services.llm.factory import get_llm_client
+from app.services import exam_edit
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["exam"])
@@ -1344,3 +1346,109 @@ async def get_attempt_review(attempt_id: UUID, db: AsyncSession = Depends(get_db
         started_at=attempt.started_at, completed_at=attempt.completed_at,
         sections=result_sections,
     )
+
+
+# ---------------------------------------------------------------------------
+# Correcting an imported question
+#
+# Importing used to be one-way, so a question found to be wrong could only be
+# fixed by deleting its paper and losing the attempts recorded against it.
+# ---------------------------------------------------------------------------
+
+@router.patch("/exam/items/{item_id}")
+async def edit_item(item_id: UUID, body: dict, db: AsyncSession = Depends(get_db)):
+    """Correct one question. Scoped to the item so the paper is not rebuilt
+    and attempt history keeps pointing at the same rows."""
+    note = body.pop("note", None)
+    item, revisions = await exam_edit.apply_item_edit(db, item_id, body, note=note)
+    await db.commit()
+    return {
+        "id": str(item.id),
+        "changed": [r.field for r in revisions],
+        "stem": item.stem,
+        "options": item.options,
+        "correct_answer": item.correct_answer,
+        "answer_order": item.answer_order,
+    }
+
+
+@router.patch("/exam/problems/{problem_id}")
+async def edit_problem(problem_id: UUID, body: dict, db: AsyncSession = Depends(get_db)):
+    problem = await exam_edit.apply_problem_edit(db, problem_id, body)
+    await db.commit()
+    return {
+        "id": str(problem.id),
+        "passage": problem.passage,
+        "passage_translation": problem.passage_translation,
+        "instruction": problem.instruction,
+    }
+
+
+@router.get("/exam/items/{item_id}/revisions")
+async def list_revisions(item_id: UUID, db: AsyncSession = Depends(get_db)):
+    """What has been changed on this question. A past attempt was answered
+    against the wording as it stood, so the history is worth being able to see."""
+    rows = (await db.execute(
+        select(ExamItemRevision)
+        .where(ExamItemRevision.item_id == item_id)
+        .order_by(ExamItemRevision.created_at.desc())
+    )).scalars().all()
+    return [
+        {
+            "id": str(r.id), "field": r.field,
+            "old_value": r.old_value, "new_value": r.new_value,
+            "source": r.source, "note": r.note,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        }
+        for r in rows
+    ]
+
+
+@router.post("/exam/items/{item_id}/report", status_code=201)
+async def report_item(item_id: UUID, body: dict, db: AsyncSession = Depends(get_db)):
+    """Flag a question while answering — the moment a defect is actually
+    noticed, rather than when someone next reviews an import."""
+    attempt_id = body.get("attempt_id")
+    report = await exam_edit.report_item(
+        db, item_id, body.get("kind", "other"),
+        note=body.get("note"),
+        attempt_id=UUID(attempt_id) if attempt_id else None,
+    )
+    await db.commit()
+    return {"id": str(report.id), "status": report.status, "kind": report.kind}
+
+
+@router.get("/exam/reports")
+async def list_reports(status: str = "open", db: AsyncSession = Depends(get_db)):
+    """Flagged questions waiting to be dealt with, with enough of each to act
+    on without opening the paper."""
+    rows = (await db.execute(
+        select(ExamItemReport, ExamItem, ExamProblem, ExamPaper)
+        .join(ExamItem, ExamItem.id == ExamItemReport.item_id)
+        .join(ExamProblem, ExamProblem.id == ExamItem.problem_id)
+        .join(ExamSection, ExamSection.id == ExamProblem.section_id)
+        .join(ExamPaper, ExamPaper.id == ExamSection.paper_id)
+        .where(ExamItemReport.status == status)
+        .order_by(ExamItemReport.created_at.desc())
+    )).all()
+    return [
+        {
+            "id": str(report.id), "kind": report.kind, "note": report.note,
+            "created_at": report.created_at.isoformat() if report.created_at else None,
+            "item": {
+                "id": str(item.id), "num": item.num, "stem": item.stem,
+                "options": item.options, "correct_answer": item.correct_answer,
+                "answer_order": item.answer_order,
+            },
+            "problem": {"id": str(problem.id), "name": problem.name, "type": problem.type},
+            "paper": {"id": str(paper.id), "title": paper.title},
+        }
+        for report, item, problem, paper in rows
+    ]
+
+
+@router.post("/exam/reports/{report_id}/resolve")
+async def resolve_report(report_id: UUID, db: AsyncSession = Depends(get_db)):
+    report = await exam_edit.resolve_report(db, report_id)
+    await db.commit()
+    return {"id": str(report.id), "status": report.status}

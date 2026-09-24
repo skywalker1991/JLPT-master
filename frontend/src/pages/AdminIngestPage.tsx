@@ -3,6 +3,7 @@ import { FileText, Loader2, Trash2, Upload } from 'lucide-react'
 import { listDrafts, createDraftFromPdf, getDraft, deleteDraft } from '../services/api'
 import type { DraftSummary, DraftDetail } from '../types'
 import DraftEditor from '../components/admin/DraftEditor'
+import ReportQueue from '../components/admin/ReportQueue'
 
 // ─── Draft list sidebar ───────────────────────────────────────────────────────
 
@@ -203,11 +204,17 @@ export default function AdminIngestPage() {
         uploading={uploading}
       />
 
+      {/* Nothing selected: show what was flagged while answering, since that
+          is the other thing this page exists to deal with. */}
       {!selectedId && (
-        <div className="flex-1 flex items-center justify-center text-fg-muted">
-          <div className="text-center space-y-2">
-            <FileText className="w-10 h-10 mx-auto opacity-20" />
-            <p className="text-sm">上传 PDF 或选择草稿开始校对</p>
+        <div className="flex-1 overflow-y-auto p-5">
+          <div className="max-w-3xl mx-auto space-y-4">
+            <div className="text-center text-fg-muted py-6 space-y-2">
+              <FileText className="w-10 h-10 mx-auto opacity-20" />
+              <p className="text-sm">上传 PDF 或选择草稿开始校对</p>
+            </div>
+            <h2 className="section-label">做题时标记的问题</h2>
+            <ReportQueue />
           </div>
         </div>
       )}

@@ -264,6 +264,42 @@ export async function getSubtitles(url: string): Promise<{ video_id: string; sub
 
 // ---- Exam ----
 
+export async function reportExamItem(
+  itemId: string,
+  body: { kind: string; note?: string; attempt_id?: string | null },
+): Promise<{ id: string; status: string }> {
+  return request(`/api/exam/items/${itemId}/report`, {
+    method: 'POST', body: JSON.stringify(body),
+  })
+}
+
+export async function editExamItem(
+  itemId: string,
+  body: Record<string, unknown>,
+): Promise<{ id: string; changed: string[] }> {
+  return request(`/api/exam/items/${itemId}`, {
+    method: 'PATCH', body: JSON.stringify(body),
+  })
+}
+
+export interface ExamReport {
+  id: string
+  kind: string
+  note: string | null
+  created_at: string
+  item: { id: string; num: number | null; stem: string; options: Record<string, string>; correct_answer: string | null; answer_order: string | null }
+  problem: { id: string; name: string; type: string }
+  paper: { id: string; title: string }
+}
+
+export async function listExamReports(): Promise<ExamReport[]> {
+  return request('/api/exam/reports')
+}
+
+export async function resolveExamReport(id: string): Promise<{ id: string; status: string }> {
+  return request(`/api/exam/reports/${id}/resolve`, { method: 'POST' })
+}
+
 export async function listExams(): Promise<ExamPaperList[]> {
   return request<ExamPaperList[]>('/api/exams')
 }

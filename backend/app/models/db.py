@@ -293,6 +293,10 @@ class ExamItem(Base):
                             cascade="all, delete-orphan")
     media = relationship("ExamMedia", back_populates="item", cascade="all, delete-orphan",
                          order_by="ExamMedia.seq")
+    revisions = relationship("ExamItemRevision", back_populates="item", cascade="all, delete-orphan",
+                             order_by="ExamItemRevision.created_at")
+    reports = relationship("ExamItemReport", back_populates="item", cascade="all, delete-orphan",
+                           order_by="ExamItemReport.created_at")
 
     __table_args__ = (
         Index("ix_exam_items_problem_id", "problem_id"),
@@ -378,6 +382,58 @@ class ProblemAnalysis(Base):
 
     __table_args__ = (
         Index("ix_problem_analyses_problem_id", "problem_id"),
+    )
+
+
+class ExamItemRevision(Base):
+    """What changed on a question, and when.
+
+    An attempt was answered against the wording as it stood. Change the
+    question and past scores quietly come to mean something else — the history
+    is what makes that visible rather than silent.
+    """
+    __tablename__ = "exam_item_revisions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    item_id = Column(UUID(as_uuid=True), ForeignKey("exam_items.id", ondelete="CASCADE"), nullable=False)
+    field = Column(String(30), nullable=False)
+    old_value = Column(Text, nullable=True)
+    new_value = Column(Text, nullable=True)
+    source = Column(String(10), nullable=False, server_default=text("'user'"))  # 'ingest' | 'user'
+    note = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+
+    item = relationship("ExamItem", back_populates="revisions")
+
+    __table_args__ = (
+        Index("ix_exam_item_revisions_item_id", "item_id"),
+        Index("ix_exam_item_revisions_created_at", "created_at"),
+    )
+
+
+class ExamItemReport(Base):
+    """A defect flagged while answering.
+
+    Questions are found to be wrong in the middle of a paper, not while
+    reviewing an import, and that moment is where the flag has to be cheap.
+    """
+    __tablename__ = "exam_item_reports"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    item_id = Column(UUID(as_uuid=True), ForeignKey("exam_items.id", ondelete="CASCADE"), nullable=False)
+    # SET NULL so clearing attempt history keeps the defect it turned up.
+    attempt_id = Column(UUID(as_uuid=True), ForeignKey("exam_attempts.id", ondelete="SET NULL"), nullable=True)
+    kind = Column(String(20), nullable=False)   # wrong_answer | typo | missing | other
+    note = Column(Text, nullable=True)
+    status = Column(String(10), nullable=False, server_default=text("'open'"))
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
+
+    item = relationship("ExamItem", back_populates="reports")
+
+    __table_args__ = (
+        Index("ix_exam_item_reports_status", "status"),
+        Index("ix_exam_item_reports_item_id", "item_id"),
     )
 
 

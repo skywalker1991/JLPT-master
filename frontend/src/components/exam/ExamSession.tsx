@@ -3,6 +3,7 @@ import { Brain, CheckCircle, ChevronLeft, ChevronRight, Loader2, X, XCircle } fr
 import { submitAnswer, submitSection, completeAttempt } from '../../services/api'
 import type { ExamPaperDetail, ProblemDetail, ItemSchema, SectionDetail } from '../../types'
 import AnalysisPanel from './AnalysisPanel'
+import ReportItemButton from './ReportItemButton'
 
 // ─── Quiz unit (one per Item) ─────────────────────────────────────────────────
 
@@ -133,7 +134,7 @@ function SentenceOrderStem({ stem }: { stem: string }) {
 }
 
 function ItemDisplay({
-  item, selected, onSelect, reviewMode, correctAnswer, problemType,
+  item, selected, onSelect, reviewMode, correctAnswer, problemType, attemptId,
 }: {
   item: ItemSchema
   selected: string | null
@@ -142,6 +143,7 @@ function ItemDisplay({
   correctAnswer?: string
   isCorrect?: boolean | null
   problemType?: string
+  attemptId?: string | null
 }) {
   const isSentenceOrder = problemType === 'sentence_order'
 
@@ -204,6 +206,10 @@ function ItemDisplay({
       ) : (
         <p className="text-xs text-fg-muted italic">（音声のみ）</p>
       )}
+      {/* Defects surface while answering; the flag has to be here to be used. */}
+      <div className="pt-1">
+        <ReportItemButton itemId={item.id} attemptId={attemptId} />
+      </div>
     </div>
   )
 }
@@ -398,6 +404,7 @@ export default function ExamSession({
             correctAnswer={correctAnswers?.[item.id]}
             isCorrect={isCorrectMap?.[item.id]}
             problemType={prob.type}
+            attemptId={attemptId}
           />
           {reviewMode && Object.keys(item.options).length > 0 && !['passage_fill','reading_comp'].includes(prob.type) && (
             <button
