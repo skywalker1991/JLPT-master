@@ -307,7 +307,7 @@ function ExamConfigPanel({
   onStart: (sectionIds: string[], attemptId: string) => void
   onContinue: (attemptId: string) => void
 }) {
-  const [selected, setSelected] = useState<string[]>(detail.sections.map(s => s.id))
+  const [selected, setSelected] = useState<string[]>([])
   const [starting, setStarting] = useState(false)
   // Starting always made a new attempt, so every look at the paper left another
   // 进行中 row behind. An unfinished one is almost always what was wanted.
@@ -317,12 +317,35 @@ function ExamConfigPanel({
   // a second attempt over the first.
   const [looked, setLooked] = useState(false)
 
+  // What each part has already scored, so picking one up does not mean doing
+  // it twice. The scores are already on the records — an attempt keeps them
+  // keyed by part — so this needs nothing new from the server.
+  const [done, setDone] = useState<Record<string, { correct: number; total: number; at: string }>>({})
+
   useEffect(() => {
     listPaperAttempts(detail.id)
-      .then(list => setUnfinished(list.find(a => a.status === 'in_progress') ?? null))
-      .catch(() => {})
+      .then(list => {
+        setUnfinished(list.find(a => a.status === 'in_progress') ?? null)
+        const seen: Record<string, { correct: number; total: number; at: string }> = {}
+        // Newest first from the server, so the first score for a part is the
+        // latest and later ones are not written over it.
+        for (const a of list) {
+          for (const [name, sc] of Object.entries(a.score ?? {})) {
+            if (name !== 'total' && !seen[name] && sc.total > 0) {
+              seen[name] = { ...sc, at: a.completed_at ?? a.started_at }
+            }
+          }
+        }
+        setDone(seen)
+        // Start on what is left rather than on everything: the whole paper is
+        // 170 minutes, and a part already scored is the least useful thing to
+        // hand someone opening this page.
+        const undone = detail.sections.filter(s => !seen[s.name]).map(s => s.id)
+        setSelected(undone.length > 0 ? undone : detail.sections.map(s => s.id))
+      })
+      .catch(() => setSelected(detail.sections.map(s => s.id)))
       .finally(() => setLooked(true))
-  }, [detail.id])
+  }, [detail.id, detail.sections])
 
   function toggle(id: string) {
     setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
@@ -369,8 +392,25 @@ function ExamConfigPanel({
               />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-fg">{s.name}</p>
-                <p className="text-xs text-fg-muted">{s.problems.reduce((n, p) => n + p.items.length, 0)} 题</p>
+                <p className="text-xs text-fg-muted">
+                  {s.problems.reduce((n, p) => n + p.items.length, 0)} 题
+                </p>
               </div>
+              {done[s.name] && (
+                <div className="shrink-0 text-right">
+                  <p className={`text-xs font-bold ${
+                    done[s.name].correct / done[s.name].total >= 0.8 ? 'text-success-fg'
+                      : done[s.name].correct / done[s.name].total >= 0.6 ? 'text-accent'
+                      : 'text-danger-fg'
+                  }`}>
+                    {Math.round(done[s.name].correct / done[s.name].total * 100)}%
+                  </p>
+                  <p className="text-[10px] text-fg-subtle">
+                    {done[s.name].correct}/{done[s.name].total} ·{' '}
+                    {new Date(done[s.name].at).getMonth() + 1}/{new Date(done[s.name].at).getDate()}
+                  </p>
+                </div>
+              )}
             </label>
           ))}
         </div>
