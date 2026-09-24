@@ -28,12 +28,12 @@ jobs:
               "set -e",
               "cd /opt/app",
               "git fetch origin && git reset --hard origin/main",
+              "sh scripts/freespace.sh 4",
               "export GIT_COMMIT=$(git rev-parse HEAD)",
               "docker compose up --build -d",
               "sh scripts/migrate.sh",
               "sh scripts/verify.sh",
               "docker image prune -f",
-              "docker builder prune -f --keep-storage 1gb",
               "df -h /"
             ]' \
             --comment "Deploy from GitHub Actions run ${{ github.run_number }}" \

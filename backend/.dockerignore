@@ -1,0 +1,11 @@
+# The image installs its own dependencies from requirements.txt. Without this,
+# `COPY . .` ships the 1.4GB virtualenv built on the developer's machine —
+# wrong platform, never used, and a new copy in a new layer on every deploy.
+venv/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.env
+data/
+tests/__pycache__/
