@@ -184,6 +184,28 @@ def _parse_listening_groups(text: str, key: AnswerKey, counts: dict[int, int] | 
 _LISTENING_SECTION = re.compile(r"听力原文|聴解原文|听力解析")
 
 
+def parse_booklet_table(text: str, listening_counts: dict[int, int] | None = None) -> AnswerKey | None:
+    """The summary table some 解析 booklets print before the explanations.
+
+    It is an answer sheet in every respect except that it has a text layer,
+    which matters where the real sheet does not: 2019年12月's is sixteen pages
+    of scan, and 並べ替え orderings cannot be read off an image at all — they
+    are printed here as "36→3124".
+
+    Only the table is read, never the booklet. The explanations that follow are
+    forty pages of prose full of question numbers and digit runs, and handing
+    those to a grid parser invents answers out of them. The boundary is the
+    first 正解: the table does not use the word, and every explanation does.
+
+    Returns None when the booklet has no such table — 2018年07月's opens
+    straight into 文字解析.
+    """
+    table = text[: text.find("正解")] if "正解" in text else text
+    if not _RANGE.search(table) and not _ORDER.search(table):
+        return None
+    return parse_answer_sheet(table, listening_counts)
+
+
 def parse_explanations(text: str) -> AnswerKey:
     """The 解析 booklet, which states an answer alongside each explanation.
 

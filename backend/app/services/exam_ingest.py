@@ -16,7 +16,7 @@ import logging
 from dataclasses import asdict, dataclass, field
 
 from app.services.exam_answer_reader import read_answer_sheet
-from app.services.exam_answers import parse_explanations
+from app.services.exam_answers import parse_booklet_table, parse_explanations
 from app.services.exam_canonical import (
     CanonicalItem, CanonicalPaper, CanonicalSection,
 )
@@ -304,12 +304,15 @@ async def ingest(
         # never discusses, so it is worth looking at rather than going without.
         sheet_key = await _read_scanned_sheet(files_by_name, sources, report)
 
-    explanation_key = None
+    explanation_key = grid_key = None
     explanations = _pick(sources, Role.EXPLANATIONS)
     if explanations is not None:
         explanation_key = parse_explanations(explanations.text)
+        grid_key = parse_booklet_table(explanations.text, counts)
+        if grid_key is not None:
+            report.notes.append(f"{explanations.filename} 开头有答案表，作为第三个答案来源")
 
-    merge = merge_answers(paper, sheet_key, explanation_key)
+    merge = merge_answers(paper, sheet_key, explanation_key, grid_key)
     report.answers.update({
         "answered": merge.answered, "unanswered": merge.unanswered,
         "orders": merge.orders_applied,

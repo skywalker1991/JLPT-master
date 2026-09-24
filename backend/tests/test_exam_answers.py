@@ -7,7 +7,8 @@ answer: headings printed in a run before their answers rather than beside
 them, and digit groups that ignore 問題 boundaries.
 """
 from app.services.exam_answers import (
-    cross_check, parse_answer_sheet, parse_explanations, resolve_order_answer,
+    cross_check, parse_answer_sheet, parse_booklet_table, parse_explanations,
+    resolve_order_answer,
 )
 
 # Laid out as the real sheet is: ranges together, digits together underneath.
@@ -245,3 +246,42 @@ def test_an_ordering_is_not_read_as_a_single_option():
     key = parse_explanations(EXPLANATIONS_2019)
     assert 36 not in key.written
     assert key.orders[36] == "1423"
+
+
+# --- the table some booklets print before the explanations ---------------------
+
+BOOKLET = """2019 年12 月日语能力测试N1 答案
+第一部分
+1-6・1 分/题 7-13・1 分/题
+214123 4231431
+36-40・1 分/题
+23244
+排序题答案：
+36→3124 37→1423 38→1324 39→3412 40→4213
+2019 年12 月日语能力考试N1 文字解析
+问题一
+1、 正解：2
+解析：他好像在窥伺公开那件事情的机会。
+16 正解：3
+44-49 这些数字是解析正文里的题号，不是答案
+3124 4231 1234
+"""
+
+
+def test_the_booklet_table_gives_the_orderings_an_image_sheet_cannot():
+    key = parse_booklet_table(BOOKLET)
+    assert key.orders[36] == "3124"
+    assert key.written[1] == "2" and key.written[6] == "3"
+
+
+def test_the_explanations_after_the_table_are_not_read_as_a_grid():
+    """Forty pages of prose carry question numbers and digit runs. Handing
+    those to a grid parser invents answers out of them; the table stops at the
+    first 正解, a word the table never uses and every explanation does."""
+    key = parse_booklet_table(BOOKLET)
+    assert 44 not in key.written and 49 not in key.written
+
+
+def test_a_booklet_with_no_table_contributes_nothing():
+    """2018年07月's booklet opens straight into 文字解析."""
+    assert parse_booklet_table("2018 年7 月日语能力考试N1 文字解析\n1、正解：3\n") is None

@@ -167,3 +167,65 @@ def test_a_paper_stored_by_an_older_extractor_still_loads():
     })
     _, _, only = next(back.items())
     assert only.num == 1 and only.answer_order is None
+
+
+# --- three sources -------------------------------------------------------------
+
+def test_a_majority_settles_what_two_sources_could_not():
+    """A sitting can state the same answer three times: the answer sheet, the
+    解析's per-item 正解 lines, and the summary table at the front of that
+    booklet. 2019年12月's sheet is a scan read by eye, and where it differs from
+    both of the others it is the one that misread."""
+    p = paper(problem("問題1", "kanji_reading", [item(16)]))
+    report = merge_answers(
+        p,
+        AnswerKey(written={16: "2"}),
+        AnswerKey(written={16: "3"}),
+        AnswerKey(written={16: "3"}),
+    )
+    _, _, only = next(p.items())
+    assert only.correct_answer == "3"
+    assert report.conflicts == []
+    assert any("答案表=2" in n and "按多数取 3" in n for n in report.notes)
+
+
+def test_a_three_way_split_is_still_left_to_a_person():
+    p = paper(problem("問題1", "kanji_reading", [item(1)]))
+    report = merge_answers(
+        p,
+        AnswerKey(written={1: "1"}),
+        AnswerKey(written={1: "2"}),
+        AnswerKey(written={1: "3"}),
+    )
+    _, _, only = next(p.items())
+    assert only.correct_answer is None
+    assert len(report.conflicts) == 1
+
+
+def test_the_orderings_can_come_from_the_booklet_when_the_sheet_is_a_scan():
+    """並べ替え orderings cannot be read off an image, so a sitting whose only
+    answer sheet is a scan loses all five — unless the 解析's own table is
+    read, which prints them as 36→3124."""
+    p = paper(problem("問題6", "sentence_order", [item(36, meta={"star_position": 2})]))
+    report = merge_answers(p, None, None, AnswerKey(orders={36: "3124"}))
+    _, _, only = next(p.items())
+    assert only.answer_order == "3124"
+    assert only.correct_answer == "1"      # second of 3-1-2-4
+    assert report.orders_applied == 1
+
+
+def test_a_source_outvoted_earlier_is_named_for_the_disputes_left_over():
+    """2019年12月's answer sheet is a scan read by eye. It loses twice to the
+    other two, and then two more items come down to it against one other source
+    with no majority either way — whoever decides those should know it has
+    already been wrong twice in this same paper."""
+    p = paper(problem("問題1", "kanji_reading", [item(n) for n in (16, 29, 44)]))
+    report = merge_answers(
+        p,
+        AnswerKey(written={16: "2", 29: "4", 44: "1"}),
+        AnswerKey(written={16: "3", 29: "3"}),
+        AnswerKey(written={16: "3", 29: "3", 44: "3"}),
+    )
+    assert report.outvoted["答案表"] == 2
+    assert any("答案表 有 2 处" in n for n in report.notes)
+    assert len(report.conflicts) == 1        # 第44题, two sources, tied
