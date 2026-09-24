@@ -25,10 +25,13 @@ jobs:
             --instance-ids "${{ vars.EC2_INSTANCE_ID }}" \
             --document-name "AWS-RunShellScript" \
             --parameters 'commands=[
+              "set -e",
               "cd /opt/app",
               "git fetch origin && git reset --hard origin/main",
+              "export GIT_COMMIT=$(git rev-parse HEAD)",
               "docker compose up --build -d",
               "sh scripts/migrate.sh",
+              "sh scripts/verify.sh",
               "docker image prune -f",
               "docker builder prune -f --keep-storage 1gb",
               "df -h /"

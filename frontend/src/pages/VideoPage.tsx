@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import clsx from 'clsx'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useSearchParams } from 'react-router-dom'
 import { getSubtitles, analyzeStream, preprocessBatch } from '../services/api'
 import type { SubtitleEntry } from '../services/api'
 import type { PreprocessedSentence, AskEntry, AskTarget } from '../types'
@@ -88,6 +88,10 @@ export default function VideoPage() {
 
   const playerRef  = useRef<YT.Player | null>(null)
   const rafRef     = useRef<number>(0)
+  /** What we last loaded (share link, then video id) — stops the URL we write
+   *  back to the address bar from triggering another load. */
+  const loadedRef  = useRef<string | null>(null)
+  const [searchParams, setSearchParams] = useSearchParams()
   const { pathname } = useLocation()
   const isActive   = pathname === '/video'
 
@@ -137,9 +141,10 @@ export default function VideoPage() {
     return () => cancelAnimationFrame(rafRef.current)
   }, [videoId, subtitles])
 
-  const handleLoad = async () => {
-    const trimmed = urlInput.trim()
+  const loadVideo = async (rawUrl: string) => {
+    const trimmed = rawUrl.trim()
     if (!trimmed) return
+    loadedRef.current = trimmed
     setLoading(true)
     setError(null)
     setSubtitles([])
@@ -151,6 +156,10 @@ export default function VideoPage() {
     try {
       const data = await getSubtitles(trimmed)
       setVideoId(data.video_id)
+      // Put the video in the address bar so the page can be reopened, bookmarked
+      // or shared, and so a reload doesn't land on an empty player.
+      loadedRef.current = data.video_id
+      setSearchParams({ v: data.video_id }, { replace: true })
 
       const states: SubtitleState[] = data.subtitles.map(e => ({
         entry: e, preprocessed: null, tokenTimings: [], analysis: null, isAnalyzing: false,
@@ -165,6 +174,19 @@ export default function VideoPage() {
       setLoading(false)
     }
   }
+
+  const handleLoad = () => { void loadVideo(urlInput) }
+
+  // Opened with a video already chosen: ?v=<id> from our own address bar, or
+  // ?url=<share link> from a share sheet / shortcut, which hands us whatever
+  // YouTube produced (youtu.be/<id>?si=...) rather than a bare id.
+  const sharedUrl = searchParams.get('url') || searchParams.get('v')
+  useEffect(() => {
+    if (!sharedUrl || loadedRef.current === sharedUrl) return
+    setUrlInput(sharedUrl)
+    void loadVideo(sharedUrl)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sharedUrl])
 
   // Tokenising every line up front meant one request per subtitle (60+ for a
   // short video). Only the lines around the playhead — and whatever is tapped
