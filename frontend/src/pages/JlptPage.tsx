@@ -591,9 +591,12 @@ function ExamDetailView({ paper, onBack }: { paper: ExamPaperList; onBack: () =>
         mode.type === 'session' ? 'hidden md:flex'
           // Nothing in it is worth nothing of a phone screen.
           : attemptCount === 0 ? 'hidden md:flex'
-          : 'flex max-h-48 md:max-h-none',
+          : 'flex max-h-[45vh] md:max-h-none',
       ].join(' ')}>
-        <div className="px-4 py-3 border-b border-border shrink-0">
+        {/* On a phone the way back and the title are already in the card
+            below; repeating them here costs half the height the records
+            themselves need. */}
+        <div className="hidden md:block px-4 py-3 border-b border-border shrink-0">
           <button
             onClick={onBack}
             className="flex items-center gap-1 text-xs text-fg-muted hover:text-fg transition-colors mb-2"
