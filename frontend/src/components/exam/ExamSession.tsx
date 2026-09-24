@@ -7,22 +7,52 @@ import ReportItemButton from './ReportItemButton'
 import Passage from './Passage'
 import Stem from './Stem'
 
-// ─── Quiz unit (one per Item) ─────────────────────────────────────────────────
+// ─── Quiz unit ────────────────────────────────────────────────────────────────
 
+/**
+ * What goes on one screen.
+ *
+ * One question, except where the paper puts several on one text: a 読解 passage
+ * carries two or three questions and 短文填空 carries five blanks, and the paper
+ * prints them together because they are answered together. One per screen meant
+ * re-reading 問題9's passage three times to answer three questions about it.
+ */
 interface QuizUnit {
   sectionId: string
   sectionName: string
   problem: ProblemDetail
-  item: ItemSchema
+  items: ItemSchema[]
+  /** The text these questions are about, where there is one. */
+  passage: string | null
 }
+
+//: Types where the text is the unit rather than the question.
+const BY_PASSAGE = new Set(['reading_comp', 'passage_fill'])
 
 function buildUnits(sections: SectionDetail[], sectionIds: string[]): QuizUnit[] {
   const units: QuizUnit[] = []
   for (const sec of sections) {
     if (!sectionIds.includes(sec.id)) continue
     for (const prob of sec.problems) {
+      const base = { sectionId: sec.id, sectionName: sec.name, problem: prob }
+      if (!BY_PASSAGE.has(prob.type)) {
+        for (const item of prob.items) {
+          units.push({ ...base, items: [item], passage: item.passage ?? prob.passage })
+        }
+        continue
+      }
+      // Questions about the same text belong together, in the order printed.
+      // 問題8 holds four unrelated texts under one heading; 問題9 three, with
+      // three questions each.
+      let current: QuizUnit | null = null
       for (const item of prob.items) {
-        units.push({ sectionId: sec.id, sectionName: sec.name, problem: prob, item })
+        const text = item.passage ?? prob.passage
+        if (current && current.passage === text) {
+          current.items.push(item)
+        } else {
+          current = { ...base, items: [item], passage: text }
+          units.push(current)
+        }
       }
     }
   }
@@ -58,12 +88,13 @@ function QuestionNav({
 
   // One section at a time. All 106 numbers cost two rows and a scrollbar,
   // permanently, to show numbers that are rarely wanted.
+  // One square per question, even where several share a screen: jumping to
+  // 第47题 should land on the text it belongs to.
   const entries = units
-    .map((u, idx) => ({ idx, u }))
+    .flatMap((u, idx) => u.items.map(item => ({ idx, u, item })))
     .filter(({ u }) => u.sectionId === showing)
 
-  function colour(idx: number, u: QuizUnit) {
-    const { item } = u
+  function colour(idx: number, u: QuizUnit, item: ItemSchema) {
     const hasOptions = Object.keys(item.options).length > 0
     if (idx === unitIdx) return 'bg-accent text-on-accent shadow-sm ring-2 ring-accent/30'
     if (reviewMode) {
@@ -99,13 +130,13 @@ function QuestionNav({
         </div>
       )}
       <div className="flex flex-wrap gap-1 max-h-44 overflow-y-auto">
-        {entries.map(({ idx, u }) => (
+        {entries.map(({ idx, u, item }) => (
           <button
-            key={u.item.id}
+            key={item.id}
             onClick={() => { onSelect(idx); onClose() }}
-            className={`w-8 h-8 text-xs font-semibold rounded-lg transition-all ${colour(idx, u)}`}
+            className={`w-8 h-8 text-xs font-semibold rounded-lg transition-all ${colour(idx, u, item)}`}
           >
-            {u.item.num ?? u.item.seq}
+            {item.num ?? item.seq}
           </button>
         ))}
       </div>
@@ -271,7 +302,7 @@ export default function ExamSession({
   const startIdx = useMemo(() => {
     if (reviewMode || !initialAnswers) return 0
     const firstUnanswered = units.findIndex(u =>
-      Object.keys(u.item.options).length > 0 && !initialAnswers[u.item.id],
+      u.items.some(i => Object.keys(i.options).length > 0 && !initialAnswers[i.id]),
     )
     return firstUnanswered >= 0 ? firstUnanswered : 0
   }, [units, initialAnswers, reviewMode])
@@ -289,18 +320,17 @@ export default function ExamSession({
 
   const unit = units[unitIdx]
   const prob = unit.problem
-  const item = unit.item
 
   const currentSectionUnits = useMemo(
     () => units.filter(u => u.sectionId === unit.sectionId),
     [units, unit.sectionId],
   )
-  const answeredInSection = currentSectionUnits.filter(
-    u => Object.keys(u.item.options).length > 0 && answers[u.item.id],
-  ).length
-  const totalInSection = currentSectionUnits.filter(
-    u => Object.keys(u.item.options).length > 0,
-  ).length
+  // Counted in questions, which is what the section is measured in, even
+  // though a screen can hold several of them.
+  const sectionItems = currentSectionUnits.flatMap(u => u.items)
+  const answerable = sectionItems.filter(i => Object.keys(i.options).length > 0)
+  const answeredInSection = answerable.filter(i => answers[i.id]).length
+  const totalInSection = answerable.length
   const currentSectionAnswered = answeredInSection === totalInSection
 
   const sectionAlreadySubmitted = submitted.has(unit.sectionId)
@@ -343,7 +373,7 @@ export default function ExamSession({
           </p>
         </div>
         {reviewMode && correctAnswers && (() => {
-          const allItems = units.flatMap(u => u.item)
+          const allItems = units.flatMap(u => u.items)
           const knowable = allItems.filter(i => correctAnswers[i.id])
           const correct = knowable.filter(i => answers[i.id] === correctAnswers[i.id]).length
           const total = knowable.length
@@ -387,14 +417,14 @@ export default function ExamSession({
           )}
         </div>
 
-        {/* Passage (reading). For 短文填空 the passage carries the question
-            itself, so the blank being answered is marked in it. */}
-        {(item.passage ?? prob.passage) && (
+        {/* The text these questions are about. 短文填空 asks inside it, so the
+            blank being answered is marked; 読解 asks after it. */}
+        {unit.passage && (
           <Passage
-            text={item.passage ?? prob.passage!}
-            active={prob.type === 'passage_fill' ? item.num : null}
+            text={unit.passage}
+            active={prob.type === 'passage_fill' ? unit.items[0]?.num : null}
             className="font-jp bg-bg border border-border rounded-lg px-5 py-4 text-[15px] text-fg
-                       leading-[2] whitespace-pre-wrap max-h-72 overflow-y-auto"
+                       leading-[2] whitespace-pre-wrap"
           />
         )}
 
@@ -407,30 +437,36 @@ export default function ExamSession({
           </div>
         )}
 
-        {/* Single item */}
-        <div className="space-y-2">
-          <ItemDisplay
-            item={item}
-            selected={answers[item.id] ?? null}
-            onSelect={ans => handleSelect(item.id, ans)}
-            reviewMode={reviewMode}
-            correctAnswer={correctAnswers?.[item.id]}
-            isCorrect={isCorrectMap?.[item.id]}
-            problemType={prob.type}
-            attemptId={attemptId}
-          />
-          {reviewMode && Object.keys(item.options).length > 0 && !['passage_fill','reading_comp'].includes(prob.type) && (
-            <button
-              onClick={() => setAnalysisItemId(analysisItemId === item.id ? null : item.id)}
-              className="flex items-center gap-1.5 text-xs text-accent hover:text-accent-hover transition-colors"
-            >
-              <Brain className="w-3.5 h-3.5" />
-              {analysisItemId === item.id ? '收起解析' : 'AI 解析'}
-            </button>
-          )}
-          {reviewMode && analysisItemId === item.id && !['passage_fill','reading_comp'].includes(prob.type) && (
-            <AnalysisPanel itemId={item.id} />
-          )}
+        {/* The questions on this text — several where the paper prints several. */}
+        <div className="space-y-6">
+          {unit.items.map(it => (
+            <div key={it.id} className="space-y-2">
+              <ItemDisplay
+                item={it}
+                selected={answers[it.id] ?? null}
+                onSelect={ans => handleSelect(it.id, ans)}
+                reviewMode={reviewMode}
+                correctAnswer={correctAnswers?.[it.id]}
+                isCorrect={isCorrectMap?.[it.id]}
+                problemType={prob.type}
+                attemptId={attemptId}
+              />
+              {reviewMode && Object.keys(it.options).length > 0
+                && !['passage_fill', 'reading_comp'].includes(prob.type) && (
+                <button
+                  onClick={() => setAnalysisItemId(analysisItemId === it.id ? null : it.id)}
+                  className="flex items-center gap-1.5 text-xs text-accent hover:text-accent-hover transition-colors"
+                >
+                  <Brain className="w-3.5 h-3.5" />
+                  {analysisItemId === it.id ? '收起解析' : 'AI 解析'}
+                </button>
+              )}
+              {reviewMode && analysisItemId === it.id
+                && !['passage_fill', 'reading_comp'].includes(prob.type) && (
+                <AnalysisPanel itemId={it.id} />
+              )}
+            </div>
+          ))}
         </div>
 
         {/* Problem-level analysis for passage_fill / reading_comp */}
@@ -473,7 +509,7 @@ export default function ExamSession({
           className="flex items-center gap-1.5 text-sm text-fg-muted hover:text-fg disabled:opacity-30 transition-colors"
         >
           <ChevronLeft className="w-4 h-4" />
-          上一题
+          上一屏
         </button>
         {/* Scoped to the section, like the header — one counter said 41/106
             while the other said 0/45, and neither was wrong. */}
@@ -482,9 +518,11 @@ export default function ExamSession({
           className="flex items-center gap-1.5 text-xs text-fg-muted hover:text-fg transition-colors"
         >
           <ChevronDown className={`w-3.5 h-3.5 transition-transform ${navOpen ? '' : 'rotate-180'}`} />
-          第 {currentSectionUnits.findIndex(u => u.item.id === item.id) + 1} 题
+          {/* Counted in questions, not screens: a 読解 text holds three. */}
+          第 {sectionItems.findIndex(i => i.id === unit.items[0].id) + 1}
+          {unit.items.length > 1 && `-${sectionItems.findIndex(i => i.id === unit.items[unit.items.length - 1].id) + 1}`} 题
           <span className="text-fg-subtle">
-            / 本节 {currentSectionUnits.length} · 已答 {answeredInSection}
+            / 本节 {totalInSection} · 已答 {answeredInSection}
           </span>
         </button>
         <button
@@ -492,7 +530,7 @@ export default function ExamSession({
           disabled={unitIdx === units.length - 1}
           className="flex items-center gap-1.5 text-sm text-fg-muted hover:text-fg disabled:opacity-30 transition-colors"
         >
-          下一题
+          下一屏
           <ChevronRight className="w-4 h-4" />
         </button>
       </div>

@@ -7,6 +7,8 @@
  * part of the sentence; ingest marks them 【41】 so they can be shown as what
  * they are, and the one being answered can be told apart from the rest.
  */
+import Stem from './Stem'
+
 export default function Passage({
   text, active, className,
 }: {
@@ -20,7 +22,9 @@ export default function Passage({
   return (
     <div className={className}>
       {parts.map((part, i) => {
-        if (i % 2 === 0) return <span key={i}>{part}</span>
+        // A passage carries the paper's underlines too — 読解 asks about a
+        // phrase inside the text as often as 漢字読み asks about one in a stem.
+        if (i % 2 === 0) return <Stem key={i} text={part} />
         const num = Number(part)
         const here = active != null && num === active
         return (
