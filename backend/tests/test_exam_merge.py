@@ -144,7 +144,12 @@ def test_listening_counts_come_from_the_paper_not_from_the_source_file():
 
 
 def test_a_paper_survives_a_round_trip_through_storage():
-    """Re-running an improved extractor means reading back what was stored."""
+    """Re-running an improved extractor means reading back what was stored.
+
+    Every field has to make the trip. A field added to the item and not to the
+    reader is dropped silently on import — 読解問題8's per-question passages
+    reached the draft, survived review, and vanished on the way into the paper.
+    """
     p = paper(problem("問題6", "sentence_order", [
         item(36, meta={"star_position": 3}, answer_order="3412", correct_answer="1"),
     ]))
@@ -153,6 +158,19 @@ def test_a_paper_survives_a_round_trip_through_storage():
     assert restored.answer_order == "3412"
     assert restored.meta["star_position"] == 3
     assert back.version == p.version
+
+
+def test_every_field_an_item_carries_survives_storage():
+    """Asserted field by field above; asserted as a whole here, so the next
+    field added is covered without anyone remembering to add a line."""
+    p = paper(problem("問題8", "reading_comp", [
+        item(46, stem="目標について", options={"1": "a", "2": "b"}, correct_answer="2",
+             answer_order="3412", transcript="…", passage="(1)人生や…",
+             meta={"star_position": 1}),
+    ]))
+    _, _, before = next(p.items())
+    _, _, after = next(from_dict(p.to_dict()).items())
+    assert vars(after) == vars(before)
 
 
 def test_a_paper_stored_by_an_older_extractor_still_loads():

@@ -4,6 +4,7 @@ import clsx from 'clsx'
 import { editDraftItem } from '../../services/api'
 import type { CanonicalItem, DraftDetail } from '../../types'
 import Passage from '../exam/Passage'
+import Stem from '../exam/Stem'
 
 const OPTS = ['1', '2', '3', '4']
 
@@ -206,21 +207,6 @@ export default function DraftReview({
         </button>
       </div>
     </div>
-  )
-}
-
-/** The paper underlines the word a question is about; `__…__` carries that
- *  through extraction, and here it goes back to being an underline. */
-function Stem({ text }: { text: string }) {
-  const parts = text.split(/__(.+?)__/g)
-  return (
-    <>
-      {parts.map((part, i) =>
-        i % 2 === 1
-          ? <span key={i} className="underline decoration-2 underline-offset-2 font-medium">{part}</span>
-          : <span key={i}>{part}</span>,
-      )}
-    </>
   )
 }
 

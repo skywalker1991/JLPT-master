@@ -133,7 +133,8 @@ def from_dict(data: dict) -> CanonicalPaper:
             stem=raw.get("stem", ""), options=raw.get("options") or {},
             correct_answer=raw.get("correct_answer"),
             answer_order=raw.get("answer_order"),
-            transcript=raw.get("transcript"), meta=raw.get("meta") or {},
+            transcript=raw.get("transcript"), passage=raw.get("passage"),
+            meta=raw.get("meta") or {},
             provenance=Provenance(
                 source=prov.get("source"), page=prov.get("page"),
                 extractor=prov.get("extractor"),

@@ -4,6 +4,7 @@ import { getAttemptReview } from '../../services/api'
 import type { AttemptReviewData, ReviewItem, ReviewProblem, ReviewSection } from '../../types'
 import AnalysisPanel from './AnalysisPanel'
 import Passage from './Passage'
+import Stem from './Stem'
 
 // ─── Score summary ────────────────────────────────────────────────────────────
 
@@ -80,7 +81,9 @@ function ItemReviewCard({
         {item.is_correct === false && <XCircle className="w-4 h-4 text-danger shrink-0" />}
         {item.is_correct === null && <div className="w-4 h-4 rounded-full border-2 border-border shrink-0" />}
         <span className="text-xs text-fg-muted shrink-0">Q{item.seq}</span>
-        <p className="text-sm text-fg truncate flex-1">{item.stem || '（无题干）'}</p>
+        <p className="text-sm text-fg truncate flex-1">
+          {item.stem ? <Stem text={item.stem} /> : '（无题干）'}
+        </p>
         {item.user_answer && (
           <span className={`text-xs font-bold shrink-0 ${item.is_correct ? 'text-success-fg' : 'text-danger-fg'}`}>
             选 {item.user_answer}

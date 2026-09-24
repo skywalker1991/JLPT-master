@@ -5,6 +5,7 @@ import type { ExamPaperDetail, ProblemDetail, ItemSchema, SectionDetail } from '
 import AnalysisPanel from './AnalysisPanel'
 import ReportItemButton from './ReportItemButton'
 import Passage from './Passage'
+import Stem from './Stem'
 
 // ─── Quiz unit (one per Item) ─────────────────────────────────────────────────
 
@@ -155,7 +156,7 @@ function ItemDisplay({
           ? <><span className="text-xs text-fg-muted">{item.num != null ? `Q${item.num}. ` : ''}</span><SentenceOrderStem stem={item.stem} /></>
           : <p className="text-base text-fg leading-relaxed">
               {item.num != null && <span className="text-xs text-fg-muted mr-1">Q{item.num}.</span>}
-              {item.stem}
+              <Stem text={item.stem} />
             </p>
       )}
       {isSentenceOrder && (
