@@ -87,8 +87,7 @@ def test_a_star_beyond_the_ordering_is_reported():
 
 # --- two sources ---------------------------------------------------------------
 
-def test_the_answer_sheet_wins_where_both_sources_cover_an_item():
-    """The sheet spans the whole paper; the 解析 only answers what it discusses."""
+def test_sources_agreeing_settles_the_answer():
     p = paper(problem("問題1", "kanji_reading", [item(1)]))
     merge_answers(p, AnswerKey(written={1: "3"}), AnswerKey(written={1: "3"}))
     _, _, only = next(p.items())
@@ -106,6 +105,23 @@ def test_two_sources_disagreeing_is_reported_not_resolved_quietly():
     report = merge_answers(p, AnswerKey(written={1: "3"}), AnswerKey(written={1: "2"}))
     assert len(report.conflicts) == 1
     assert "答案表=3" in report.conflicts[0] and "解析=2" in report.conflicts[0]
+
+
+def test_a_disputed_item_is_left_unanswered_rather_than_taking_a_side():
+    """Neither source earns priority. In 2019年12月 the answer sheet is right
+    about 第16题 and the 解析 is right about 第29题, so a rule preferring either
+    files a wrong answer silently — and a wrong answer is wrong on every future
+    attempt."""
+    p = paper(problem("問題1", "kanji_reading", [item(1), item(2)]))
+    report = merge_answers(
+        p,
+        AnswerKey(written={1: "2", 2: "4"}),
+        AnswerKey(written={1: "3", 2: "4"}),
+    )
+    first, second = [i for _, _, i in p.items()]
+    assert first.correct_answer is None     # disputed
+    assert second.correct_answer == "4"     # agreed
+    assert report.unanswered == 1
 
 
 def test_merging_with_no_answers_at_all_leaves_the_paper_importable():

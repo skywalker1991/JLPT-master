@@ -121,3 +121,22 @@ def read_pdf(data: bytes) -> list[PageText]:
 
 def joined(pages: list[PageText]) -> str:
     return "\n".join(p.text for p in pages)
+
+
+def render_pages(data: bytes, *, limit: int = 3, dpi: int = 200) -> list[bytes]:
+    """The first few pages as PNGs, for a file that has no text to read.
+
+    Some answer sheets are pure scans — 2019年12月's is sixteen pages without a
+    single character of text layer — so the grid can only be read by looking at
+    it. The grid itself is on the first page or two.
+    """
+    import fitz
+
+    document = fitz.open(stream=data, filetype="pdf")
+    try:
+        return [
+            document[index].get_pixmap(dpi=dpi).tobytes("png")
+            for index in range(min(limit, len(document)))
+        ]
+    finally:
+        document.close()

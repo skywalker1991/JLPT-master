@@ -113,6 +113,39 @@ async def build_paper(
     return paper, invented
 
 
+async def _read_scanned_sheet(
+    files_by_name: dict[str, bytes],
+    sources: list[Source],
+    report: IngestReport,
+):
+    """Look at a scanned file in case it is the answer sheet."""
+    from app.services.exam_answer_reader import read_sheet_images
+    from app.services.exam_text import render_pages
+
+    for source in sources:
+        if source.role is not Role.SCANNED:
+            continue
+        data = files_by_name.get(source.filename)
+        if not data:
+            continue
+        try:
+            key = await read_sheet_images(render_pages(data))
+        except Exception as e:
+            logger.warning("Could not look at %s: %s", source.filename, e)
+            continue
+        if key.written or key.listening:
+            source.role = Role.ANSWER_SHEET
+            for entry in report.sources:
+                if entry["filename"] == source.filename:
+                    entry["role"] = Role.ANSWER_SHEET.value
+            report.answers = {"method": "image"}
+            report.notes.append(
+                f"{source.filename} 没有文字层，答案是看图读出来的，请抽查几题"
+            )
+            return key
+    return None
+
+
 async def ingest(
     files: list[tuple[str, bytes]],
     *,
@@ -127,6 +160,7 @@ async def ingest(
     one every difference is new and nothing is worth querying.
     """
     sources = read_sources(files)
+    files_by_name = dict(files)
     capability = assess(sources)
     report = IngestReport(
         sources=[
@@ -165,6 +199,12 @@ async def ingest(
         sheet_key = result.key
         report.answers = {"method": result.method, "agreed": result.agreed}
         report.notes.extend(result.notes)
+    else:
+        # No sheet with text in it. A scan may still be one — 2019年12月's is
+        # sixteen pages without a character of text layer — and the sheet is
+        # the only source for 並べ替え orderings and for items the 解析 booklet
+        # never discusses, so it is worth looking at rather than going without.
+        sheet_key = await _read_scanned_sheet(files_by_name, sources, report)
 
     explanation_key = None
     explanations = _pick(sources, Role.EXPLANATIONS)

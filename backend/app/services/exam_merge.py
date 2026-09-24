@@ -36,23 +36,32 @@ def merge_answers(
 ) -> MergeReport:
     """Write answers onto the paper in place, and say what did not land.
 
-    The sheet is preferred where both cover an item — it covers the whole paper
-    while the 解析 booklet only answers the parts it discusses — but a
-    disagreement is reported rather than quietly resolved.
+    Where the two sources disagree the item is left unanswered. Neither can be
+    trusted over the other: in 2019年12月 the answer sheet is right about 第16题
+    (ルーズ → だらしない, where the 解析 prints 3 and then explains 2) and the
+    解析 is right about 第29题 (いまさら〜でもあるまい, where the sheet prints 4).
+    Picking a side by rule would file a wrong answer silently, and a wrong
+    answer is wrong on every future attempt — better to have the question
+    unscorable until someone looks.
     """
     report = MergeReport()
 
+    disputed: set[int] = set()
     if sheet and explanations:
         for clash in cross_check(sheet, explanations):
+            disputed.add(clash.num)
             report.conflicts.append(
                 f"第{clash.num}题：答案表={clash.sheet}，解析={clash.explanation}"
+                "（两源矛盾，暂不填答案，请人工判定）"
             )
 
     written: dict[int, str] = {}
     if explanations:
         written.update(explanations.written)
     if sheet:
-        written.update(sheet.written)          # the sheet wins on overlap
+        written.update(sheet.written)
+    for num in disputed:
+        written.pop(num, None)
 
     orders = sheet.orders if sheet else {}
     listening = sheet.listening if sheet else {}

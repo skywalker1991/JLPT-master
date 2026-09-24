@@ -19,6 +19,7 @@ caught the same way whether a regex or a model produced it.
 """
 from __future__ import annotations
 
+import base64
 import json
 import logging
 from dataclasses import dataclass
@@ -45,6 +46,17 @@ PROMPT = """这是一份 JLPT 答案表的文本，请解析出全部答案。
 
 答案表原文：
 {sheet}"""
+
+
+IMAGE_PROMPT = """这是一张 JLPT 答案表的图片。表格中「N番」是题号，其正下方的数字是答案。
+
+- 笔试部分题号连续编号，听力部分每个「聴解N」或「問題N」内部从 1 番重新编号
+- 仔细按列对齐读取，不要错位
+- 看不清的格子留空，不要猜
+
+只输出 JSON，不要任何说明：
+{"written": {"1": "2"}, "listening": {"1-1": "3"}}
+listening 的键是「听力组号-番号」。"""
 
 
 @dataclass
@@ -105,6 +117,36 @@ async def read_with_model(
     if raw.startswith("```"):
         raw = raw.split("```")[1].removeprefix("json").strip()
     return _from_payload(json.loads(raw))
+
+
+async def read_sheet_images(images: list[bytes]) -> AnswerKey:
+    """Read an answer sheet that exists only as a picture.
+
+    A scan with no text layer cannot be parsed at all, and the sheet is the
+    only source for 並べ替え orderings and for the items the 解析 booklet does
+    not discuss — so looking at it is the difference between a paper that can
+    be scored and one that cannot.
+    """
+    client = get_exam_client()
+    merged = AnswerKey()
+    for image in images:
+        chunks = []
+        async for chunk in client.analyze_stream(
+            IMAGE_PROMPT, {}, image_base64=base64.b64encode(image).decode(), image_mime="image/png"
+        ):
+            chunks.append(chunk)
+        raw = "".join(chunks).strip()
+        if raw.startswith("```"):
+            raw = raw.split("```")[1].removeprefix("json").strip()
+        try:
+            page = _from_payload(json.loads(raw))
+        except Exception as e:
+            logger.warning("Could not read an answer sheet page: %s", e)
+            continue
+        merged.written.update(page.written)
+        merged.orders.update(page.orders)
+        merged.listening.update(page.listening)
+    return merged
 
 
 def compare(a: AnswerKey, b: AnswerKey) -> list[str]:
