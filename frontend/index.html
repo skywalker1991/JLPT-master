@@ -7,6 +7,11 @@
     <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#0D0D0D" media="(prefers-color-scheme: dark)" />
+    <!-- Launches fullscreen (no Safari chrome) once added to the home screen.
+         iOS needs its own tag; the manifest's display member isn't enough.
+         The status bar follows theme-color above, so it isn't pinned here. -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="日本語 Master" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
