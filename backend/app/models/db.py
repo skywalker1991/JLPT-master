@@ -335,19 +335,52 @@ class ExamMedia(Base):
     )
 
 
+class ExamDraftSource(Base):
+    """One uploaded file of a sitting, with its text and what it turned out to be.
+
+    Keeping the extracted text is what makes the extractor replaceable: a
+    better one is re-run over these rows rather than over freshly uploaded
+    PDFs.
+    """
+    __tablename__ = "exam_draft_sources"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    draft_id = Column(UUID(as_uuid=True), ForeignKey("exam_drafts.id", ondelete="CASCADE"), nullable=False)
+    filename = Column(Text, nullable=False)
+    role = Column(String(20), nullable=False, server_default=text("'unknown'"))
+    page_count = Column(Integer, nullable=False, server_default=text("0"))
+    text_pages = Column(Integer, nullable=False, server_default=text("0"))
+    text_raw = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+
+    draft = relationship("ExamDraft", back_populates="sources")
+
+    __table_args__ = (
+        Index("ix_exam_draft_sources_draft_id", "draft_id"),
+    )
+
+
 class ExamDraft(Base):
-    """Temporary ingestion state: AI-generated draft pending human review."""
+    """A sitting being ingested: its source files, the paper extracted from
+    them, and what checking that paper turned up."""
     __tablename__ = "exam_drafts"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     filename = Column(Text, nullable=True)
     markdown_raw = Column(Text, nullable=True)
     draft_json = Column(JSONB, nullable=True)
+    #: The paper in the shape everything downstream reads (exam_canonical).
+    canonical = Column(JSONB, nullable=True)
+    #: Validation findings, answer-merge results, and what the file set lacked.
+    report = Column(JSONB, nullable=True)
     paper_id = Column(UUID(as_uuid=True), ForeignKey("exam_papers.id", ondelete="SET NULL"),
                       nullable=True)
     status = Column(String(20), nullable=False, server_default=text("'pending'"))
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"), onupdate=lambda: datetime.now(timezone.utc))
+
+    sources = relationship("ExamDraftSource", back_populates="draft",
+                           cascade="all, delete-orphan", order_by="ExamDraftSource.created_at")
 
     __table_args__ = (
         Index("ix_exam_drafts_status", "status"),
