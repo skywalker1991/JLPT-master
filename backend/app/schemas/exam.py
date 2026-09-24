@@ -30,6 +30,9 @@ class ItemSchema(BaseModel):
     num: int | None
     stem: str
     transcript: str | None = None
+    #: Set only where the 問題 holds several texts and this question is about
+    #: one of them; otherwise the 問題's own passage is the one to show.
+    passage: str | None = None
     options: dict
     meta: dict | None
 
@@ -154,6 +157,7 @@ class ReviewItem(BaseModel):
     num: int | None
     stem: str
     transcript: str | None = None
+    passage: str | None = None
     options: dict
     meta: dict | None
     user_answer: str | None

@@ -323,3 +323,94 @@ def mark_blanks(problem: CanonicalProblem) -> list[str]:
         f"第{num}题：文章里找不到对应的空"
         for num in nums if not seen[num]
     ]
+
+
+#: How a paper separates several texts printed under one 問題: a bracketed
+#: number on its own line, or a bare A / B for the 意見文 pair. Half and full
+#: width both appear, sometimes in the same 問題 — 2018年07月's 問題8 runs
+#: (1) (2) (3) （４）.
+_SEPARATOR = re.compile(
+    r"(?:^|\n)[^\S\n]*(?:[(（][0-9０-９][)）]|[ABＡＢ])[^\S\n]*(?=\n)"
+)
+
+
+def _segments(text: str) -> list[str]:
+    """The text cut at its separators, the first piece dropped as preamble."""
+    cuts = [m.start() for m in _SEPARATOR.finditer(text)]
+    if len(cuts) < 2:
+        return []
+    bounds = cuts + [len(text)]
+    return [text[bounds[i]:bounds[i + 1]].strip() for i in range(len(cuts))]
+
+
+def _where(num: int, stem: str, source: str) -> int | None:
+    """Where in the source this question is printed.
+
+    The number at the start of a line is how every paper opens a question. It
+    can also occur inside a passage, so the stem decides between candidates —
+    and the number alone is the fallback, because a stem the model tidied would
+    otherwise lose the question its position.
+    """
+    opening = re.compile(rf"(?:^|\n)[^\S\n]*{num}(?![0-9])[^\S\n]*[、.．]?[^\S\n]*(?=\S)")
+    hits = [m.start() for m in opening.finditer(source)]
+    if not hits:
+        return None
+    head = normalise(stem)[:6]
+    if head:
+        for hit in hits:
+            if head in normalise(source[hit:hit + 120]):
+                return hit
+    return hits[0]
+
+
+def split_passages(problem: CanonicalProblem, source: str) -> list[str]:
+    """Give each question the one text it is about.
+
+    読解問題8 prints four unrelated passages under a single heading, 問題9
+    three, and 問題11 an A and a B. Extraction returns them as one `passage`,
+    which is faithful to the page and useless to answer from: 第46题 is about
+    the first of the four and shows all four.
+
+    Split on the page's own separators rather than on meaning, and place each
+    question by where its number is printed. Nothing is assigned unless every
+    question lands and the passage cuts the same way the source does — a
+    partial split is worse than none, because a question shown the wrong text
+    looks answerable and is not.
+    """
+    if not problem.passage or len(problem.items) < 2:
+        return []
+
+    in_source = _segments(source)
+    in_passage = _segments(problem.passage)
+    if len(in_source) < 2 or len(in_source) != len(in_passage):
+        return []
+
+    bounds = [source.index(seg[:20]) if seg[:20] in source else -1 for seg in in_source]
+    if any(b < 0 for b in bounds):
+        return []
+
+    placed: dict[int, int] = {}
+    for index, item in enumerate(problem.items):
+        if item.num is None:
+            return []
+        at = _where(item.num, item.stem, source)
+        if at is None:
+            return [f"{problem.name}：第{item.num}题在原文中找不到，无法判断属于哪一篇"]
+        # The question belongs to the last text that starts before it.
+        which = max((i for i, b in enumerate(bounds) if b <= at), default=None)
+        if which is None:
+            return [f"{problem.name}：第{item.num}题排在第一篇文章之前"]
+        placed[index] = which
+
+    # Several texts under one heading do not always mean several questions'
+    # worth of reading. 問題8 prints four unrelated passages, each with its own
+    # question after it; 問題11 prints an A and a B on one topic and then asks
+    # how they compare, so both questions need both texts and neither text has
+    # a question of its own. What separates them is exactly that: a text with
+    # no question after it is not a text anyone is asked about alone.
+    if len(set(placed.values())) != len(in_passage):
+        return []
+
+    for index, which in placed.items():
+        problem.items[index].passage = in_passage[which]
+    return []

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { Brain, CheckCircle, ChevronDown, Loader2, XCircle } from 'lucide-react'
 import { getAttemptReview } from '../../services/api'
 import type { AttemptReviewData, ReviewItem, ReviewProblem, ReviewSection } from '../../types'
@@ -189,7 +189,7 @@ function SectionReview({
                   <span className="text-xs text-fg-muted truncate">{prob.instruction}</span>
                 )}
               </div>
-              {prob.passage && (
+              {prob.passage && !prob.items.some(i => i.passage) && (
                 <Passage
                   text={prob.passage}
                   className="bg-surface border border-border rounded-xl p-4 text-sm text-fg leading-relaxed whitespace-pre-wrap max-h-40 overflow-y-auto"
@@ -201,13 +201,22 @@ function SectionReview({
                   {prob.transcript}
                 </div>
               )}
-              {prob.items.map(item => (
+              {prob.items.map((item, i) => (
+                <Fragment key={item.id}>
+                {/* One text can carry several questions; print it once, above
+                    the first of them. */}
+                {item.passage && item.passage !== prob.items[i - 1]?.passage && (
+                  <Passage
+                    text={item.passage}
+                    className="bg-surface border border-border rounded-xl p-4 text-sm text-fg leading-relaxed whitespace-pre-wrap max-h-40 overflow-y-auto"
+                  />
+                )}
                 <ItemReviewCard
-                  key={item.id}
                   item={item}
                   onAnalyze={['passage_fill','reading_comp'].includes(prob.type) ? () => {} : () => onAnalyze(item.id)}
                   hideAnalyzeButton={['passage_fill','reading_comp'].includes(prob.type)}
                 />
+                </Fragment>
               ))}
               {['passage_fill','reading_comp'].includes(prob.type) && prob.items.some(i => Object.keys(i.options).length > 0) && (
                 <button

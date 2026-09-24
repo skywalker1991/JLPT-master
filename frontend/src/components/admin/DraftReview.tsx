@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { Fragment, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, Check, ChevronDown, Loader2 } from 'lucide-react'
 import clsx from 'clsx'
 import { editDraftItem } from '../../services/api'
@@ -138,7 +138,7 @@ export default function DraftReview({
                     <span className="text-xs text-fg-subtle">{problem.type}</span>
                     <span className="text-xs text-fg-subtle">{problem.items.length} 题</span>
                   </div>
-                  {problem.passage && (
+                  {problem.passage && !problem.items.some(i => i.passage) && (
                     // 短文填空's passage IS the questions, so it is open; a
                     // 読解 passage is context and stays folded away.
                     <details className="rounded-lg border border-border"
@@ -156,9 +156,23 @@ export default function DraftReview({
                       这个题组没有提取到任何小题——试卷上未印内容，题目和原文只能从解析文件补齐
                     </p>
                   )}
-                  {problem.items.map(item => (
+                  {problem.items.map((item, i) => (
+                    <Fragment key={`${item.num}-${item.seq}`}>
+                    {/* A 問題 can print several texts, each with its own
+                        questions. Showing which one a question is about is the
+                        only way to see the split went where it should. */}
+                    {item.passage && item.passage !== problem.items[i - 1]?.passage && (
+                      <details className="rounded-lg border border-border" open>
+                        <summary className="px-3 py-1.5 text-xs text-fg-muted cursor-pointer">
+                          文章（第 {item.num} 题起）
+                        </summary>
+                        <Passage
+                          text={item.passage}
+                          className="px-3 pb-2.5 text-xs text-fg-muted leading-relaxed whitespace-pre-wrap"
+                        />
+                      </details>
+                    )}
                     <ItemRow
-                      key={`${item.num}-${item.seq}`}
                       draftId={draft.id}
                       problem={problem.name}
                       type={problem.type}
@@ -166,6 +180,7 @@ export default function DraftReview({
                       findings={findingsFor(problem.name, item)}
                       onUpdated={onUpdated}
                     />
+                    </Fragment>
                   ))}
                 </div>
               ))}

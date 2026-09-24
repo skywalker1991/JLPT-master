@@ -21,7 +21,9 @@ from app.services.exam_canonical import (
     CanonicalItem, CanonicalPaper, CanonicalSection,
 )
 from app.services.exam_categories import type_by_number
-from app.services.exam_extract import extract_block_with_retry, mark_blanks
+from app.services.exam_extract import (
+    extract_block_with_retry, mark_blanks, split_passages,
+)
 from app.services.exam_merge import merge_answers
 from app.services.exam_sources import Role, Source, assess, classify_all, detect_identity
 from app.services.exam_split import split_problems
@@ -122,6 +124,11 @@ async def build_paper(
         # belongs to.
         if result.problem.type == "passage_fill":
             invented.extend(mark_blanks(result.problem))
+
+        # 読解問題8 prints four unrelated passages under one heading; without
+        # splitting them, answering 第46题 means being shown all four.
+        if result.problem.type == "reading_comp":
+            invented.extend(split_passages(result.problem, block.text))
 
         section = sections.get(block.section)
         if section is None:

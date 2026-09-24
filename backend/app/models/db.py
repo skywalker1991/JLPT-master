@@ -279,6 +279,9 @@ class ExamItem(Base):
     num = Column(Integer, nullable=True)
     stem = Column(Text, nullable=False, server_default=text("''"))
     transcript = Column(Text, nullable=True)
+    # Only where the 問題 holds several texts — 問題8's four, 問題11's A and B.
+    # A 問題 with one passage keeps it on the problem row.
+    passage = Column(Text, nullable=True)
     options = Column(JSONB, nullable=False, server_default=text("'{}'"))
     correct_answer = Column(String(1), nullable=True)
     # 並べ替え: the full ordering, e.g. "3412". correct_answer is whichever of

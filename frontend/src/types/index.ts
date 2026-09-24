@@ -188,6 +188,9 @@ export interface ItemSchema {
   num: number | null
   stem: string
   transcript: string | null
+  /** Set only where the 問題 holds several texts and this question is about
+   *  one of them; otherwise the 問題's own passage is the one to show. */
+  passage: string | null
   options: Record<string, string>
   meta: Record<string, unknown> | null
 }
@@ -293,6 +296,7 @@ export interface ReviewItem {
   seq: number
   num: number | null
   stem: string
+  passage: string | null
   options: Record<string, string>
   meta: Record<string, unknown> | null
   user_answer: string | null
@@ -335,6 +339,7 @@ export interface DraftItem {
   seq: number
   stem: string
   transcript: string | null
+  passage: string | null
   options: Record<string, string>
   correct_answer: string | null
   meta: Record<string, unknown> | null

@@ -443,6 +443,7 @@ async def confirm_draft(draft_id: _uuid.UUID, db: AsyncSession = Depends(get_db)
                     correct_answer=item_data.correct_answer,
                     answer_order=item_data.answer_order,
                     transcript=item_data.transcript,
+                    passage=item_data.passage,
                     meta=item_data.meta or None,
                 )
                 db.add(item)

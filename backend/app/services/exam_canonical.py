@@ -49,6 +49,11 @@ class CanonicalItem:
     answer_order: str | None = None
     #: 聴解 only: the dialogue, which the question paper never prints.
     transcript: str | None = None
+    #: 読解 only, and only where the 問題 holds more than one text. 問題8 prints
+    #: four unrelated passages under one heading and 問題11 prints an A and a B;
+    #: kept on the 問題 alone, answering 第46题 means reading all four. Empty
+    #: where the 問題 has a single passage, which stays on the 問題.
+    passage: str | None = None
     #: 並べ替え carries star_position here; other types may carry nothing.
     meta: dict[str, Any] = field(default_factory=dict)
     provenance: Provenance = field(default_factory=Provenance)

@@ -381,9 +381,9 @@ export default function ExamSession({
 
         {/* Passage (reading). For 短文填空 the passage carries the question
             itself, so the blank being answered is marked in it. */}
-        {prob.passage && (
+        {(item.passage ?? prob.passage) && (
           <Passage
-            text={prob.passage}
+            text={item.passage ?? prob.passage!}
             active={prob.type === 'passage_fill' ? item.num : null}
             className="bg-bg border border-border rounded-xl p-4 text-sm text-fg leading-relaxed whitespace-pre-wrap max-h-56 overflow-y-auto"
           />

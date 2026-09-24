@@ -11,6 +11,7 @@ between a fluent invention and the question bank.
 """
 from app.services.exam_extract import (
     build_problem, check_verbatim, guess_type, item_number, normalise, mark_blanks,
+    split_passages,
 )
 from app.services.exam_split import Block, split_problems
 
@@ -246,3 +247,80 @@ def test_only_the_first_occurrence_becomes_the_gap():
     p = cloze("ひどい 42 もいる。42 ページを見よ。", 42)
     mark_blanks(p)
     assert p.passage == "ひどい 【42】 もいる。42 ページを見よ。"
+
+
+# --- 読解: several texts under one heading --------------------------------------
+
+EIGHT = """問題８ 次の（１）から（３）の文章を読んで、答えを一つ選びなさい。
+(1)
+目標というものは持つべきだと言われる。
+46 目標について、筆者の考えに合うのはどれか。
+1 持たなくてよい
+2 持つのが当然だ
+(2)
+恥じらいの表情について述べた文章である。
+47 恥じらいについて、筆者はどう述べているか。
+1 隠すものだ
+2 伝わるものだ
+（３）
+本番に弱いというひとは失敗を恐れている。
+48 本番に弱い人について、筆者はどう考えているか。
+1 練習が足りない
+2 失敗を恐れすぎている
+"""
+
+ELEVEN = """問題11 次のA とB の意見文を読んで、答えを一つ選びなさい。
+A
+「私、絵が描けないのです」と言う人がたまにいる。そんな訳はない。
+B
+絵が上手になるには、とにかく多くの絵を描く経験が大切だ。
+63 絵を描くことについて、A とB はどのように述べているか。
+1 A もB も同じだ
+2 A は正確さにこだわるなと述べている
+64 A とB の認識で共通しているのはどれか。
+1 誰でも描ける
+2 経験が要る
+"""
+
+
+def reading(name, passage, *items):
+    return CanonicalProblem(
+        name=name, type="reading_comp", seq=8, passage=passage,
+        items=[CanonicalItem(num=n, seq=i + 1, stem=s) for i, (n, s) in enumerate(items)],
+    )
+
+
+def test_each_question_gets_the_one_passage_it_is_about():
+    """問題8 prints four unrelated passages under a single heading. Held
+    together, answering 第46题 means being shown all four."""
+    p = reading("問題8",
+                "(1)\n目標というものは持つべきだと言われる。\n"
+                "(2)\n恥じらいの表情について述べた文章である。\n"
+                "（３）\n本番に弱いというひとは失敗を恐れている。",
+                (46, "目標について、筆者の考えに合うのはどれか。"),
+                (47, "恥じらいについて、筆者はどう述べているか。"),
+                (48, "本番に弱い人について、筆者はどう考えているか。"))
+    assert split_passages(p, EIGHT) == []
+    assert "目標" in p.items[0].passage and "恥じらい" not in p.items[0].passage
+    assert "恥じらい" in p.items[1].passage
+    assert "本番" in p.items[2].passage
+
+
+def test_texts_meant_to_be_compared_are_left_together():
+    """問題11 prints an A and a B on one topic and asks how they compare, so
+    both questions need both texts — and neither text has a question of its
+    own, which is what tells it apart from 問題8."""
+    p = reading("問題11",
+                "A\n「私、絵が描けないのです」と言う人がたまにいる。そんな訳はない。\n"
+                "B\n絵が上手になるには、とにかく多くの絵を描く経験が大切だ。",
+                (63, "絵を描くことについて、A とB はどのように述べているか。"),
+                (64, "A とB の認識で共通しているのはどれか。"))
+    assert split_passages(p, ELEVEN) == []
+    assert all(i.passage is None for i in p.items)
+
+
+def test_a_problem_with_one_passage_is_left_alone():
+    p = reading("問題10", "タレントがその私生活を公表することは珍しくなくなった。",
+                (59, "筆者はどう述べているか。"), (60, "それはなぜか。"))
+    assert split_passages(p, "問題10\nタレントが…\n59 筆者は\n60 それは") == []
+    assert all(i.passage is None for i in p.items)

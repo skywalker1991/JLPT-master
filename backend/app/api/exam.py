@@ -850,7 +850,8 @@ async def get_exam(paper_id: UUID, db: AsyncSession = Depends(get_db)):
                 instruction=prob.instruction, passage=prob.passage, transcript=prob.transcript,
                 media=[ExamMediaItem(id=m.id, url=m.url, caption=m.caption, seq=m.seq) for m in media],
                 items=[ItemSchema(id=i.id, seq=i.seq, num=i.num, stem=i.stem,
-                                  transcript=i.transcript, options=i.options, meta=i.meta) for i in items],
+                                  transcript=i.transcript, passage=i.passage,
+                                  options=i.options, meta=i.meta) for i in items],
             ))
 
         section_details.append(SectionDetail(
@@ -1026,10 +1027,13 @@ async def get_item_analysis(item_id: UUID, db: AsyncSession = Depends(get_db)):
     star_word = (item.options or {}).get(str(correct), "") if item.options else ""
 
     transcript = item.transcript or problem.transcript or ""
+    # Where a 問題 holds several texts, the question is about one of them.
+    # Handing the analyser all four is handing it three red herrings.
+    passage = item.passage or problem.passage or ""
     _LANG = "重要：所有 explanation、summary、meaning、connection、usage、example 等文字字段必须使用中文输出。\n\n"
     prompt = _LANG + prompt_tpl.format(
         stem=item.stem or "",
-        passage=problem.passage or "",
+        passage=passage,
         transcript=transcript,
         options=opts_text,
         correct=correct,
@@ -1090,6 +1094,12 @@ async def get_problem_analysis(problem_id: UUID, db: AsyncSession = Depends(get_
     if not items:
         raise HTTPException(status_code=404, detail="No items found for problem")
 
+    # This analyses the whole 問題, so it wants every text in it. Where the
+    # texts were split onto the items, the 問題 still holds them all together.
+    passage = problem.passage or "\n\n".join(
+        dict.fromkeys(i.passage for i in items if i.passage)
+    )
+
     prompt = "重要：所有 explanation、translation、meaning、connection、usage、example 等文字字段必须使用中文输出。\n\n"
 
     if problem.type == "reading_comp":
@@ -1101,7 +1111,7 @@ async def get_problem_analysis(problem_id: UUID, db: AsyncSession = Depends(get_
             )
         questions_info = "\n\n".join(questions_lines)
         prompt += _READING_COMP_PROBLEM_PROMPT.format(
-            passage=problem.passage or "",
+            passage=passage,
             questions_info=questions_info,
             schema_json=json.dumps(_READING_COMP_PROBLEM_SCHEMA, ensure_ascii=False),
         )
@@ -1115,7 +1125,7 @@ async def get_problem_analysis(problem_id: UUID, db: AsyncSession = Depends(get_
             )
         items_info = "\n\n".join(items_lines)
         prompt += _PASSAGE_FILL_PROBLEM_PROMPT.format(
-            passage=problem.passage or "",
+            passage=passage,
             items_info=items_info,
             schema_json=json.dumps(_PASSAGE_FILL_PROBLEM_SCHEMA, ensure_ascii=False),
         )
@@ -1319,7 +1329,7 @@ async def get_attempt_review(attempt_id: UUID, db: AsyncSession = Depends(get_db
             review_items = [
                 ReviewItem(
                     id=i.id, seq=i.seq, num=i.num, stem=i.stem,
-                    transcript=i.transcript, options=i.options, meta=i.meta,
+                    transcript=i.transcript, passage=i.passage, options=i.options, meta=i.meta,
                     user_answer=answers[i.id].user_answer if i.id in answers else None,
                     correct_answer=i.correct_answer if reveal else None,
                     is_correct=answers[i.id].is_correct if i.id in answers and reveal else None,
