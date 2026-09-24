@@ -91,6 +91,32 @@ function StatsSidebar({ stats }: { stats: AccuracyStats | null }) {
 
 // ─── Level badge ──────────────────────────────────────────────────────────────
 
+/** The countdown and accuracy on a phone: one line, not a column that would
+ *  take the screen the papers need — but not gone, which is what hiding the
+ *  sidebar did. */
+function StatsStrip({ stats }: { stats: AccuracyStats | null }) {
+  const { daysLeft } = useMemo(() => nextJlptDate(), [])
+  return (
+    <div className="md:hidden shrink-0 flex items-center gap-3 px-5 py-2 border-b border-border
+                    overflow-x-auto">
+      <span className="shrink-0 text-xs text-fg-muted">
+        <span className="font-bold text-fg">{daysLeft}</span> 天
+      </span>
+      {STAT_CATS.map(({ key, label, color }) => {
+        const cat = stats?.[key]
+        const pct = cat && cat.total > 0 ? Math.round(cat.correct / cat.total * 100) : null
+        return (
+          <span key={key} className="shrink-0 text-xs text-fg-muted flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }} />
+            {label}
+            <span className="text-fg font-medium">{pct !== null ? `${pct}%` : '—'}</span>
+          </span>
+        )
+      })}
+    </div>
+  )
+}
+
 function LevelBadge({ level }: { level: string }) {
   const colors: Record<string, string> = {
     N1: 'bg-red-100 text-red-700', N2: 'bg-orange-100 text-orange-700',
@@ -182,7 +208,7 @@ const SEC_SHORT: Record<string, string> = {
 
 function AttemptListPanel({
   paperId, refreshKey, activeAttemptId,
-  onViewResult, onContinue, onDelete,
+  onViewResult, onContinue, onDelete, onCount,
 }: {
   paperId: string
   refreshKey: number
@@ -190,6 +216,8 @@ function AttemptListPanel({
   onViewResult: (id: string) => void
   onContinue: (id: string) => void
   onDelete: (id: string) => void
+  /** So a phone can drop the whole card when there is nothing in it. */
+  onCount?: (n: number) => void
 }) {
   const [attempts, setAttempts] = useState<AttemptSummary[]>([])
   const [loading, setLoading] = useState(true)
@@ -197,9 +225,9 @@ function AttemptListPanel({
   useEffect(() => {
     setLoading(true)
     listPaperAttempts(paperId)
-      .then(setAttempts)
+      .then(list => { setAttempts(list); onCount?.(list.length) })
       .finally(() => setLoading(false))
-  }, [paperId, refreshKey])
+  }, [paperId, refreshKey, onCount])
 
   return (
     <div className="flex flex-col h-full">
@@ -207,12 +235,12 @@ function AttemptListPanel({
         <p className="section-label">考试记录</p>
       </div>
 
-      <div className="flex-1 overflow-y-auto py-2">
+      <div className="flex-1 md:flex-1 overflow-y-auto py-2">
         {loading && (
           <div className="flex justify-center py-6"><Loader2 className="w-4 h-4 animate-spin text-fg-muted" /></div>
         )}
         {!loading && attempts.length === 0 && (
-          <p className="text-xs text-fg-muted text-center py-6">暂无记录</p>
+          <p className="text-xs text-fg-muted text-center py-3">暂无记录</p>
         )}
         {attempts.map(a => {
           const total = a.score?.total
@@ -369,7 +397,7 @@ function ExamConfigPanel({
   }
 
   return (
-    <div className="flex flex-col items-center justify-center h-full px-8">
+    <div className="flex flex-col items-center md:justify-center h-full px-6 py-6 md:px-8 overflow-y-auto">
       <div className="w-full max-w-sm space-y-6">
         <div>
           <h3 className="text-lg font-bold text-fg mb-1">选择考试范围</h3>
@@ -472,6 +500,7 @@ function ExamDetailView({ paper, onBack }: { paper: ExamPaperList; onBack: () =>
   const [detailLoading, setDetailLoading] = useState(true)
   const [mode, setMode] = useState<DetailMode>({ type: 'config' })
   const [refreshKey, setRefreshKey] = useState(0)
+  const [attemptCount, setAttemptCount] = useState<number | null>(null)
 
   useEffect(() => {
     getExam(paper.id)
@@ -559,7 +588,10 @@ function ExamDetailView({ paper, onBack }: { paper: ExamPaperList; onBack: () =>
           in a column too narrow to hold its own buttons. */}
       <div className={[
         'card w-full md:w-52 shrink-0 flex-col overflow-hidden',
-        mode.type === 'session' ? 'hidden md:flex' : 'flex max-h-56 md:max-h-none',
+        mode.type === 'session' ? 'hidden md:flex'
+          // Nothing in it is worth nothing of a phone screen.
+          : attemptCount === 0 ? 'hidden md:flex'
+          : 'flex max-h-48 md:max-h-none',
       ].join(' ')}>
         <div className="px-4 py-3 border-b border-border shrink-0">
           <button
@@ -576,6 +608,7 @@ function ExamDetailView({ paper, onBack }: { paper: ExamPaperList; onBack: () =>
           {paper.source && <p className="text-xs text-fg-muted mt-0.5">{paper.source}</p>}
         </div>
         <AttemptListPanel
+          onCount={setAttemptCount}
           paperId={paper.id}
           refreshKey={refreshKey}
           activeAttemptId={activeAttemptId}
@@ -587,6 +620,21 @@ function ExamDetailView({ paper, onBack }: { paper: ExamPaperList; onBack: () =>
 
       {/* Right card: config / session */}
       <div className="card flex-1 flex flex-col min-h-0 overflow-hidden">
+        {/* The way back lives in the left card, which a phone does not show
+            while answering or before there is any history to show. */}
+        {mode.type !== 'session' && (
+          <div className="md:hidden shrink-0 flex items-center gap-2 px-4 py-2.5 border-b border-border">
+            <button
+              onClick={onBack}
+              className="flex items-center gap-1 text-xs text-fg-muted hover:text-fg transition-colors"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" />
+              返回
+            </button>
+            <p className="text-xs font-semibold text-fg truncate">{paper.title}</p>
+            <LevelBadge level={paper.level} />
+          </div>
+        )}
         {detailLoading && (
           <div className="flex items-center justify-center flex-1 gap-2 text-fg-muted">
             <Loader2 className="w-5 h-5 animate-spin" />
@@ -658,6 +706,7 @@ export default function JlptPage() {
 
       {/* Right: exam bank, or the mistakes gathered across every record */}
       <div className="card flex-1 flex flex-col min-h-0 overflow-hidden">
+        <StatsStrip stats={stats} />
         <div className="shrink-0 flex gap-1 px-5 pt-4">
           {([['papers', '试卷'], ['mistakes', '错题']] as const).map(([k, label]) => (
             <button
