@@ -10,6 +10,19 @@ import { AttachButton } from './AskPanel'
 
 interface Props { item: VocabItem }
 
+/** Examples arrive as 「日本語」→中文. Splitting them lets the Japanese read as
+ *  Japanese instead of sharing a monospace line with its translation; older
+ *  entries have no translation and simply render as one line. */
+export function Example({ text }: { text: string }) {
+  const [ja, zh] = text.split(/\s*(?:→|->)\s*/, 2)
+  return (
+    <div className="bg-surface/70 rounded-lg px-2.5 py-1.5 space-y-0.5">
+      <p className="text-sm text-fg leading-relaxed">{ja}</p>
+      {zh && <p className="text-xs text-fg-subtle leading-relaxed">{zh}</p>}
+    </div>
+  )
+}
+
 type Status = 'idle' | 'loading' | 'created' | 'exists' | 'error'
 
 const JLPT_BADGE: Record<string, string> = {
@@ -19,6 +32,8 @@ const JLPT_BADGE: Record<string, string> = {
 
 export default function VocabChip({ item }: Props) {
   const occurrence = useOccurrence(item.surface, item.surface_meaning)
+  /** The word appeared conjugated, so the dictionary form is worth showing too. */
+  const inflected = !!item.base && item.base !== item.surface
   const [expanded, setExpanded] = useState(false)
   const [status, setStatus]     = useState<Status>('idle')
   const [atomId, setAtomId]     = useState<string | null>(null)
@@ -95,7 +110,12 @@ export default function VocabChip({ item }: Props) {
             <span className={clsx('text-[0.6rem] font-medium shrink-0', style.text, 'opacity-70')}>{item.part_of_speech}</span>
           )}
         </div>
-        <span className="text-xs text-fg-muted mt-1 line-clamp-2 leading-snug w-full">{item.meaning}</span>
+        {/* The headline is the form in the text, so the gloss under it has to
+            be what that form means here — pairing an inflected headline with
+            the dictionary meaning is the mismatch this card used to show. */}
+        <span className="text-xs text-fg-muted mt-1 line-clamp-2 leading-snug w-full">
+          {item.surface_meaning || item.meaning}
+        </span>
       </div>
     )
   }
@@ -107,14 +127,25 @@ export default function VocabChip({ item }: Props) {
         onClick={() => setExpanded(false)}
       >
         <span className={clsx('font-bold text-base', style.text)}>{item.surface}</span>
-        {item.reading && item.reading !== item.surface && (
-          <span className="text-xs text-fg-muted font-mono">{item.reading}</span>
-        )}
         {badgeClass && <span className={badgeClass}>{item.jlpt_level}</span>}
         <span className="ml-auto text-xs text-fg-subtle">收起</span>
       </div>
       <div className="px-3.5 py-3 space-y-2" onClick={e => e.stopPropagation()}>
-        <p className="text-base font-medium text-fg">{item.meaning}</p>
+        {/* What this form means here, then the dictionary form behind it. The
+            reading belongs to the dictionary form, not to the inflected one. */}
+        <p className="text-base font-medium text-fg">{item.surface_meaning || item.meaning}</p>
+        {inflected && (
+          <p className="text-sm text-fg-muted">
+            <span className="text-fg-subtle">原形 </span>
+            <span className="font-semibold text-fg">{item.base}</span>
+            {item.reading && <span className="font-mono text-xs ml-1.5">{item.reading}</span>}
+            <span className="text-fg-subtle"> ＝ </span>
+            {item.meaning}
+          </p>
+        )}
+        {!inflected && item.reading && item.reading !== item.surface && (
+          <p className="text-sm text-fg-muted font-mono">{item.reading}</p>
+        )}
         {item.part_of_speech && <p className="text-sm text-fg-muted">{item.part_of_speech}</p>}
         {item.usage && <p className="text-sm text-fg-muted leading-relaxed">{item.usage}</p>}
         {item.nuance && (
@@ -122,11 +153,7 @@ export default function VocabChip({ item }: Props) {
             {item.nuance}
           </p>
         )}
-        {item.example && (
-          <p className="text-sm font-mono text-fg-muted bg-surface/70 rounded-lg px-2.5 py-1.5">
-            {item.example}
-          </p>
-        )}
+        {item.example && <Example text={item.example} />}
         <button
           onClick={handleIngest}
           disabled={status === 'loading'}

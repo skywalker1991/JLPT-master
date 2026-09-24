@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import clsx from 'clsx'
 import type { GrammarItem } from '../../types'
 import { createAtom } from '../../services/api'
+import { Example } from './VocabChip'
 import { useOccurrence } from './useOccurrence'
 import { AttachButton } from './AskPanel'
 import { useToast } from '../../context/ToastContext'
@@ -136,9 +137,7 @@ export default function GrammarCard({ item }: Props) {
             </p>
           )}
           {item.example && (
-            <p className="text-sm font-mono text-fg-muted bg-surface rounded-lg px-2.5 py-1.5">
-              {item.example}
-            </p>
+            <Example text={item.example} />
           )}
 
           {/* Similar candidates — left/right comparison */}
