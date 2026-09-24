@@ -135,6 +135,10 @@ export default {
       fontFamily: {
         sans: ['"Plus Jakarta Sans"', 'Inter', 'system-ui', 'sans-serif'],
         mono: ['"JetBrains Mono"', '"Fira Code"', 'Consolas', 'monospace'],
+        // 明朝体, for question text. The paper is set in it, and the system
+        // fallback is a gothic — the difference is the first thing you notice
+        // holding the real thing next to the screen.
+        jp: ['"Noto Serif JP"', '"Yu Mincho"', '"Hiragino Mincho ProN"', 'serif'],
       },
       fontSize: {
         '2xs': ['0.625rem', { lineHeight: '1rem' }],

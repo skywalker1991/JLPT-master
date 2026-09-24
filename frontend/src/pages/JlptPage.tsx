@@ -286,13 +286,28 @@ function AttemptListPanel({
 // ─── Exam config panel ────────────────────────────────────────────────────────
 
 function ExamConfigPanel({
-  detail, onStart,
+  detail, onStart, onContinue,
 }: {
   detail: ExamPaperDetail
   onStart: (sectionIds: string[], attemptId: string) => void
+  onContinue: (attemptId: string) => void
 }) {
   const [selected, setSelected] = useState<string[]>(detail.sections.map(s => s.id))
   const [starting, setStarting] = useState(false)
+  // Starting always made a new attempt, so every look at the paper left another
+  // 进行中 row behind. An unfinished one is almost always what was wanted.
+  const [unfinished, setUnfinished] = useState<AttemptSummary | null>(null)
+  // Until this has answered there is no honest button to show: rendering
+  // 开始考试 and swapping it for 继续 a moment later means a quick hand starts
+  // a second attempt over the first.
+  const [looked, setLooked] = useState(false)
+
+  useEffect(() => {
+    listPaperAttempts(detail.id)
+      .then(list => setUnfinished(list.find(a => a.status === 'in_progress') ?? null))
+      .catch(() => {})
+      .finally(() => setLooked(true))
+  }, [detail.id])
 
   function toggle(id: string) {
     setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
@@ -340,14 +355,37 @@ function ExamConfigPanel({
           ))}
         </div>
 
-        <button
-          onClick={handleStart}
-          disabled={starting || selected.length === 0}
-          className="w-full py-3 bg-accent text-on-accent rounded-xl font-semibold hover:bg-accent-hover disabled:opacity-40 transition-colors flex items-center justify-center gap-2"
-        >
-          {starting && <Loader2 className="w-4 h-4 animate-spin" />}
-          开始考试
-        </button>
+        {!looked ? (
+          <div className="w-full py-3 flex items-center justify-center">
+            <Loader2 className="w-4 h-4 animate-spin text-fg-muted" />
+          </div>
+        ) : unfinished ? (
+          <div className="space-y-2">
+            <button
+              onClick={() => onContinue(unfinished.attempt_id)}
+              className="w-full py-3 bg-accent text-on-accent rounded-xl font-semibold hover:bg-accent-hover transition-colors"
+            >
+              继续上次作答
+            </button>
+            <button
+              onClick={handleStart}
+              disabled={starting || selected.length === 0}
+              className="w-full py-2 text-sm text-fg-muted hover:text-fg disabled:opacity-40 transition-colors flex items-center justify-center gap-2"
+            >
+              {starting && <Loader2 className="w-4 h-4 animate-spin" />}
+              重新开始一次
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={handleStart}
+            disabled={starting || selected.length === 0}
+            className="w-full py-3 bg-accent text-on-accent rounded-xl font-semibold hover:bg-accent-hover disabled:opacity-40 transition-colors flex items-center justify-center gap-2"
+          >
+            {starting && <Loader2 className="w-4 h-4 animate-spin" />}
+            开始考试
+          </button>
+        )}
       </div>
     </div>
   )
@@ -489,7 +527,7 @@ function ExamDetailView({ paper, onBack }: { paper: ExamPaperList; onBack: () =>
           </div>
         )}
         {!detailLoading && detail && mode.type === 'config' && (
-          <ExamConfigPanel detail={detail} onStart={handleSessionStart} />
+          <ExamConfigPanel detail={detail} onStart={handleSessionStart} onContinue={handleContinue} />
         )}
         {!detailLoading && detail && mode.type === 'session' && (
           <ExamSession

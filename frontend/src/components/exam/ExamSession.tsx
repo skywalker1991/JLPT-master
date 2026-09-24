@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Brain, CheckCircle, ChevronLeft, ChevronRight, Loader2, X, XCircle } from 'lucide-react'
+import { ChevronDown, Brain, CheckCircle, ChevronLeft, ChevronRight, Loader2, X, XCircle } from 'lucide-react'
 import { submitAnswer, submitSection, completeAttempt } from '../../services/api'
 import type { ExamPaperDetail, ProblemDetail, ItemSchema, SectionDetail } from '../../types'
 import AnalysisPanel from './AnalysisPanel'
@@ -46,67 +46,105 @@ function QuestionNav({
   reviewMode?: boolean
   isCorrectMap?: Record<string, boolean | null>
 }) {
-  const sections: { name: string; entries: { idx: number; u: QuizUnit }[] }[] = []
-  for (let i = 0; i < units.length; i++) {
-    const u = units[i]
-    if (sections.length === 0 || sections[sections.length - 1].name !== u.sectionName) {
-      sections.push({ name: u.sectionName, entries: [] })
+  const [open, setOpen] = useState(false)
+  const current = units[unitIdx]
+  // Which section's numbers are on show. Defaults to the one being answered
+  // and follows it, but the whole paper stays reachable.
+  const [showing, setShowing] = useState(current.sectionId)
+  useEffect(() => setShowing(current.sectionId), [current.sectionId])
+
+  const sections: { id: string; name: string }[] = []
+  for (const u of units) {
+    if (!sections.some(x => x.id === u.sectionId)) {
+      sections.push({ id: u.sectionId, name: u.sectionName })
     }
-    sections[sections.length - 1].entries.push({ idx: i, u })
+  }
+
+  // One section at a time. All 106 numbers cost two rows and a scrollbar above
+  // every question, permanently, to show numbers that are rarely wanted.
+  const entries = units
+    .map((u, idx) => ({ idx, u }))
+    .filter(({ u }) => u.sectionId === showing)
+
+  const answeredCount = entries.filter(
+    ({ u }) => Object.keys(u.item.options).length > 0 && answers[u.item.id],
+  ).length
+  const answerable = entries.filter(({ u }) => Object.keys(u.item.options).length > 0).length
+
+  function colour(idx: number, u: QuizUnit) {
+    const { item } = u
+    const hasOptions = Object.keys(item.options).length > 0
+    if (idx === unitIdx) return 'bg-accent text-on-accent shadow-sm ring-2 ring-accent/30'
+    if (reviewMode) {
+      if (!hasOptions) return 'border border-border text-fg-muted'
+      if (!answers[item.id]) return 'bg-border/50 text-fg-muted'
+      const correct = isCorrectMap?.[item.id]
+      if (correct === false) return 'bg-danger/15 text-danger-fg border border-danger/30'
+      if (correct === true) return 'bg-success/15 text-success-fg border border-success/30'
+      return 'bg-border/50 text-fg-muted'
+    }
+    const done = submitted.has(u.sectionId)
+    if (done && answers[item.id]) return 'bg-success/15 text-success-fg border border-success/30'
+    if (done) return 'bg-border/60 text-fg-muted'
+    if (answers[item.id]) return 'bg-accent/15 text-accent'
+    return 'border border-border text-fg-muted hover:border-accent/50 hover:text-fg'
   }
 
   return (
-    <div className="shrink-0 border-b border-border bg-bg overflow-y-auto" style={{ maxHeight: 140 }}>
-      {sections.map(sec => (
-        <div key={sec.name} className="px-4 pt-2 pb-2">
-          <p className="text-[10px] font-semibold text-fg-muted uppercase tracking-wide mb-1.5">{sec.name}</p>
-          <div className="flex flex-wrap gap-1">
-            {sec.entries.map(({ idx, u }) => {
-              const { item } = u
-              const hasOptions = Object.keys(item.options).length > 0
-              const isCurrent = idx === unitIdx
-              const label = item.num != null ? String(item.num) : String(item.seq)
-              let colorClass: string
-              if (reviewMode) {
-                const answered = hasOptions && !!answers[item.id]
-                const correct = isCorrectMap?.[item.id]
-                colorClass = isCurrent
-                  ? 'bg-accent text-on-accent shadow-sm ring-2 ring-accent/30'
-                  : !hasOptions
-                  ? 'border border-border text-fg-muted'
-                  : !answered
-                  ? 'bg-border/50 text-fg-muted'
-                  : correct === false
-                  ? 'bg-danger/15 text-danger-fg border border-danger/30'
-                  : correct === true
-                  ? 'bg-success/15 text-success-fg border border-success/30'
-                  : 'bg-border/50 text-fg-muted'
-              } else {
-                const isAnswered = !!answers[item.id]
-                const isDone = submitted.has(u.sectionId)
-                colorClass = isCurrent
-                  ? 'bg-accent text-on-accent shadow-sm ring-2 ring-accent/30'
-                  : isDone && isAnswered
-                  ? 'bg-success/15 text-success-fg border border-success/30'
-                  : isDone
-                  ? 'bg-border/60 text-fg-muted'
-                  : isAnswered
-                  ? 'bg-accent/15 text-accent'
-                  : 'border border-border text-fg-muted hover:border-accent/50 hover:text-fg'
-              }
-              return (
+    <div className="shrink-0 border-b border-border bg-bg">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center gap-2 px-4 py-1.5 text-xs text-fg-muted hover:text-fg transition-colors"
+      >
+        <ChevronDown className={`w-3.5 h-3.5 transition-transform ${open ? '' : '-rotate-90'}`} />
+        题号
+        <span className="text-fg-subtle">{answeredCount}/{answerable}</span>
+        {!open && (
+          <span className="ml-auto flex items-center gap-1">
+            {entries.slice(0, 24).map(({ idx, u }) => (
+              <span
+                key={u.item.id}
+                className={`w-1.5 h-1.5 rounded-full ${
+                  idx === unitIdx ? 'bg-accent'
+                    : answers[u.item.id] ? 'bg-accent/40' : 'bg-border'
+                }`}
+              />
+            ))}
+          </span>
+        )}
+      </button>
+      {open && (
+        <div className="px-4 pb-2 space-y-2">
+          {sections.length > 1 && (
+            <div className="flex gap-1">
+              {sections.map(sec => (
                 <button
-                  key={item.id}
-                  onClick={() => onSelect(idx)}
-                  className={`w-8 h-8 text-xs font-semibold rounded-lg transition-all ${colorClass}`}
+                  key={sec.id}
+                  onClick={() => setShowing(sec.id)}
+                  className={`px-2 py-0.5 rounded text-[11px] transition-colors ${
+                    sec.id === showing
+                      ? 'bg-fg/10 text-fg font-medium'
+                      : 'text-fg-subtle hover:text-fg'
+                  }`}
                 >
-                  {label}
+                  {sec.name}
                 </button>
-              )
-            })}
+              ))}
+            </div>
+          )}
+          <div className="flex flex-wrap gap-1">
+          {entries.map(({ idx, u }) => (
+            <button
+              key={u.item.id}
+              onClick={() => { onSelect(idx); setOpen(false) }}
+              className={`w-8 h-8 text-xs font-semibold rounded-lg transition-all ${colour(idx, u)}`}
+            >
+              {u.item.num ?? u.item.seq}
+            </button>
+          ))}
           </div>
         </div>
-      ))}
+      )}
     </div>
   )
 }
@@ -154,8 +192,14 @@ function ItemDisplay({
       {item.stem && (
         isSentenceOrder
           ? <><span className="text-xs text-fg-muted">{item.num != null ? `Q${item.num}. ` : ''}</span><SentenceOrderStem stem={item.stem} /></>
-          : <p className="text-base text-fg leading-relaxed">
-              {item.num != null && <span className="text-xs text-fg-muted mr-1">Q{item.num}.</span>}
+          : <p className="font-jp text-base text-fg leading-loose">
+              {item.num != null && (
+                // The paper prints the number reversed out of a filled square.
+                <span className="inline-flex items-center justify-center w-6 h-6 mr-2 rounded-sm
+                                 bg-fg text-bg text-xs font-sans font-bold align-middle">
+                  {item.num}
+                </span>
+              )}
               <Stem text={item.stem} />
             </p>
       )}
@@ -169,7 +213,13 @@ function ItemDisplay({
         </div>
       )}
       {Object.keys(item.options).length > 0 ? (
-        <div className="space-y-2">
+        // The paper sets the four choices on one line where they are short —
+        // readings, particles — and stacks them where they are sentences.
+        <div className={
+          OPTS.filter(k => k in item.options).every(k => (item.options[k] ?? '').length <= 14)
+            ? 'flex flex-wrap gap-x-6 gap-y-2'
+            : 'space-y-2'
+        }>
           {OPTS.filter(k => k in item.options).map(k => {
             const isCorrectOpt = reviewMode && k === correctAnswer
             // Mark red only when we know the correct answer and this isn't it
@@ -183,19 +233,25 @@ function ItemDisplay({
                 onClick={() => !reviewMode && onSelect(k)}
                 disabled={reviewMode}
                 className={[
-                  'w-full flex items-start gap-3 px-4 py-3 rounded-xl border text-sm text-left transition-all disabled:cursor-default',
+                  'flex items-start gap-2 px-2.5 py-2 rounded-lg font-jp text-[15px] leading-relaxed',
+                  'text-left transition-colors disabled:cursor-default',
                   isCorrectOpt
-                    ? 'border-success bg-success-light text-success-fg font-medium'
+                    ? 'bg-success-light text-success-fg font-semibold'
                     : isWrongUser
-                    ? 'border-danger bg-danger-light text-danger-fg'
+                    ? 'bg-danger-light text-danger-fg'
                     : isNeutralPick
-                    ? 'border-accent/50 bg-accent-light/40 text-fg'
+                    ? 'bg-accent-light/40 text-fg'
                     : isSelected
-                    ? 'border-accent bg-accent-light text-accent-fg font-medium shadow-sm'
-                    : 'border-border hover:border-accent/40 hover:bg-accent-light/30',
+                    ? 'bg-accent-light text-accent-fg font-semibold'
+                    : 'hover:bg-accent-light/30',
                 ].join(' ')}
               >
-                <span className="shrink-0 font-bold text-xs mt-0.5 w-4">{k}</span>
+                {/* The paper prints the choice number in a thin circle. */}
+                <span className={[
+                  'shrink-0 w-5 h-5 mt-0.5 rounded-full border text-[11px] font-sans font-bold',
+                  'inline-flex items-center justify-center',
+                  isSelected || isCorrectOpt ? 'border-current' : 'border-fg-subtle text-fg-muted',
+                ].join(' ')}>{k}</span>
                 <span>{item.options[k]}</span>
                 {isCorrectOpt && <CheckCircle className="w-4 h-4 ml-auto shrink-0 mt-0.5 text-success" />}
                 {isWrongUser && <XCircle className="w-4 h-4 ml-auto shrink-0 mt-0.5 text-danger" />}
@@ -376,7 +432,7 @@ export default function ExamSession({
             {prob.name}
           </span>
           {prob.instruction && (
-            <p className="text-xs text-fg-muted">{prob.instruction}</p>
+            <p className="font-jp text-xs text-fg-muted leading-relaxed">{prob.instruction}</p>
           )}
         </div>
 
@@ -386,7 +442,8 @@ export default function ExamSession({
           <Passage
             text={item.passage ?? prob.passage!}
             active={prob.type === 'passage_fill' ? item.num : null}
-            className="bg-bg border border-border rounded-xl p-4 text-sm text-fg leading-relaxed whitespace-pre-wrap max-h-56 overflow-y-auto"
+            className="font-jp bg-bg border border-border rounded-lg px-5 py-4 text-[15px] text-fg
+                       leading-[2] whitespace-pre-wrap max-h-72 overflow-y-auto"
           />
         )}
 
@@ -452,7 +509,12 @@ export default function ExamSession({
           <ChevronLeft className="w-4 h-4" />
           上一题
         </button>
-        <span className="text-xs text-fg-muted">{unitIdx + 1} / {units.length}</span>
+        {/* Scoped to the section, like the header — one counter said 41/106
+            while the other said 0/45, and neither was wrong. */}
+        <span className="text-xs text-fg-muted">
+          第 {currentSectionUnits.findIndex(u => u.item.id === item.id) + 1} 题
+          <span className="text-fg-subtle"> / 本节 {currentSectionUnits.length}</span>
+        </span>
         <button
           onClick={() => setUnitIdx(i => Math.min(units.length - 1, i + 1))}
           disabled={unitIdx === units.length - 1}
