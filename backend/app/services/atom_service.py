@@ -250,6 +250,7 @@ async def record_occurrence(
     *,
     analysis_id: UUID | None = None,
     sentence_index: int | None = None,
+    sentence_text_translation: str | None = None,
     surface: str | None = None,
     surface_meaning: str | None = None,
 ) -> None:
@@ -274,6 +275,7 @@ async def record_occurrence(
         surface=surface,
         surface_meaning=surface_meaning,
         sentence_text=sentence_text,
+        sentence_translation=sentence_text_translation,
     ))
     await db.flush()
 

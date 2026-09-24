@@ -98,3 +98,26 @@ def test_surface_details_are_optional():
     """Not every path knows the inflected form — the sentence alone is useful."""
     occ = OccurrenceInput(sentence_text=SENTENCE)
     assert occ.surface is None and occ.surface_meaning is None
+
+
+def test_the_sentence_translation_rides_along():
+    """A Japanese sentence with no translation is a weak anchor when reviewing,
+    and the analysis already produced one per sentence."""
+    db = _FakeDB()
+    req = CreateAtomRequest(
+        type="vocabulary", key="尊ぶ",
+        occurrence=OccurrenceInput(
+            sentence_text=SENTENCE,
+            sentence_translation="多年来一直受到当地居民的尊敬。",
+            surface="尊ばれた",
+        ),
+    )
+    db._probe = (SENTENCE, "尊ばれた")
+    asyncio.run(atoms_api._record_occurrence(db, "a1", req))
+    assert db.rows[0].sentence_translation == "多年来一直受到当地居民的尊敬。"
+
+
+def test_a_translation_is_optional():
+    """Video subtitles and older records may not have one."""
+    occ = OccurrenceInput(sentence_text=SENTENCE)
+    assert occ.sentence_translation is None

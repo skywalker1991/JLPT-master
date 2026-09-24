@@ -196,7 +196,7 @@ export default function AnalysisPage() {
 
         {/* Results area */}
         {hasResults ? (
-          <AskContext.Provider value={{ analysisId, sentenceIndex: selectedIndex, sentenceText: selectedSentence?.preprocessed.text ?? null, asks, addAsk, busy: isStreaming, attached, setAttached, composerRef }}>
+          <AskContext.Provider value={{ analysisId, sentenceIndex: selectedIndex, sentenceText: selectedSentence?.preprocessed.text ?? null, sentenceTranslation: selectedSentence?.analysis?.translation ?? null, asks, addAsk, busy: isStreaming, attached, setAttached, composerRef }}>
           <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
 
             {/* Sentence nav */}

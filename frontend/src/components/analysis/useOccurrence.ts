@@ -23,6 +23,7 @@ export function useOccurrence(
     analysis_id: ctx.analysisId,
     occurrence: {
       sentence_text: ctx.sentenceText,
+      sentence_translation: ctx.sentenceTranslation,
       sentence_index: ctx.sentenceIndex,
       surface: surface ?? null,
       surface_meaning: surfaceMeaning ?? null,

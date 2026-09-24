@@ -12,6 +12,7 @@ class OccurrenceInput(BaseModel):
     """Where this atom was met. `key` is the dictionary form and carries the
     stable meaning; everything tied to this one encounter belongs here."""
     sentence_text: str
+    sentence_translation: str | None = None
     sentence_index: int | None = None
     surface: str | None = None          # the form in the text, e.g. 尊ばれた
     surface_meaning: str | None = None  # what it meant there, e.g. 受到尊重

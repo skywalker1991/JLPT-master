@@ -106,6 +106,7 @@ export interface AtomDetail {
     surface: string | null
     surface_meaning: string | null
     sentence_text: string
+    sentence_translation: string | null
     created_at: string
   }[]
   traces_summary: { added_at: string; duplicate_count: number; property_count: number }
@@ -113,6 +114,7 @@ export interface AtomDetail {
 
 export interface OccurrenceInput {
   sentence_text: string
+  sentence_translation?: string | null
   sentence_index?: number | null
   /** The form the word took in the text, e.g. 尊ばれた */
   surface?: string | null

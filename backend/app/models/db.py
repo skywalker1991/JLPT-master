@@ -181,6 +181,7 @@ class AtomOccurrence(Base):
     surface = Column(String(100), nullable=True)          # the form in the text, e.g. 尊ばれた
     surface_meaning = Column(Text, nullable=True)         # what it meant there, e.g. 受到尊重
     sentence_text = Column(Text, nullable=False)
+    sentence_translation = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
 
     analysis = relationship("Analysis", back_populates="occurrences")

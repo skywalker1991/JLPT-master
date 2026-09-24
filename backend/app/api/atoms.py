@@ -56,6 +56,7 @@ async def _record_occurrence(db: AsyncSession, atom_id: UUID, request: CreateAto
         db, atom_id, occ.sentence_text,
         analysis_id=request.analysis_id,
         sentence_index=occ.sentence_index,
+        sentence_text_translation=occ.sentence_translation,
         surface=occ.surface,
         surface_meaning=occ.surface_meaning,
     )
@@ -468,6 +469,7 @@ async def get_atom(atom_id: UUID, db: AsyncSession = Depends(get_db)):
             "surface": o.surface,
             "surface_meaning": o.surface_meaning,
             "sentence_text": o.sentence_text,
+            "sentence_translation": o.sentence_translation,
             "created_at": o.created_at.isoformat() if o.created_at else None,
         }
         for o in await atom_service.get_occurrences(db, atom_id)

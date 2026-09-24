@@ -15,6 +15,7 @@ interface AskContextValue {
   /** The sentence on screen — saved with any word added from it, so the
    *  knowledge base keeps the context the word was met in. */
   sentenceText: string | null
+  sentenceTranslation: string | null
   asks: AskEntry[]
   addAsk: (entry: AskEntry) => void
   /** The analysis is still running: its record can't be updated yet */

@@ -317,6 +317,7 @@ export default function VideoPage() {
               analysisId: selected?.analysisId ?? null,
               sentenceIndex: selected ? selectedIdx : null,
               sentenceText: selected?.entry.text ?? null,
+              sentenceTranslation: selected?.analysis?.translation ?? selected?.entry.zh ?? null,
               asks: selected?.asks ?? [],
               addAsk,
               busy: selected?.isAnalyzing ?? false,

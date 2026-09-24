@@ -170,7 +170,10 @@ export default function AtomDetailView({ detail }: AtomDetailViewProps) {
                     )}
                   </div>
                 )}
-                <p className="text-sm text-fg-muted leading-relaxed">{o.sentence_text}</p>
+                <p className="text-sm text-fg leading-relaxed">{o.sentence_text}</p>
+                {o.sentence_translation && (
+                  <p className="text-xs text-fg-subtle leading-relaxed mt-1">{o.sentence_translation}</p>
+                )}
               </div>
             ))}
           </div>
