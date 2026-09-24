@@ -157,3 +157,91 @@ def test_items_only_one_source_covers_are_not_treated_as_disagreements():
     sheet = parse_answer_sheet(SHEET)
     assert len(sheet.written) > len(parse_explanations(EXPLANATIONS).written)
     assert cross_check(sheet, parse_explanations(EXPLANATIONS)) == []
+
+
+# --- what a second sitting changed --------------------------------------------
+#
+# 2019年07月 printed the same information differently in three ways, each of
+# which silently produced fewer answers rather than an error.
+
+SHEET_2019 = """
+2019 年7 月日语能力测试N1 答案
+第一部分
+1-6 7-13 14-19 20-25
+442132 3411234 214312 432132
+26-35 36-40 41-45
+23413 12314 23412 32241
+排序题答案：
+36→1423 37→4231 38→3142 39→2143 40→4213
+第二部分
+46-49 50-57 58-61 62-63
+3243 322 144 43 3141 32
+"""
+
+
+def test_ranges_and_answers_each_sharing_one_line_still_pair_up():
+    """2018 printed one range per line; 2019 puts four on a line with their
+    answers on the next. Requiring a run to stand alone found nothing."""
+    key = parse_answer_sheet(SHEET_2019)
+    assert [key.written[n] for n in range(1, 7)] == list("442132")
+    assert [key.written[n] for n in range(7, 14)] == list("3411234")
+
+
+def test_a_range_whose_answers_are_split_across_runs_is_still_filled():
+    """26-35 is ten items printed as "23413 12314" — matching a run to a range
+    by length drops it entirely."""
+    key = parse_answer_sheet(SHEET_2019)
+    assert [key.written[n] for n in range(26, 36)] == list("2341312314")
+
+
+def test_runs_that_ignore_range_boundaries_are_cut_by_width():
+    """"3243 322 144 43 3141 32" spans four ranges of 4, 8, 4 and 2."""
+    key = parse_answer_sheet(SHEET_2019)
+    assert [key.written[n] for n in range(46, 50)] == list("3243")
+    assert [key.written[n] for n in range(50, 58)] == list("32214443")
+    assert [key.written[n] for n in range(62, 64)] == list("32")
+
+
+def test_sentence_order_answers_are_not_eaten_by_the_range_scan():
+    """"36→1423" is four option digits sitting among the ranges."""
+    key = parse_answer_sheet(SHEET_2019)
+    assert key.orders[36] == "1423"
+    # 36-40 is its own range, and 26-35 takes ten digits before it.
+    assert key.written[36] == "2"
+
+
+EXPLANATIONS_2019 = """
+2019 年7 月日语能力考试N1 文字解析
+1 正解：4
+解析：对那种态度激烈地生气了。
+2 正解：4
+36、答案：1423
+37、答案：4231
+2019 年7 月N1 听力原文
+第五题 63 正解：2
+男：新会计系统的启用，好像要延后一个月左右了。
+"""
+
+
+def test_an_item_number_without_its_punctuation_is_still_read():
+    """2018 wrote "1、正解：2" and 2019 "1 正解：4"."""
+    assert parse_explanations(EXPLANATIONS_2019).written[1] == "4"
+
+
+def test_the_booklet_also_says_答案_where_it_said_正解():
+    assert parse_explanations(EXPLANATIONS_2019).orders[36] == "1423"
+
+
+def test_listening_explanations_do_not_pose_as_written_items():
+    """Listening is numbered inside its 問題, so "63 正解：2" under 听力原文 is
+    問題5's third item. Read as written item 63 it contradicted an answer sheet
+    that was right — a conflict reported against nothing."""
+    key = parse_explanations(EXPLANATIONS_2019)
+    assert 63 not in key.written
+
+
+def test_an_ordering_is_not_read_as_a_single_option():
+    """"36、答案：1423" must not land in written as "1"."""
+    key = parse_explanations(EXPLANATIONS_2019)
+    assert 36 not in key.written
+    assert key.orders[36] == "1423"

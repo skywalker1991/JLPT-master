@@ -25,12 +25,20 @@ from dataclasses import dataclass, field
 
 #: "1-6" … then "241243" on its own line further down.
 _RANGE = re.compile(r"(\d{1,3})\s*[-–—]\s*(\d{1,3})")
-#: A run of option digits standing alone — the answers for one range.
-_DIGITS = re.compile(r"^[\s|｜]*([1-4]{2,})[\s|｜]*$", re.M)
+#: A run of option digits. Not anchored to a line: sheets print the ranges on
+#: one line and their answers on the next, and the runs are broken by spaces
+#: wherever they happen to fall rather than at 問題 boundaries.
+_DIGITS = re.compile(r"(?<![0-9\-])([1-4]{2,})(?![0-9\-])")
 #: 並べ替え: "36→3412", the whole ordering rather than one option.
 _ORDER = re.compile(r"(\d{1,3})\s*[→>]\s*([1-4]{4})")
-#: 解析 booklet, written section: "1、正解：2"
-_SOLUTION = re.compile(r"(?:^|\n)\s*(\d{1,3})\s*[、.．]\s*正解\s*[：:]\s*([1-4])")
+#: 解析 booklet, written section. The separator after the item number is not
+#: reliable — 2018 wrote "1、正解：2" and 2019 "1 正解：4" — and the heading
+#: itself alternates between 正解 and 答案.
+_SOLUTION = re.compile(
+    r"(?:^|\n)\s*(\d{1,3})\s*[、.．]?\s*(?:正解|答案)\s*[：:]\s*([1-4])(?![0-9])"
+)
+#: 並べ替え stated as a whole ordering inside the booklet: "36、答案：1423".
+_SOLUTION_ORDER = re.compile(r"(\d{1,3})\s*[、.．]?\s*(?:正解|答案)\s*[：:]\s*([1-4]{4})(?![0-9])")
 #: 解析 booklet, listening: "6 番 正解：4" — numbered within its 問題.
 _SOLUTION_BAN = re.compile(r"(\d{1,2})\s*番\s*正解\s*[：:]\s*([1-4])")
 #: "问题3" / "問題3" heading in the listening part of an answer sheet.
@@ -64,27 +72,63 @@ def parse_answer_sheet(text: str, listening_counts: dict[int, int] | None = None
     """
     key = AnswerKey()
 
-    ranges = [(int(a), int(b)) for a, b in _RANGE.findall(text)]
-    runs = _DIGITS.findall(text)
+    # 排序題 answers ("36→1423") are digits too, and belong to a different
+    # question type; take them out before anything counts digit runs.
+    # Listening lives under 问题N headings and is numbered inside each 問題,
+    # so its digits must not be poured into the written numbering. Cutting at
+    # the last "部分" happened to work on one sheet and dropped 18 items on
+    # another whose listening part was not last.
+    listening_at = _LISTENING_GROUP.search(text)
+    written_region = text[: listening_at.start()] if listening_at else text
+    written_region = _ORDER.sub(" ", written_region)
 
-    # Ranges and runs appear in the same order but not interleaved, and a run
-    # only belongs to a range if their lengths agree — which also skips runs
-    # that are something else entirely.
-    remaining = list(runs)
-    for low, high in ranges:
-        width = high - low + 1
-        match = next((r for r in remaining if len(r) == width), None)
-        if match is None:
-            continue
-        remaining.remove(match)
-        for offset, num in enumerate(range(low, high + 1)):
-            key.written[num] = match[offset]
+    _allocate_ranges(written_region, key)
 
     for num, order in _ORDER.findall(text):
         key.orders[int(num)] = order
 
     _parse_listening_groups(text, key, listening_counts)
     return key
+
+
+def _allocate_ranges(text: str, key: AnswerKey) -> None:
+    """Pair "1-6 7-13 …" with the digits printed under them.
+
+    Sheets vary in ways that defeat matching a range to a run by length. 2018
+    printed one range and one run per line; 2019 puts four ranges on a line and
+    their answers on the next, and splits a ten-item range into two runs of
+    five. So ranges are collected until digits appear, the digits are
+    concatenated, and the range widths say where to cut.
+    """
+    tokens: list[tuple[str, object]] = []
+    for match in re.finditer(r"(\d{1,3})\s*[-–—]\s*(\d{1,3})|([1-4]{2,})", text):
+        if match.group(1):
+            tokens.append(("range", (int(match.group(1)), int(match.group(2)))))
+        else:
+            tokens.append(("digits", match.group(3)))
+
+    pending: list[tuple[int, int]] = []
+    buffer = ""
+
+    def flush() -> None:
+        nonlocal pending, buffer
+        position = 0
+        for low, high in pending:
+            width = high - low + 1
+            chunk = buffer[position: position + width]
+            for offset, num in enumerate(range(low, low + len(chunk))):
+                key.written[num] = chunk[offset]
+            position += width
+        pending, buffer = [], ""
+
+    for kind, value in tokens:
+        if kind == "range":
+            if buffer:
+                flush()
+            pending.append(value)
+        else:
+            buffer += value
+    flush()
 
 
 def _parse_listening_groups(text: str, key: AnswerKey, counts: dict[int, int] | None) -> None:
@@ -100,7 +144,8 @@ def _parse_listening_groups(text: str, key: AnswerKey, counts: dict[int, int] | 
     if not counts:
         return
 
-    region = text[text.rfind("部分"):] if "部分" in text else text
+    listening_at = _LISTENING_GROUP.search(text)
+    region = text[listening_at.start():] if listening_at else text
     tokens: list[tuple[str, str]] = []
     for match in re.finditer(r"[问問]题?\s*([1-5])|([1-4]{2,})", region):
         if match.group(1):
@@ -131,11 +176,32 @@ def _parse_listening_groups(text: str, key: AnswerKey, counts: dict[int, int] | 
     flush()
 
 
+#: Where the booklet stops explaining the written booklet and starts on 聴解.
+#: Both sittings head it the same way, and it matters: listening items are
+#: numbered inside their 問題, so "63 正解：2" down there is 問題5's third item,
+#: not written item 63 — which is what made a cross-check report a conflict
+#: against an answer sheet that was right.
+_LISTENING_SECTION = re.compile(r"听力原文|聴解原文|听力解析")
+
+
 def parse_explanations(text: str) -> AnswerKey:
-    """The 解析 booklet, which states an answer alongside each explanation."""
+    """The 解析 booklet, which states an answer alongside each explanation.
+
+    Only the written half is read. The listening half restates answers against
+    its own numbering, which would collide with written item numbers.
+    """
+    boundary = _LISTENING_SECTION.search(text)
+    if boundary:
+        text = text[: boundary.start()]
+
     key = AnswerKey()
+    # Orderings first: a four-digit answer would otherwise be read as a single
+    # option followed by stray digits.
+    for num, order in _SOLUTION_ORDER.findall(text):
+        key.orders[int(num)] = order
     for num, answer in _SOLUTION.findall(text):
-        key.written[int(num)] = answer
+        if int(num) not in key.orders:
+            key.written[int(num)] = answer
     return key
 
 
