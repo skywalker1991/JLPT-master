@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 from sqlalchemy import (
     Column, String, Text, DateTime, ForeignKey, UniqueConstraint,
-    CheckConstraint, Index, Integer, SmallInteger, Boolean, text, func
+    CheckConstraint, Index, Integer, SmallInteger, Boolean, LargeBinary, text, func
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
@@ -250,6 +250,7 @@ class ExamProblem(Base):
     type = Column(String(30), nullable=False)
     instruction = Column(Text, nullable=True)
     passage = Column(Text, nullable=True)
+    passage_translation = Column(Text, nullable=True)   # 解析 PDFs carry one per 読解 passage
     transcript = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
 
@@ -280,12 +281,18 @@ class ExamItem(Base):
     transcript = Column(Text, nullable=True)
     options = Column(JSONB, nullable=False, server_default=text("'{}'"))
     correct_answer = Column(String(1), nullable=True)
+    # 並べ替え: the full ordering, e.g. "3412". correct_answer is whichever of
+    # these sits in the ★ slot; without the ordering, review can name the
+    # answer but never show the sentence put right.
+    answer_order = Column(String(8), nullable=True)
     meta = Column(JSONB, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
 
     problem = relationship("ExamProblem", back_populates="items")
     analysis = relationship("QuestionAnalysis", back_populates="item", uselist=False,
                             cascade="all, delete-orphan")
+    media = relationship("ExamMedia", back_populates="item", cascade="all, delete-orphan",
+                         order_by="ExamMedia.seq")
 
     __table_args__ = (
         Index("ix_exam_items_problem_id", "problem_id"),
@@ -294,21 +301,33 @@ class ExamItem(Base):
 
 
 class ExamMedia(Base):
-    """Image attachments for a Problem."""
+    """An image or audio clip belonging to a problem or to a single item.
+
+    Listening audio is per 番 — per item — so it cannot hang off the problem
+    the way option images do. Synthesised clips are held as bytes rather than
+    a path: the app runs in a container, where a written file is gone after a
+    restart, and a clip is tens of KB.
+    """
     __tablename__ = "exam_media"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    problem_id = Column(UUID(as_uuid=True), ForeignKey("exam_problems.id", ondelete="CASCADE"), nullable=False)
+    problem_id = Column(UUID(as_uuid=True), ForeignKey("exam_problems.id", ondelete="CASCADE"), nullable=True)
+    item_id = Column(UUID(as_uuid=True), ForeignKey("exam_items.id", ondelete="CASCADE"), nullable=True)
     media_type = Column(String(10), nullable=False, server_default=text("'image'"))
-    url = Column(Text, nullable=False)
+    url = Column(Text, nullable=True)
+    data = Column(LargeBinary, nullable=True)
     caption = Column(Text, nullable=True)
     seq = Column(Integer, nullable=False, server_default=text("0"))
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
 
     problem = relationship("ExamProblem", back_populates="media")
+    item = relationship("ExamItem", back_populates="media")
 
     __table_args__ = (
+        CheckConstraint("problem_id IS NOT NULL OR item_id IS NOT NULL", name="ck_exam_media_owner"),
+        CheckConstraint("url IS NOT NULL OR data IS NOT NULL", name="ck_exam_media_payload"),
         Index("ix_exam_media_problem_id", "problem_id"),
+        Index("ix_exam_media_item_id", "item_id"),
     )
 
 
@@ -337,6 +356,9 @@ class QuestionAnalysis(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     item_id = Column(UUID(as_uuid=True), ForeignKey("exam_items.id", ondelete="CASCADE"),
                      nullable=False, unique=True)
+    # 'official' comes from the 解析 PDF, 'ai' is generated on demand. Worth
+    # telling apart: one is authoritative, the other is a model's best effort.
+    source = Column(String(10), nullable=False, server_default=text("'ai'"))
     session_data = Column(JSONB, nullable=True)
     relations_suggested = Column(JSONB, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
