@@ -5,6 +5,7 @@ import type { ExamPaperDetail, ProblemDetail, ItemSchema, SectionDetail } from '
 import AnalysisPanel from './AnalysisPanel'
 import ReportItemButton from './ReportItemButton'
 import Passage from './Passage'
+import PlayAudio from './PlayAudio'
 import Stem from './Stem'
 
 // ─── Quiz unit ────────────────────────────────────────────────────────────────
@@ -201,6 +202,12 @@ function ItemDisplay({
       {isSentenceOrder && (
         <p className="text-xs text-fg-muted">选择填入 <span className="inline-flex items-center justify-center w-5 h-5 rounded bg-accent text-on-accent text-[10px] font-bold align-middle">★</span> 处的词语：</p>
       )}
+      {/* 聴解 is answered from the audio, and the audio is the only thing the
+          paper does not print. Without this the section cannot be attempted. */}
+      {problemType === 'listening' && item.transcript && (
+        <div className="py-1"><PlayAudio itemId={item.id} /></div>
+      )}
+
       {/* Only once the section is answered. 聴解 is answered from the audio;
           printing the dialogue beside the choices turns every listening
           question into a reading one — which is what it did the moment the

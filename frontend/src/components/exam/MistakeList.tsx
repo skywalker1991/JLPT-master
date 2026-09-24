@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { ChevronDown, Loader2 } from 'lucide-react'
 import { listMistakes } from '../../services/api'
 import AnalysisPanel from './AnalysisPanel'
+import PlayAudio from './PlayAudio'
 import Stem from './Stem'
 import type { MistakeItem } from '../../types'
 
@@ -117,6 +118,9 @@ export default function MistakeList() {
                       )
                     })}
                   </div>
+                  {m.category === 'listening' && (
+                    <PlayAudio itemId={m.item_id} />
+                  )}
                   <AnalysisPanel itemId={m.item_id} />
                 </div>
               )}

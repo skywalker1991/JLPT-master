@@ -310,6 +310,15 @@ export async function getExam(paperId: string): Promise<ExamPaperDetail> {
 }
 
 /** `problemIds` is what this run sets out to cover; omitted, it is the paper. */
+/** Synthesise this question's dialogue, or return the clip already stored. */
+export async function makeItemAudio(itemId: string): Promise<{ media_id: string; cached: boolean }> {
+  return request(`/api/items/${itemId}/audio`, { method: 'POST' })
+}
+
+export function mediaUrl(mediaId: string): string {
+  return `${BASE_URL}/api/media/${mediaId}`
+}
+
 export async function listMistakes(category?: string): Promise<MistakeItem[]> {
   const q = category ? `?category=${category}` : ''
   return request<MistakeItem[]>(`/api/mistakes${q}`)

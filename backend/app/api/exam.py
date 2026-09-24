@@ -2,7 +2,7 @@ import json
 import logging
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response
 from sqlalchemy import delete, distinct, select, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,6 +22,7 @@ from app.schemas.exam import (
 )
 from app.services.llm.factory import get_llm_client
 from app.services import exam_edit
+from app.services.tts import TTSUnavailable, speak
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["exam"])
@@ -944,7 +945,9 @@ async def submit_answer(
 @router.post("/attempts/{attempt_id}/sections/{section_id}/submit",
              response_model=SubmitSectionResponse)
 async def submit_section(
-    attempt_id: UUID, section_id: UUID, db: AsyncSession = Depends(get_db),
+    attempt_id: UUID, section_id: UUID,
+    background: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
 ):
     attempt = await db.get(ExamAttempt, attempt_id)
     if attempt is None:
@@ -988,6 +991,12 @@ async def submit_section(
     )
     await db.commit()
 
+    # Explain what went wrong while the score is being read, rather than making
+    # the explanation something to wait for when it is asked for.
+    wrong = [i.id for i in items if i.id in answers and not answers[i.id].is_correct]
+    if wrong:
+        background.add_task(prepare_analyses, wrong)
+
     answer_details = [
         SectionAnswerDetail(
             item_id=str(i.id),
@@ -1024,55 +1033,11 @@ async def get_item_analysis(item_id: UUID, db: AsyncSession = Depends(get_db)):
             relations_suggested=[], cached=True,
         )
 
-    schema = _SCHEMAS.get(problem.type)
-    prompt_tpl = _PROMPTS.get(problem.type)
-    if schema is None or prompt_tpl is None:
+    result_data = await _analyse_item(item, problem, db)
+    if result_data is None:
         return QuestionAnalysisResponse(
             item_id=item_id, session_data=None, relations_suggested=[], cached=False,
         )
-
-    opts_text = "\n".join(f"{k}. {v}" for k, v in sorted(item.options.items()))
-    correct = item.correct_answer or "不明"
-    target = (item.meta or {}).get("target", item.stem or "")
-    star_position = (item.meta or {}).get("star_position", "")
-    star_word = (item.options or {}).get(str(correct), "") if item.options else ""
-
-    transcript = item.transcript or problem.transcript or ""
-    # Where a 問題 holds several texts, the question is about one of them.
-    # Handing the analyser all four is handing it three red herrings.
-    passage = item.passage or problem.passage or ""
-    _LANG = "重要：所有 explanation、summary、meaning、connection、usage、example 等文字字段必须使用中文输出。\n\n"
-    prompt = _LANG + prompt_tpl.format(
-        stem=item.stem or "",
-        passage=passage,
-        transcript=transcript,
-        options=opts_text,
-        correct=correct,
-        target=target,
-        atom_rules=_ATOM_RULES,
-        schema_json=json.dumps(schema, ensure_ascii=False),
-        star_position=star_position,
-        star_word=star_word,
-    )
-
-    llm = get_llm_client()
-    try:
-        raw = await llm.analyze(prompt, schema)
-        result_data = json.loads(raw) if isinstance(raw, str) else raw
-    except Exception as e:
-        logger.error("LLM analysis failed for item %s: %s", item_id, e)
-        raise HTTPException(status_code=502, detail="AI analysis failed")
-
-    if cached:
-        cached.session_data = result_data
-        cached.relations_suggested = []
-    else:
-        db.add(QuestionAnalysis(
-            item_id=item_id,
-            session_data=result_data,
-            relations_suggested=[],
-        ))
-    await db.commit()
 
     return QuestionAnalysisResponse(
         item_id=item_id, session_data=result_data,
@@ -1319,6 +1284,144 @@ async def list_paper_attempts(paper_id: UUID, db: AsyncSession = Depends(get_db)
         )
         for r in rows
     ]
+
+
+
+async def _analyse_item(item, problem, db) -> dict | None:
+    """Explain one question and store it against the question.
+
+    Shared by the endpoint and the background pass that runs after a section is
+    submitted, so an explanation asked for by hand and one prepared in advance
+    are the same work and land in the same place.
+
+    Returns None where the question's type has no prompt for it.
+    """
+    schema = _SCHEMAS.get(problem.type)
+    prompt_tpl = _PROMPTS.get(problem.type)
+    if schema is None or prompt_tpl is None:
+        return None
+
+    opts_text = "\n".join(f"{k}. {v}" for k, v in sorted(item.options.items()))
+    correct = item.correct_answer or "不明"
+    target = (item.meta or {}).get("target", item.stem or "")
+    star_position = (item.meta or {}).get("star_position", "")
+    star_word = (item.options or {}).get(str(correct), "") if item.options else ""
+
+    transcript = item.transcript or problem.transcript or ""
+    # Where a 問題 holds several texts, the question is about one of them.
+    # Handing the analyser all four is handing it three red herrings.
+    passage = item.passage or problem.passage or ""
+    prompt = (
+        "重要：所有 explanation、summary、meaning、connection、usage、example 等文字字段必须使用中文输出。\n\n"
+        + prompt_tpl.format(
+            stem=item.stem or "", passage=passage, transcript=transcript,
+            options=opts_text, correct=correct, target=target,
+            atom_rules=_ATOM_RULES,
+            schema_json=json.dumps(schema, ensure_ascii=False),
+            star_position=star_position, star_word=star_word,
+        )
+    )
+
+    llm = get_llm_client()
+    try:
+        raw = await llm.analyze(prompt, schema)
+        result_data = json.loads(raw) if isinstance(raw, str) else raw
+    except Exception as exc:
+        logger.error("LLM analysis failed for item %s: %s", item.id, exc)
+        raise HTTPException(status_code=502, detail="AI analysis failed") from exc
+
+    cached = (await db.execute(
+        select(QuestionAnalysis).where(QuestionAnalysis.item_id == item.id)
+    )).scalar_one_or_none()
+    if cached:
+        cached.session_data = result_data
+        cached.relations_suggested = []
+    else:
+        db.add(QuestionAnalysis(
+            item_id=item.id, session_data=result_data, relations_suggested=[],
+        ))
+    await db.commit()
+    return result_data
+
+
+async def prepare_analyses(item_ids: list[UUID]) -> None:
+    """Explain a set of questions in the background.
+
+    Run after a section is submitted, over the ones answered wrongly. The wait
+    for an explanation then happens while the score is being read rather than
+    when the explanation is asked for — and a question explained once keeps it,
+    so the second time it is instant either way.
+
+    Failures are swallowed: this is preparation, and the explanation can still
+    be asked for by hand.
+    """
+    from app.models.db import async_session_factory
+
+    for item_id in item_ids:
+        try:
+            async with async_session_factory() as db:
+                if (await db.execute(
+                    select(QuestionAnalysis).where(QuestionAnalysis.item_id == item_id)
+                )).scalar_one_or_none() is not None:
+                    continue
+                item = await db.get(ExamItem, item_id)
+                if item is None:
+                    continue
+                problem = await db.get(ExamProblem, item.problem_id)
+                if problem is None:
+                    continue
+                await _analyse_item(item, problem, db)
+        except Exception as exc:
+            logger.info("prepare analysis for %s skipped: %s", item_id, exc)
+
+
+# ── 聴解音频 ───────────────────────────────────────────────────────────────
+
+@router.post("/items/{item_id}/audio")
+async def make_audio(item_id: UUID, db: AsyncSession = Depends(get_db)):
+    """Speak this question's dialogue, and keep the clip.
+
+    Synthesised once and stored: a listening question is met again — in review,
+    in the mistakes list, on a second sitting — and re-reading it aloud each
+    time would cost a call and give a slightly different recording every time.
+    """
+    item = await db.get(ExamItem, item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Item not found")
+
+    existing = (await db.execute(
+        select(ExamMedia).where(ExamMedia.item_id == item_id, ExamMedia.media_type == "audio")
+    )).scalars().first()
+    if existing is not None:
+        return {"media_id": str(existing.id), "cached": True}
+
+    text = item.transcript or (item.problem.transcript if item.problem else None)
+    if not text:
+        raise HTTPException(status_code=400, detail="这道题没有听力原文，无法合成")
+
+    try:
+        audio = await speak(text)
+    except TTSUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    media = ExamMedia(item_id=item_id, media_type="audio", data=audio, seq=0)
+    db.add(media)
+    await db.flush()
+    await db.commit()
+    return {"media_id": str(media.id), "cached": False}
+
+
+@router.get("/media/{media_id}")
+async def get_media(media_id: UUID, db: AsyncSession = Depends(get_db)):
+    media = await db.get(ExamMedia, media_id)
+    if media is None or media.data is None:
+        raise HTTPException(status_code=404, detail="Media not found")
+    kind = "audio/wav" if media.media_type == "audio" else "image/png"
+    # Immutable once written, so it is worth caching in the browser.
+    return Response(
+        content=media.data, media_type=kind,
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
 
 
 # ── 错题 ────────────────────────────────────────────────────────────────────
