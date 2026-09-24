@@ -493,8 +493,13 @@ function ExamDetailView({ paper, onBack }: { paper: ExamPaperList; onBack: () =>
 
   return (
     <>
-      {/* Left card: paper info + attempt history */}
-      <div className="card w-52 shrink-0 flex flex-col overflow-hidden">
+      {/* Left card: paper info + attempt history. Answering on a phone needs
+          the whole width — 208px of it went to a sidebar and left the question
+          in a column too narrow to hold its own buttons. */}
+      <div className={[
+        'card w-full md:w-52 shrink-0 flex-col overflow-hidden',
+        mode.type === 'session' ? 'hidden md:flex' : 'flex max-h-56 md:max-h-none',
+      ].join(' ')}>
         <div className="px-4 py-3 border-b border-border shrink-0">
           <button
             onClick={onBack}
@@ -569,7 +574,7 @@ export default function JlptPage() {
   // ── Detail view ──
   if (selected) {
     return (
-      <div className="flex flex-1 min-h-0 p-4 gap-4 overflow-hidden">
+      <div className="flex flex-col md:flex-row flex-1 min-h-0 p-4 gap-4 overflow-hidden">
         <ExamDetailView paper={selected} onBack={() => setSelected(null)} />
       </div>
     )
@@ -577,10 +582,11 @@ export default function JlptPage() {
 
   // ── List view ──
   return (
-    <div className="flex flex-1 min-h-0 p-4 gap-4 overflow-hidden">
+    <div className="flex flex-col md:flex-row flex-1 min-h-0 p-4 gap-4 overflow-hidden">
 
-      {/* Left: title + stats */}
-      <div className="card w-52 shrink-0 flex flex-col overflow-hidden">
+      {/* Left: title + stats. The countdown and accuracy bars are context, not
+          the task; on a phone they would take the screen the papers need. */}
+      <div className="card w-52 shrink-0 hidden md:flex flex-col overflow-hidden">
         <div className="px-4 py-4 border-b border-border shrink-0">
           <h1 className="text-base font-bold text-fg">JLPT 真题练习</h1>
           <p className="text-xs text-fg-muted mt-0.5">选择试卷开始作答</p>

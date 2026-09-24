@@ -36,7 +36,7 @@ function formatTime(s: number) {
 // ─── Question navigation grid ─────────────────────────────────────────────────
 
 function QuestionNav({
-  units, unitIdx, answers, submitted, onSelect, reviewMode, isCorrectMap,
+  units, unitIdx, answers, submitted, onSelect, reviewMode, isCorrectMap, onClose,
 }: {
   units: QuizUnit[]
   unitIdx: number
@@ -45,8 +45,8 @@ function QuestionNav({
   onSelect: (idx: number) => void
   reviewMode?: boolean
   isCorrectMap?: Record<string, boolean | null>
+  onClose: () => void
 }) {
-  const [open, setOpen] = useState(false)
   const current = units[unitIdx]
   // Which section's numbers are on show. Defaults to the one being answered
   // and follows it, but the whole paper stays reachable.
@@ -60,16 +60,11 @@ function QuestionNav({
     }
   }
 
-  // One section at a time. All 106 numbers cost two rows and a scrollbar above
-  // every question, permanently, to show numbers that are rarely wanted.
+  // One section at a time. All 106 numbers cost two rows and a scrollbar,
+  // permanently, to show numbers that are rarely wanted.
   const entries = units
     .map((u, idx) => ({ idx, u }))
     .filter(({ u }) => u.sectionId === showing)
-
-  const answeredCount = entries.filter(
-    ({ u }) => Object.keys(u.item.options).length > 0 && answers[u.item.id],
-  ).length
-  const answerable = entries.filter(({ u }) => Object.keys(u.item.options).length > 0).length
 
   function colour(idx: number, u: QuizUnit) {
     const { item } = u
@@ -91,60 +86,33 @@ function QuestionNav({
   }
 
   return (
-    <div className="shrink-0 border-b border-border bg-bg">
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center gap-2 px-4 py-1.5 text-xs text-fg-muted hover:text-fg transition-colors"
-      >
-        <ChevronDown className={`w-3.5 h-3.5 transition-transform ${open ? '' : '-rotate-90'}`} />
-        题号
-        <span className="text-fg-subtle">{answeredCount}/{answerable}</span>
-        {!open && (
-          <span className="ml-auto flex items-center gap-1">
-            {entries.slice(0, 24).map(({ idx, u }) => (
-              <span
-                key={u.item.id}
-                className={`w-1.5 h-1.5 rounded-full ${
-                  idx === unitIdx ? 'bg-accent'
-                    : answers[u.item.id] ? 'bg-accent/40' : 'bg-border'
-                }`}
-              />
-            ))}
-          </span>
-        )}
-      </button>
-      {open && (
-        <div className="px-4 pb-2 space-y-2">
-          {sections.length > 1 && (
-            <div className="flex gap-1">
-              {sections.map(sec => (
-                <button
-                  key={sec.id}
-                  onClick={() => setShowing(sec.id)}
-                  className={`px-2 py-0.5 rounded text-[11px] transition-colors ${
-                    sec.id === showing
-                      ? 'bg-fg/10 text-fg font-medium'
-                      : 'text-fg-subtle hover:text-fg'
-                  }`}
-                >
-                  {sec.name}
-                </button>
-              ))}
-            </div>
-          )}
-          <div className="flex flex-wrap gap-1">
-          {entries.map(({ idx, u }) => (
+    <div className="shrink-0 border-t border-border bg-bg px-4 py-2 space-y-2">
+      {sections.length > 1 && (
+        <div className="flex gap-1">
+          {sections.map(sec => (
             <button
-              key={u.item.id}
-              onClick={() => { onSelect(idx); setOpen(false) }}
-              className={`w-8 h-8 text-xs font-semibold rounded-lg transition-all ${colour(idx, u)}`}
+              key={sec.id}
+              onClick={() => setShowing(sec.id)}
+              className={`px-2 py-0.5 rounded text-[11px] transition-colors ${
+                sec.id === showing ? 'bg-fg/10 text-fg font-medium' : 'text-fg-subtle hover:text-fg'
+              }`}
             >
-              {u.item.num ?? u.item.seq}
+              {sec.name}
             </button>
           ))}
-          </div>
         </div>
       )}
+      <div className="flex flex-wrap gap-1 max-h-44 overflow-y-auto">
+        {entries.map(({ idx, u }) => (
+          <button
+            key={u.item.id}
+            onClick={() => { onSelect(idx); onClose() }}
+            className={`w-8 h-8 text-xs font-semibold rounded-lg transition-all ${colour(idx, u)}`}
+          >
+            {u.item.num ?? u.item.seq}
+          </button>
+        ))}
+      </div>
     </div>
   )
 }
@@ -316,6 +284,7 @@ export default function ExamSession({
   const [submitting, setSubmitting] = useState(false)
   const [analysisItemId, setAnalysisItemId] = useState<string | null>(null)
   const [analysisProblemId, setAnalysisProblemId] = useState<string | null>(null)
+  const [navOpen, setNavOpen] = useState(false)
 
   useEffect(() => {
     if (reviewMode) return
@@ -413,22 +382,12 @@ export default function ExamSession({
         )}
       </div>
 
-      {/* Problem navigation */}
-      <QuestionNav
-        units={units}
-        unitIdx={unitIdx}
-        answers={answers}
-        submitted={submitted}
-        onSelect={setUnitIdx}
-        reviewMode={reviewMode}
-        isCorrectMap={isCorrectMap}
-      />
-
       {/* Item content */}
       <div className="flex-1 overflow-y-auto px-6 py-6 space-y-5">
         {/* Problem header */}
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-fg-muted bg-border/40 px-2 py-0.5 rounded">
+        <div className="flex items-baseline gap-2">
+          <span className="shrink-0 whitespace-nowrap text-xs font-semibold text-fg-muted
+                           bg-border/40 px-2 py-0.5 rounded">
             {prob.name}
           </span>
           {prob.instruction && (
@@ -499,6 +458,21 @@ export default function ExamSession({
         )}
       </div>
 
+      {/* Jumping to a question belongs next to stepping through them, within
+          reach of the thumb rather than at the top of the screen. */}
+      {navOpen && (
+        <QuestionNav
+          units={units}
+          unitIdx={unitIdx}
+          answers={answers}
+          submitted={submitted}
+          onSelect={setUnitIdx}
+          reviewMode={reviewMode}
+          isCorrectMap={isCorrectMap}
+          onClose={() => setNavOpen(false)}
+        />
+      )}
+
       {/* Navigation */}
       <div className="shrink-0 flex items-center justify-between px-6 py-4 border-t border-border bg-surface">
         <button
@@ -511,10 +485,16 @@ export default function ExamSession({
         </button>
         {/* Scoped to the section, like the header — one counter said 41/106
             while the other said 0/45, and neither was wrong. */}
-        <span className="text-xs text-fg-muted">
+        <button
+          onClick={() => setNavOpen(o => !o)}
+          className="flex items-center gap-1.5 text-xs text-fg-muted hover:text-fg transition-colors"
+        >
+          <ChevronDown className={`w-3.5 h-3.5 transition-transform ${navOpen ? '' : 'rotate-180'}`} />
           第 {currentSectionUnits.findIndex(u => u.item.id === item.id) + 1} 题
-          <span className="text-fg-subtle"> / 本节 {currentSectionUnits.length}</span>
-        </span>
+          <span className="text-fg-subtle">
+            / 本节 {currentSectionUnits.length} · 已答 {answeredInSection}
+          </span>
+        </button>
         <button
           onClick={() => setUnitIdx(i => Math.min(units.length - 1, i + 1))}
           disabled={unitIdx === units.length - 1}
