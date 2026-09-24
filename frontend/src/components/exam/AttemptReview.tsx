@@ -3,6 +3,7 @@ import { Brain, CheckCircle, ChevronDown, Loader2, XCircle } from 'lucide-react'
 import { getAttemptReview } from '../../services/api'
 import type { AttemptReviewData, ReviewItem, ReviewProblem, ReviewSection } from '../../types'
 import AnalysisPanel from './AnalysisPanel'
+import Passage from './Passage'
 
 // ─── Score summary ────────────────────────────────────────────────────────────
 
@@ -189,9 +190,10 @@ function SectionReview({
                 )}
               </div>
               {prob.passage && (
-                <div className="bg-surface border border-border rounded-xl p-4 text-sm text-fg leading-relaxed whitespace-pre-wrap max-h-40 overflow-y-auto">
-                  {prob.passage}
-                </div>
+                <Passage
+                  text={prob.passage}
+                  className="bg-surface border border-border rounded-xl p-4 text-sm text-fg leading-relaxed whitespace-pre-wrap max-h-40 overflow-y-auto"
+                />
               )}
               {prob.transcript && (
                 <div className="bg-surface border border-border rounded-xl p-3 text-sm text-fg leading-relaxed whitespace-pre-wrap max-h-32 overflow-y-auto">

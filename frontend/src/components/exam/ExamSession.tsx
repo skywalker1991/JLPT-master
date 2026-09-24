@@ -4,6 +4,7 @@ import { submitAnswer, submitSection, completeAttempt } from '../../services/api
 import type { ExamPaperDetail, ProblemDetail, ItemSchema, SectionDetail } from '../../types'
 import AnalysisPanel from './AnalysisPanel'
 import ReportItemButton from './ReportItemButton'
+import Passage from './Passage'
 
 // ─── Quiz unit (one per Item) ─────────────────────────────────────────────────
 
@@ -378,11 +379,14 @@ export default function ExamSession({
           )}
         </div>
 
-        {/* Passage (reading) */}
+        {/* Passage (reading). For 短文填空 the passage carries the question
+            itself, so the blank being answered is marked in it. */}
         {prob.passage && (
-          <div className="bg-bg border border-border rounded-xl p-4 text-sm text-fg leading-relaxed whitespace-pre-wrap max-h-56 overflow-y-auto">
-            {prob.passage}
-          </div>
+          <Passage
+            text={prob.passage}
+            active={prob.type === 'passage_fill' ? item.num : null}
+            className="bg-bg border border-border rounded-xl p-4 text-sm text-fg leading-relaxed whitespace-pre-wrap max-h-56 overflow-y-auto"
+          />
         )}
 
         {/* Media images */}

@@ -20,7 +20,8 @@ from app.services.exam_answers import parse_booklet_table, parse_explanations
 from app.services.exam_canonical import (
     CanonicalItem, CanonicalPaper, CanonicalSection,
 )
-from app.services.exam_extract import extract_block_with_retry
+from app.services.exam_categories import type_by_number
+from app.services.exam_extract import extract_block_with_retry, mark_blanks
 from app.services.exam_merge import merge_answers
 from app.services.exam_sources import Role, Source, assess, classify_all, detect_identity
 from app.services.exam_split import split_problems
@@ -80,8 +81,12 @@ def _title(level: str, source_label: str | None) -> str:
 
 async def build_paper(
     questions: Source, *, level: str, source_label: str | None,
-) -> tuple[CanonicalPaper, list[str]]:
-    """Extract every 問題, in parallel, and assemble them into a paper."""
+) -> tuple[CanonicalPaper, list[str], list[str]]:
+    """Extract every 問題, in parallel, and assemble them into a paper.
+
+    Returns the paper, anything the model wrote that the source does not say,
+    and any 問題 whose type the number disagreed with the instruction about.
+    """
     blocks = split_problems(questions.text)
     results = await asyncio.gather(*[
         extract_block_with_retry(block, index, source_name=questions.filename)
@@ -90,6 +95,7 @@ async def build_paper(
 
     sections: dict[str, CanonicalSection] = {}
     invented: list[str] = []
+    retyped: list[str] = []
     for block, result in zip(blocks, results):
         if result.error:
             invented.append(result.error)
@@ -97,6 +103,26 @@ async def build_paper(
         if result.problem is None:
             continue
         invented.extend(result.invented)
+
+        # The instruction cannot tell 文脈規定 from 文法形式の判断 — both are
+        # printed as 「（ ）に入れるのに最もよいものを」 — and getting it wrong
+        # sends grammar patterns into the vocabulary half of the knowledge base.
+        # The 問題 number does say, so where it does, it decides.
+        by_number = type_by_number(level, block.section, result.problem.name)
+        if by_number and by_number != result.problem.type:
+            retyped.append(
+                f"{result.problem.name}：指示语读作 {result.problem.type}，"
+                f"按题号应为 {by_number}，已改判"
+            )
+            result.problem.type = by_number
+
+        # 短文填空 prints its questions inside the passage, so every item comes
+        # out with an empty stem. The gaps are the item numbers and can be found
+        # without a model; marked, the reader can see which gap a set of options
+        # belongs to.
+        if result.problem.type == "passage_fill":
+            invented.extend(mark_blanks(result.problem))
+
         section = sections.get(block.section)
         if section is None:
             section = CanonicalSection(name=block.section, seq=len(sections) + 1)
@@ -110,7 +136,7 @@ async def build_paper(
         source=source_label,
         sections=list(sections.values()),
     )
-    return paper, invented
+    return paper, invented, retyped
 
 
 async def _read_scanned_sheet(
@@ -266,10 +292,11 @@ async def ingest(
         report.notes.append("没有可用的試題文件，无法建卷")
         return None, report
 
-    paper, invented = await build_paper(
+    paper, invented, retyped = await build_paper(
         questions, level=level or "", source_label=source_label,
     )
     report.invented = invented
+    report.notes.extend(retyped)
     paper.gaps = capability.missing
 
     # The answer sheet gives listening answers as one run of digits and never

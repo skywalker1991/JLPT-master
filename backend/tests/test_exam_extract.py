@@ -10,7 +10,7 @@ requiring every stem and option to appear in the source is the only thing
 between a fluent invention and the question bank.
 """
 from app.services.exam_extract import (
-    build_problem, check_verbatim, guess_type, item_number, normalise,
+    build_problem, check_verbatim, guess_type, item_number, normalise, mark_blanks,
 )
 from app.services.exam_split import Block, split_problems
 
@@ -208,3 +208,41 @@ def test_items_that_carry_text_are_not_judged_as_blanks():
         items=[CanonicalItem(num=1, seq=1, stem="質問", options={"1": "あ"})],
     )
     assert check_invented_blanks(problem, NOT_LISTED) == []
+
+
+# --- 短文填空: the questions are inside the passage ------------------------------
+
+def cloze(passage, *nums):
+    return CanonicalProblem(
+        name="問題7", type="passage_fill", seq=7, passage=passage,
+        items=[CanonicalItem(num=n, seq=i + 1) for i, n in enumerate(nums)],
+    )
+
+
+def test_the_gaps_in_a_cloze_passage_are_marked():
+    """短文填空 prints its questions inside the passage, so every item comes out
+    of extraction with an empty stem and the reader is left with five sets of
+    options and no way to tell which gap each belongs to."""
+    p = cloze("テレビを 41 と書いていた。中にはひどい 42 もいる。", 41, 42)
+    assert mark_blanks(p) == []
+    assert p.passage == "テレビを 【41】 と書いていた。中にはひどい 【42】 もいる。"
+
+
+def test_numbers_that_are_not_gaps_are_left_alone():
+    """A passage carries footnote markers and figures of its own."""
+    p = cloze("（注１）マルチタスク。2018 年のこと。ひどい 42 もいる。", 42)
+    mark_blanks(p)
+    assert p.passage == "（注１）マルチタスク。2018 年のこと。ひどい 【42】 もいる。"
+
+
+def test_a_gap_the_passage_lost_is_reported():
+    p = cloze("テレビを 41 と書いていた。", 41, 42)
+    assert mark_blanks(p) == ["第42题：文章里找不到对应的空"]
+
+
+def test_only_the_first_occurrence_becomes_the_gap():
+    """A number can be repeated by a footnote or a figure further down; the gap
+    is the one printed first."""
+    p = cloze("ひどい 42 もいる。42 ページを見よ。", 42)
+    mark_blanks(p)
+    assert p.passage == "ひどい 【42】 もいる。42 ページを見よ。"

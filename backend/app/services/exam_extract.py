@@ -18,6 +18,7 @@ import json
 import logging
 import re
 import unicodedata
+from collections import Counter
 from dataclasses import dataclass, field
 
 from app.services.exam_canonical import CanonicalItem, CanonicalProblem, Provenance
@@ -279,3 +280,46 @@ async def extract_block_with_retry(
         feedback = "\n".join(result.invented) if result.invented else (result.error or "")
         result = await extract_block(block, seq, source_name=source_name, feedback=feedback)
     return result
+
+
+#: How a cloze blank is written once it has been found. The paper prints it as
+#: a bare number in the running text — 「テレビを 41 と書いていた」 — which is
+#: indistinguishable from any other number until the item numbers say which
+#: ones are blanks.
+BLANK = "【{}】"
+
+_STANDALONE = re.compile(r"(?<![0-9０-９])([0-9０-９]{1,3})(?![0-9０-９])")
+
+
+def mark_blanks(problem: CanonicalProblem) -> list[str]:
+    """Mark the cloze blanks in a passage, and say which ones are not there.
+
+    短文填空 prints its questions inside the passage rather than as stems, so
+    every item comes out of extraction with an empty stem and the reader is
+    left with five sets of options and no way to tell which gap each belongs
+    to. The gaps are the item numbers, printed in order, so they can be found
+    without asking a model — and a number that is not there is worth saying,
+    because it means the passage lost a gap on the way in.
+    """
+    nums = [i.num for i in problem.items if i.num is not None]
+    if not problem.passage or not nums:
+        return []
+
+    wanted = set(nums)
+    seen: Counter[int] = Counter()
+
+    def replace(match: re.Match) -> str:
+        number = int(match.group(1).translate(str.maketrans("０１２３４５６７８９", "0123456789")))
+        if number not in wanted:
+            return match.group(0)
+        seen[number] += 1
+        # Only the first: a footnote marker or a figure could repeat the
+        # number later, and the gap is the one printed first.
+        return BLANK.format(number) if seen[number] == 1 else match.group(0)
+
+    problem.passage = _STANDALONE.sub(replace, problem.passage)
+
+    return [
+        f"第{num}题：文章里找不到对应的空"
+        for num in nums if not seen[num]
+    ]

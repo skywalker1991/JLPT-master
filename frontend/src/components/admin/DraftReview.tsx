@@ -3,6 +3,7 @@ import { AlertTriangle, Check, ChevronDown, Loader2 } from 'lucide-react'
 import clsx from 'clsx'
 import { editDraftItem } from '../../services/api'
 import type { CanonicalItem, DraftDetail } from '../../types'
+import Passage from '../exam/Passage'
 
 const OPTS = ['1', '2', '3', '4']
 
@@ -138,11 +139,15 @@ export default function DraftReview({
                     <span className="text-xs text-fg-subtle">{problem.items.length} 题</span>
                   </div>
                   {problem.passage && (
-                    <details className="rounded-lg border border-border">
+                    // 短文填空's passage IS the questions, so it is open; a
+                    // 読解 passage is context and stays folded away.
+                    <details className="rounded-lg border border-border"
+                             open={problem.type === 'passage_fill'}>
                       <summary className="px-3 py-1.5 text-xs text-fg-muted cursor-pointer">文章</summary>
-                      <p className="px-3 pb-2.5 text-xs text-fg-muted leading-relaxed whitespace-pre-wrap">
-                        {problem.passage}
-                      </p>
+                      <Passage
+                        text={problem.passage}
+                        className="px-3 pb-2.5 text-xs text-fg-muted leading-relaxed whitespace-pre-wrap"
+                      />
                     </details>
                   )}
                   {problem.items.length === 0 && (
@@ -255,7 +260,10 @@ function ItemRow({
         <span className="text-xs text-fg-subtle mr-1.5">{item.num ?? item.seq}.</span>
         {item.stem
           ? <Stem text={item.stem} />
-          : <span className="text-fg-subtle italic">（试卷上未印内容）</span>}
+          : type === 'passage_fill' && item.num != null
+            // The question is the gap in the passage above, not a missing stem.
+            ? <span className="text-fg-subtle">文章中的第 {item.num} 个空</span>
+            : <span className="text-fg-subtle italic">（试卷上未印内容）</span>}
       </p>
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pl-5">
