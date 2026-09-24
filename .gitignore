@@ -52,3 +52,6 @@ frontend/node_modules/.tmp/
 backend/**/__pycache__/
 cdk/cdk.out/
 cdk/cdk.context.json
+
+# One-off repair proposals (contain a snapshot of pre-fix values)
+backend/scripts/*_proposals.json
