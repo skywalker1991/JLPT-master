@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown, Brain, CheckCircle, ChevronLeft, ChevronRight, Loader2, X, XCircle } from 'lucide-react'
 import { submitAnswer, submitSection, completeAttempt } from '../../services/api'
 import type { ExamPaperDetail, ProblemDetail, ItemSchema, SectionDetail } from '../../types'
@@ -324,6 +324,35 @@ export default function ExamSession({
   const [analysisProblemId, setAnalysisProblemId] = useState<string | null>(null)
   const [navOpen, setNavOpen] = useState(false)
 
+  // Swipe between screens on a phone. Only a clearly horizontal drag counts:
+  // the page scrolls vertically, and a passage is long enough that a thumb
+  // moving down at a slight angle must not turn the page.
+  const touch = useRef<{ x: number; y: number } | null>(null)
+  const content = useRef<HTMLDivElement>(null)
+
+  // A new screen starts at its top. Without this a swipe lands halfway down
+  // the next passage, at whatever offset the last one was left at.
+  useEffect(() => { content.current?.scrollTo({ top: 0 }) }, [unitIdx])
+
+  function onTouchStart(e: React.TouchEvent) {
+    const t = e.touches[0]
+    touch.current = { x: t.clientX, y: t.clientY }
+  }
+
+  function onTouchEnd(e: React.TouchEvent) {
+    const from = touch.current
+    touch.current = null
+    if (!from) return
+    const t = e.changedTouches[0]
+    const dx = t.clientX - from.x
+    const dy = t.clientY - from.y
+    if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 2) return
+    setUnitIdx(i => {
+      const next = dx < 0 ? i + 1 : i - 1
+      return Math.min(units.length - 1, Math.max(0, next))
+    })
+  }
+
 
   const unit = units[unitIdx]
   const prob = unit.problem
@@ -412,7 +441,12 @@ export default function ExamSession({
       </div>
 
       {/* Item content */}
-      <div className="flex-1 overflow-y-auto px-6 py-6 space-y-5">
+      <div
+        ref={content}
+        className="flex-1 overflow-y-auto px-6 py-6 space-y-5"
+        onTouchStart={onTouchStart}
+        onTouchEnd={onTouchEnd}
+      >
         {/* Problem header */}
         <div className="flex items-baseline gap-2">
           <span className="shrink-0 whitespace-nowrap text-xs font-semibold text-fg-muted
