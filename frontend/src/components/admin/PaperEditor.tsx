@@ -107,6 +107,16 @@ function ItemRow({ item, type }: { item: ItemSchema; type: string }) {
 
   return (
     <div className="rounded-lg px-3 py-2 space-y-1.5 border-l-2 border-transparent hover:bg-bg">
+      {/* 問題8 prints four unrelated passages under one heading and 問題9
+          three, so the text belongs to the question rather than the 問題.
+          Without it the stem asks about something nobody can see. */}
+      {item.passage && (
+        <details className="rounded-lg border border-border">
+          <summary className="px-3 py-1.5 text-xs text-fg-muted cursor-pointer">文章</summary>
+          <Passage text={item.passage}
+                   className="px-3 pb-2.5 text-xs text-fg-muted leading-relaxed whitespace-pre-wrap" />
+        </details>
+      )}
       <p className="font-jp text-sm text-fg leading-relaxed">
         <span className="font-sans text-xs text-fg-subtle mr-1.5">{item.num ?? item.seq}.</span>
         {item.stem
