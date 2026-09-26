@@ -295,10 +295,27 @@ _LOOSE_BAN = re.compile(
 )
 
 
-#: No 問題 holds more than this many items, so a marker numbered higher is
-#: the page. Both are a number alone on a line — 2013年12月's 「１」 is a
-#: question and its 「45」 is a page — and only the value tells them apart.
+#: What a marker may be numbered, under each of the two styles. A booklet
+#: numbers its items either inside every 問題 — never past fourteen — or
+#: straight through the section, which for N1 ends short of forty. Above
+#: that it is the page: both are a number alone on a line, 2013年12月's
+#: 「１」 is a question and its 「45」 is a page, and only the value separates
+#: them.
 MAX_BAN = 20
+MAX_BAN_FLAT = 40
+
+
+def _flat_ok(numbers: list[int]) -> bool:
+    """Whether these are one run straight through rather than per 問題.
+
+    2014年07月 numbers its transcript 1 to 37 with no 問題 heading at all,
+    so there are no restarts to divide it by — which is left to the paper,
+    the only thing here that knows how many questions each 問題 holds.
+    """
+    if not 25 <= len(numbers) <= 45:
+        return False
+    rising = sum(1 for a, b in zip(numbers, numbers[1:]) if b > a)
+    return rising >= len(numbers) - 3 and numbers[0] == 1
 
 
 def _runs_ok(numbers: list[int]) -> bool:
@@ -358,10 +375,13 @@ def parse_listening(text: str) -> list[ListeningItem]:
         # No 「N番」 in this booklet, or too few to be the whole section.
         # Fall back to the looser marker, but only if what it finds is
         # shaped like item numbers rather than like page numbers.
-        loose = [m for m in _LOOSE_BAN.finditer(folded)
-                 if int(_digits(m.group(1))) <= MAX_BAN]
-        if _runs_ok([int(_digits(m.group(1))) for m in loose]):
-            hits = loose
+        every = list(_LOOSE_BAN.finditer(folded))
+        per_problem = [m for m in every if int(_digits(m.group(1))) <= MAX_BAN]
+        flat = [m for m in every if int(_digits(m.group(1))) <= MAX_BAN_FLAT]
+        if _runs_ok([int(_digits(m.group(1))) for m in per_problem]):
+            hits = per_problem
+        elif _flat_ok([int(_digits(m.group(1))) for m in flat]):
+            hits, problems = flat, []     # the paper divides it, not the booklet
     items: list[ListeningItem] = []
     for index, match in enumerate(hits):
         end = hits[index + 1].start() if index + 1 < len(hits) else len(section)
@@ -383,15 +403,6 @@ def parse_listening(text: str) -> list[ListeningItem]:
             answers=answers,
         ))
 
-    if not problems:
-        # 2014年07月 prints no 問題 heading in its transcript at all, only
-        # 「1.」 straight through. The restarts are the boundaries: a marker
-        # numbered 1 begins the next 問題.
-        number = 0
-        for item in items:
-            if item.ban == 1:
-                number += 1
-            item.problem = number
     return items
 
 

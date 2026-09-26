@@ -257,6 +257,36 @@ def _keep_the_page(paper: CanonicalPaper, data: bytes, report: IngestReport) -> 
         report.notes.append(f"{problem.name}：情報検索，已保留原版面（{len(png) // 1024} KB）")
 
 
+def _divide(heard: list, paper: CanonicalPaper) -> list:
+    """Split a straight-through transcript into 問題 by the paper's counts.
+
+    The numbering runs 1 to 37 across the whole section, so question 20 of
+    the booklet is 問題4's first only because 問題1 to 3 hold nineteen
+    between them. Read off the paper rather than assumed, since how many a
+    問題 holds is the one thing that varies between sittings.
+    """
+    from dataclasses import replace
+
+    bounds = []
+    start = 0
+    for _section, problem in paper.problems():
+        if problem.type != "listening":
+            continue
+        number = _problem_number(problem.name)
+        if number is None:
+            return []
+        bounds.append((number, start, start + len(problem.items)))
+        start += len(problem.items)
+
+    divided = []
+    for slot in heard:
+        for number, low, high in bounds:
+            if low < slot.ban <= high:
+                divided.append(replace(slot, problem=number, ban=slot.ban - low))
+                break
+    return divided
+
+
 def _fill_listening(paper: CanonicalPaper, sources: list[Source], report: IngestReport) -> None:
     """Put the listening questions and dialogue onto the paper."""
     from app.services.exam_listening import parse_listening, pick_transcript_source
@@ -268,6 +298,16 @@ def _fill_listening(paper: CanonicalPaper, sources: list[Source], report: Ingest
     heard = parse_listening(source.text)
     if not heard:
         return
+
+    # Where the booklet numbered its transcript straight through instead of
+    # inside each 問題, it never said where one 問題 ends. The paper did: it
+    # prints the questions, so their counts are the divisions. 2014年07月 is
+    # the sitting that needs this.
+    if all(h.problem == 0 for h in heard):
+        heard = _divide(heard, paper)
+        if not heard:
+            report.notes.append("听力：原文通篇连号，且试卷的题数对不上，未填入")
+            return
 
     filled = added = 0
     for _section, problem in paper.problems():
