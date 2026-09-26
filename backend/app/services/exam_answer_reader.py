@@ -24,6 +24,7 @@ import json
 import logging
 from dataclasses import dataclass
 
+from app.services import exam_cache
 from app.services.exam_answers import AnswerKey, parse_answer_sheet
 from app.services.llm.factory import get_exam_client
 
@@ -128,8 +129,25 @@ async def read_sheet_images(images: list[bytes]) -> AnswerKey:
     be scored and one that cannot.
     """
     client = get_exam_client()
+    model = getattr(client, "_model_name", "?")
     merged = AnswerKey()
     for image in images:
+        # Cached, because looking at a picture does not give the same digits
+        # twice. The same sitting imported twice came out 102/106 with four
+        # "the sources disagree" findings and then 106/106 with none, the only
+        # difference being what the scan was read as that time. An import has
+        # to be reproducible before its findings mean anything.
+        cache_key = exam_cache.key_for(
+            base64.b64encode(image).decode(), IMAGE_PROMPT, model,
+        )
+        cached = exam_cache.get(cache_key)
+        if cached is not None:
+            page = _from_payload(cached)
+            merged.written.update(page.written)
+            merged.orders.update(page.orders)
+            merged.listening.update(page.listening)
+            continue
+
         chunks = []
         async for chunk in client.analyze_stream(
             IMAGE_PROMPT, {}, image_base64=base64.b64encode(image).decode(), image_mime="image/png"
@@ -139,7 +157,9 @@ async def read_sheet_images(images: list[bytes]) -> AnswerKey:
         if raw.startswith("```"):
             raw = raw.split("```")[1].removeprefix("json").strip()
         try:
-            page = _from_payload(json.loads(raw))
+            payload = json.loads(raw)
+            exam_cache.put(cache_key, payload)
+            page = _from_payload(payload)
         except Exception as e:
             logger.warning("Could not read an answer sheet page: %s", e)
             continue

@@ -151,6 +151,24 @@ async def build_paper(
     return paper, invented, retyped
 
 
+def _covers_the_paper(*keys, expected: int | None = None) -> bool:
+    """Whether the text sources already answer the written half.
+
+    Orderings count: 並べ替え is the one thing a 解析 booklet often omits, and
+    a paper missing only those is still worth looking at a scan for.
+    """
+    written: set[int] = set()
+    orders: set[int] = set()
+    for key in keys:
+        if key is None:
+            continue
+        written |= set(key.written)
+        orders |= set(key.orders)
+    if not orders:
+        return False
+    return expected is not None and len(written) >= expected
+
+
 async def _read_scanned_sheet(
     files_by_name: dict[str, bytes],
     sources: list[Source],
@@ -326,6 +344,20 @@ async def ingest(
         1 for _, problem, _ in paper.items() if problem.type != "listening"
     )
 
+    # Text first, every time. Reading a scan means asking a model to look at
+    # a picture of a grid, and it does not give the same digits twice: the
+    # same sitting imported twice ran 102/106 with four "sources disagree"
+    # findings, then 106/106 with none, because the only thing that changed
+    # was what the picture was read as. Where the text already carries the
+    # answers, the picture is not worth the doubt it casts.
+    explanation_key = grid_key = None
+    explanations = _pick(sources, Role.EXPLANATIONS)
+    if explanations is not None:
+        explanation_key = parse_explanations(explanations.text)
+        grid_key = parse_booklet_table(explanations.text, counts)
+        if grid_key is not None:
+            report.notes.append(f"{explanations.filename} 开头有答案表，作为第三个答案来源")
+
     sheet_key = None
     sheet = _pick(sources, Role.ANSWER_SHEET)
     if sheet is not None:
@@ -336,20 +368,12 @@ async def ingest(
         sheet_key = result.key
         report.answers = {"method": result.method, "agreed": result.agreed}
         report.notes.extend(result.notes)
-    else:
-        # No sheet with text in it. A scan may still be one — 2019年12月's is
-        # sixteen pages without a character of text layer — and the sheet is
-        # the only source for 並べ替え orderings and for items the 解析 booklet
-        # never discusses, so it is worth looking at rather than going without.
+    elif not _covers_the_paper(grid_key, explanation_key, expected=written_expected):
+        # Nothing readable says the answers, so a picture of them is better
+        # than nothing — 2019年12月's sheet is sixteen pages without a
+        # character of text layer, and is that sitting's only source for the
+        # 並べ替え orderings.
         sheet_key = await _read_scanned_sheet(files_by_name, sources, report)
-
-    explanation_key = grid_key = None
-    explanations = _pick(sources, Role.EXPLANATIONS)
-    if explanations is not None:
-        explanation_key = parse_explanations(explanations.text)
-        grid_key = parse_booklet_table(explanations.text, counts)
-        if grid_key is not None:
-            report.notes.append(f"{explanations.filename} 开头有答案表，作为第三个答案来源")
 
     merge = merge_answers(paper, sheet_key, explanation_key, grid_key)
     report.answers.update({
