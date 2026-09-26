@@ -12,6 +12,7 @@ that simply cannot be scored yet; the point is to say so rather than fail.
 from __future__ import annotations
 
 import re
+import unicodedata
 from collections import Counter
 from dataclasses import dataclass
 from enum import Enum
@@ -127,6 +128,20 @@ def _digits(raw: str) -> str:
     return re.sub(r"\s+", "", raw).translate(table)
 
 
+def _for_matching(text: str) -> str:
+    """The text as a pattern should see it.
+
+    These PDFs write CJK characters as Kangxi radicals — the 解析 booklets head
+    every page with 「2018 年7 ⽉」, where ⽉ is U+2F49 and not the 月 anyone
+    would type. A pattern looking for 月 misses every one of them, and the
+    booklet then has no readable identity at all.
+
+    Only for matching. The same fold turns 「１・２・３・４」 into half width,
+    and that is the paper's own text, which is stored as printed.
+    """
+    return unicodedata.normalize("NFKC", text)
+
+
 def detect_identity(sources: list[Source]) -> tuple[str | None, str | None]:
     """The level and sitting, read off the files rather than typed in.
 
@@ -143,7 +158,7 @@ def detect_identity(sources: list[Source]) -> tuple[str | None, str | None]:
     for source in sources:
         # The identity is printed at the top; the body is where other years
         # get mentioned in passing.
-        head = source.text[:600]
+        head = _for_matching(source.text[:600])
         for match in _LEVEL.finditer(head):
             levels[f"N{_digits(match.group(1))}"] += 1
         for match in _SITTING.finditer(head):
@@ -154,6 +169,18 @@ def detect_identity(sources: list[Source]) -> tuple[str | None, str | None]:
     level = levels.most_common(1)[0][0] if levels else None
     sitting = sittings.most_common(1)[0][0] if sittings else None
     return level, sitting
+
+
+def _has_orderings(sources: list[Source]) -> bool:
+    """Whether the 並べ替え orderings are anywhere in this set."""
+    from app.services.exam_answers import parse_booklet_table
+
+    for source in sources:
+        if source.role is Role.EXPLANATIONS:
+            table = parse_booklet_table(source.text)
+            if table and table.orders:
+                return True
+    return False
 
 
 @dataclass
@@ -182,9 +209,12 @@ def assess(sources: list[Source]) -> Capability:
     if not scripts:
         missing.append("没有解析文件，听力缺原文（無法合成音频），也没有官方讲解")
 
-    # Only the answer sheet prints 並べ替え as a full ordering, and the ★
-    # position alone cannot say which option belongs in the blank.
-    if Role.ANSWER_SHEET not in roles:
+    # 並べ替え needs the whole ordering; the ★ position alone cannot say which
+    # option belongs in the blank. The answer sheet prints it — and so does the
+    # table at the front of some 解析 booklets, so the sheet is only missed when
+    # nothing else carries them. Saying "bring the answer sheet" to someone who
+    # already has the orderings sends them looking for a file they do not need.
+    if Role.ANSWER_SHEET not in roles and not _has_orderings(sources):
         missing.append("没有答案表，排序题拿不到完整语序")
 
     return Capability(
