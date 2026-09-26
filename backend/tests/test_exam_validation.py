@@ -35,7 +35,15 @@ def problem(name, ptype, items):
 
 
 def written(*items):
-    return paper(section("言語知識", problem("問題1", "kanji_reading", list(items))))
+    """A 問題1 of whatever length the test needs.
+
+    Named 問題1 but reported under a level with no official shape, so that
+    the count check — 問題1 of N1 holds six — does not fire on fixtures built
+    two items at a time to exercise something else.
+    """
+    built = paper(section("言語知識", problem("問題1", "kanji_reading", list(items))))
+    built["level"] = "N9"
+    return built
 
 
 # --- hard: violations of what the question type means ------------------------
@@ -187,3 +195,35 @@ def test_a_problem_the_level_usually_has_but_this_paper_lacks_is_queried():
 def test_baseline_key_names_the_booklet():
     assert baseline_key({"name": "問題1", "type": "listening"}) == "聴解/問題1"
     assert baseline_key({"name": "問題1", "type": "kanji_reading"}) == "筆記/問題1"
+
+
+# --- the shape the 公式問題集 prints -------------------------------------------
+
+def test_a_written_問題_is_held_to_the_official_count():
+    """問題1 of N1 holds six questions on the real paper. The reprints are
+    retyped by hand, so a count learned from thirty of them learns their
+    mistakes; this is read off the 公式問題集."""
+    short = paper(section("言語知識",
+                          problem("問題1", "kanji_reading", [item(i) for i in range(1, 6)])))
+    assert not validate(short).clean
+    full = paper(section("言語知識",
+                         problem("問題1", "kanji_reading", [item(i) for i in range(1, 7)])))
+    assert validate(full).clean
+
+
+def test_聴解_is_allowed_the_番_a_sitting_actually_printed():
+    """問題2 runs six or seven from one sitting to the next, so only a real
+    gap is worth a word."""
+    six = paper(section("聴解", problem("問題2", "listening",
+                                       [item(i, options=4) for i in range(1, 7)])))
+    assert validate(six).clean
+    three = paper(section("聴解", problem("問題2", "listening",
+                                         [item(i, options=4) for i in range(1, 4)])))
+    assert not validate(three).clean
+
+
+def test_a_level_with_no_official_paper_is_not_second_guessed():
+    other = paper(section("言語知識",
+                          problem("問題1", "kanji_reading", [item(1), item(2)])))
+    other["level"] = "N3"
+    assert validate(other).clean

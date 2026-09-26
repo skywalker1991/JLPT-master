@@ -20,6 +20,8 @@ So checks come in two kinds:
 from __future__ import annotations
 
 from collections import Counter
+
+from app.services.exam_categories import expected_items
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -176,6 +178,41 @@ def check_hard(paper: dict) -> Report:
     return report
 
 
+def check_official(paper: dict) -> Report:
+    """Differences from the shape the 公式問題集 prints.
+
+    Checked before the learned baseline and separately from it, because the
+    two are not the same kind of evidence. The baseline is the average of
+    the reprints, and the reprints are retyped by hand — thirty of them
+    agreeing means they agree, not that they are right. This is the exam.
+
+    Only the written half is held to it. 聴解 really does print a 番 more or
+    less from one sitting to the next.
+    """
+    report = Report()
+    level = paper.get("level")
+    for section in paper.get("sections") or []:
+        name = section.get("name") or ""
+        for problem in section.get("problems") or []:
+            pname = problem.get("name") or "?"
+            want = expected_items(level, "聴解" if "聴解" in name else name, pname)
+            if want is None:
+                continue
+            got = len(problem.get("items") or [])
+            if got == want:
+                continue
+            if "聴解" in name:
+                # A sitting may run a 番 short or long; only a real gap is
+                # worth saying anything about.
+                if abs(got - want) > 1:
+                    report.add("soft", pname,
+                               f"本卷 {got} 题，官方公式問題集是 {want} 题")
+                continue
+            report.add("soft", pname,
+                       f"本卷 {got} 题，官方公式問題集是 {want} 题")
+    return report
+
+
 def check_soft(paper: dict, baseline: dict[str, dict] | None) -> Report:
     """Differences from papers of this level seen before. Papers really do
     vary, so these ask rather than block; with no baseline yet, everything is
@@ -221,6 +258,7 @@ def check_soft(paper: dict, baseline: dict[str, dict] | None) -> Report:
 
 def validate(paper: dict, baseline: dict[str, dict] | None = None) -> Report:
     report = check_hard(paper)
+    report.findings.extend(check_official(paper).findings)
     report.findings.extend(check_soft(paper, baseline).findings)
     return report
 

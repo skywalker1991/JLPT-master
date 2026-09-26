@@ -84,3 +84,57 @@ _PART_OF_TYPE = {
 def part_of_type(problem_type: str) -> str | None:
     """Which of the four parts this 問題 belongs to, or None if unrecognised."""
     return _PART_OF_TYPE.get(problem_type)
+
+
+#: What a level's paper is, taken from the 公式問題集 rather than from the
+#: reprints.
+#:
+#: The reprints are the only material there is enough of to build a bank
+#: from, and they are retyped by hand: 2013年07月's 情報検索 lists its checks
+#: as ①②②④⑤⑥⑦③⑤, and 第69題 asks about 「上記①〜⑨以外」. A shape learned
+#: from thirty of them learns their mistakes too — the average of the
+#: reprints is not the exam.
+#:
+#: This is read off 『日本語能力試験公式問題集 第二集』(2018), which is the
+#: real thing, and used to check the reprints rather than to extract from
+#: them. Its own booklets are typeset unlike the reprints — 読解 is set
+#: vertically, the numbers are drawn in a font subsetted per page — so
+#: reading them is a separate job that this deliberately does not do.
+#:
+#: 聴解's counts are what that sitting printed; a 番 more or less is normal
+#: and only a large gap is worth a word. The written half does not vary.
+N1_WRITTEN = {
+    1: 6,    # 漢字読み            1–6
+    2: 7,    # 文脈規定            7–13
+    3: 6,    # 言い換え類義        14–19
+    4: 6,    # 用法                20–25
+    5: 10,   # 文法形式の判断      26–35
+    6: 5,    # 文の組み立て        36–40
+    7: 5,    # 文章の文法          41–45
+    8: 4,    # 内容理解・短文      46–49
+    9: 9,    # 内容理解・中文      50–58
+    10: 4,   # 内容理解・長文      59–62
+    11: 2,   # 統合理解            63–64
+    12: 4,   # 主張理解・長文      65–68
+    13: 2,   # 情報検索            69–70
+}
+
+N1_LISTENING = {
+    1: 6,    # 課題理解
+    2: 7,    # ポイント理解
+    3: 6,    # 概要理解
+    4: 14,   # 即時応答
+    5: 4,    # 統合理解 — three 番, the last asking two questions
+}
+
+OFFICIAL_SHAPE = {"N1": {"written": N1_WRITTEN, "listening": N1_LISTENING}}
+
+
+def expected_items(level: str | None, section: str, problem_name: str) -> int | None:
+    """How many questions this 問題 holds on a real paper, if it is known."""
+    shape = OFFICIAL_SHAPE.get(level or "")
+    number = _number(problem_name)
+    if not shape or not number:
+        return None
+    half = "listening" if section == "聴解" else "written"
+    return shape[half].get(number)
