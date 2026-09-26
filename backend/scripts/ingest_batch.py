@@ -41,12 +41,13 @@ def group_sittings(paths: list[Path]) -> tuple[dict[tuple[str, str], list[Path]]
         sources = read_sources([(path.name, path.read_bytes())])
         level, sitting = detect_identity(sources)
         if not (level and sitting):
-            # A scan has nothing to read. 2019年12月's answer sheet is sixteen
-            # pages without a character of text layer, and it is the only
-            # source for that sitting's 並べ替え orderings — worth taking the
-            # name's word for, having nothing else, but only for a scan.
-            if all(s.text_coverage < 0.5 for s in sources):
-                level, sitting = _from_name(path.name)
+            # Not only scans: a 答案 or 听力原文 file often opens straight
+            # into the body, so the sitting is printed nowhere in the first
+            # page. Sixteen of forty-two were dropped that way, and dropping
+            # the 解析 costs the listening transcripts and a third of the
+            # answers. The name is worth reading when the content says
+            # nothing — it is the only thing left.
+            level, sitting = _from_name(path.name)
         if level and sitting:
             groups[(level, sitting)].append(path)
         else:
@@ -54,14 +55,19 @@ def group_sittings(paths: list[Path]) -> tuple[dict[tuple[str, str], list[Path]]
     return dict(groups), unknown
 
 
-_NAME = re.compile(r"(20[0-9]{2})[_\-]?([01][0-9])\D+([Nn][1-5])")
+#: 「2021年12月N1」, 「2021_12_N1」, 「2024年07月日语N1」 — the year and month
+#: come first and the level follows, whatever sits between them.
+_NAME = re.compile(r"(19[89][0-9]|20[0-9]{2})\D{0,3}([01]?[0-9])\s*月?\D{0,6}?([Nn][1-5])")
 
 
 def _from_name(filename: str) -> tuple[str | None, str | None]:
     match = _NAME.search(filename)
     if not match:
         return None, None
-    return match.group(3).upper(), f"{match.group(1)}年{match.group(2)}月"
+    month = int(match.group(2))
+    if not 1 <= month <= 12:
+        return None, None
+    return match.group(3).upper(), f"{match.group(1)}年{month:02d}月"
 
 
 async def import_paper(canonical: dict, report: dict, files: list[str]) -> str:
@@ -139,7 +145,8 @@ async def main() -> int:
                              "without reading any questions — no model calls")
     args = parser.parse_args()
 
-    pdfs = sorted(p for p in args.folder.glob("*.pdf"))
+    # Recursive: these arrive as a year per folder, not a flat pile.
+    pdfs = sorted(p for p in args.folder.rglob("*.pdf"))
     if not pdfs:
         print(f"No PDFs in {args.folder}")
         return 1

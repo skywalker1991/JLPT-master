@@ -13,13 +13,23 @@ boundary would attach one dialogue to another's question.
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass, field
 
 #: Where the booklet stops explaining the written half.
-_SECTION = re.compile(r"[听聴][⼒力][原⽂文]{2}|[听聴][⼒力]解析")
+#:
+#: Measured across thirty sittings rather than guessed from three: twenty of
+#: them head it 「听力文本」 and the rest 「听力原文」 or 「听力解析」. The word
+#: after 听力 is the only thing that varies, so it is the only thing left open.
+#: Matched on NFKC-folded text, which retires the Kangxi-radical variants
+#: (⼒ ⽂) these PDFs are full of.
+_SECTION = re.compile(r"[听聴]力\s*(?:原文|文本|解析|原稿)")
 
 #: 問題N heading on its own line, in either script.
-_PROBLEM = re.compile(r"(?:^|\n)\s*(?:問題|问题)\s*([1-5１-５])\s*(?=\n|$)")
+#: 問題N heading on its own line. 2014年7月 writes the Chinese 问题 and puts
+#: the number on the same line as what follows, so the line-end anchor has to
+#: give way to "nothing but the heading up to here".
+_PROBLEM = re.compile(r"(?:^|\n)\s*(?:問題|问题)\s*([1-5１-５])\s*(?=[\n。、.]|$)")
 
 #: "1 番" begins a question. The answer may follow on the same line, on the
 #: next one, or not at all — 2018年07月 breaks after 番, 2019年12月 does not,
@@ -30,7 +40,12 @@ _PROBLEM = re.compile(r"(?:^|\n)\s*(?:問題|问题)\s*([1-5１-５])\s*(?=\n|$)
 #: heading, but it has to stay narrow: 問題5's 「3 番 まず話を聞いてください」
 #: carries a を four characters later, and a wider window swallowed that
 #: question whole.
-_BAN = re.compile(r"(?:^|\n)\s*([0-9０-９]{1,2})\s*番(?![^\n]{0,2}[はにをがのでと])")
+#: 「1 番」, 「1番：」 — 2020年12月 puts a colon after it. The colon is allowed
+#: but not required, and the particle guard is skipped when one is present,
+#: since 「一番好きな」 never carries one.
+_BAN = re.compile(
+    r"(?:^|\n)\s*([0-9０-９]{1,2})\s*番(?:\s*[：:]|(?![^\n]{0,2}[はにをがのでと]))"
+)
 _ANSWER_AFTER = re.compile(r"^\s*(?:正解|答案)\s*[：:]\s*([1-4])")
 
 #: The options printed under it, "１ ちぎれた部分を探す".
@@ -60,17 +75,32 @@ class ListeningItem:
     transcript: str = ""
 
 
+def _folded(text: str) -> str:
+    """The text as a pattern should see it.
+
+    These PDFs write CJK as Kangxi radicals — 听⼒原⽂ is U+2F12 and U+2F42,
+    not the characters anyone would type — so a pattern matching 力 or 文
+    misses them. NFKC maps the radicals onto the ordinary ideographs and
+    leaves the offsets alone, both being one code point.
+
+    Only for finding things. What is returned to the caller is sliced out of
+    the original, because the same fold would turn 「１・２・３・４」 half
+    width and that is the paper's own text.
+    """
+    return unicodedata.normalize("NFKC", text)
+
+
 def listening_section(text: str) -> tuple[str, str]:
     """The listening half, split into the Japanese and its translation.
 
     Returns (japanese, translation); the second is empty when the booklet does
     not carry one.
     """
-    match = _SECTION.search(text)
+    match = _SECTION.search(_folded(text))
     if not match:
         return "", ""
     body = text[match.start():]
-    translated = _TRANSLATION.search(body)
+    translated = _TRANSLATION.search(_folded(body))
     if translated:
         return body[: translated.start()], body[translated.start():]
     return body, ""

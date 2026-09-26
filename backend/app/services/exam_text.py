@@ -121,6 +121,11 @@ def read_pdf(data: bytes) -> list[PageText]:
     """Every page of a PDF, positioned by geometry rather than storage order."""
     import fitz
 
+    # Real papers are full of malformed PDF that MuPDF complains about and
+    # then reads anyway — a missing ExtGState resource on every other page.
+    # Reading a folder of 144 files buries the report under thousands of them.
+    fitz.TOOLS.mupdf_display_errors(False)
+
     document = fitz.open(stream=data, filetype="pdf")
     try:
         pages = []
@@ -144,6 +149,11 @@ def render_pages(data: bytes, *, limit: int = 3, dpi: int = 200) -> list[bytes]:
     it. The grid itself is on the first page or two.
     """
     import fitz
+
+    # Real papers are full of malformed PDF that MuPDF complains about and
+    # then reads anyway — a missing ExtGState resource on every other page.
+    # Reading a folder of 144 files buries the report under thousands of them.
+    fitz.TOOLS.mupdf_display_errors(False)
 
     document = fitz.open(stream=data, filetype="pdf")
     try:
