@@ -324,3 +324,28 @@ def test_a_problem_with_one_passage_is_left_alone():
                 (59, "筆者はどう述べているか。"), (60, "それはなぜか。"))
     assert split_passages(p, "問題10\nタレントが…\n59 筆者は\n60 それは") == []
     assert all(i.passage is None for i in p.items)
+
+
+# --- the cache -----------------------------------------------------------------
+
+def test_the_same_block_and_prompt_share_a_key():
+    from app.services import exam_cache
+    a = exam_cache.key_for("問題1 …", "prompt", "gemini-3.8-flash")
+    b = exam_cache.key_for("問題1 …", "prompt", "gemini-3.8-flash")
+    assert a == b
+
+
+def test_a_changed_prompt_misses():
+    """A cached answer to a different question is worse than no cache."""
+    from app.services import exam_cache
+    same_text = "問題1 …"
+    assert exam_cache.key_for(same_text, "prompt A", "m") != \
+           exam_cache.key_for(same_text, "prompt B", "m")
+    assert exam_cache.key_for(same_text, "prompt", "model A") != \
+           exam_cache.key_for(same_text, "prompt", "model B")
+
+
+def test_the_parts_of_a_key_cannot_run_together():
+    """Without a separator, ("ab", "c") and ("a", "bc") would collide."""
+    from app.services import exam_cache
+    assert exam_cache.key_for("ab", "c", "m") != exam_cache.key_for("a", "bc", "m")

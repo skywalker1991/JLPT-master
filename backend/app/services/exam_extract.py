@@ -22,6 +22,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 
 from app.services.exam_canonical import CanonicalItem, CanonicalProblem, Provenance
+from app.services import exam_cache
 from app.services.exam_split import Block
 from app.services.llm.factory import get_exam_client
 
@@ -245,17 +246,27 @@ async def extract_block(
     if feedback:
         prompt += f"\n\n上一次提取存在以下问题，请修正后重新输出：\n{feedback}"
 
-    try:
-        chunks = []
-        async for chunk in get_exam_client().analyze_stream(prompt, {}):
-            chunks.append(chunk)
-        raw = "".join(chunks).strip()
-        if raw.startswith("```"):
-            raw = raw.split("```")[1].removeprefix("json").strip()
-        payload = json.loads(raw)
-    except Exception as e:
-        logger.warning("Could not read %s: %s", block.name, e)
-        return BlockResult(None, error=f"{block.name} 提取失败：{e}")
+    # Extraction is the only paid step, and the same text and prompt always
+    # give the same questions. Everything after this line is free, so it is
+    # the model's raw answer that is kept — improving the checks or the
+    # canonical shape then costs nothing to re-apply.
+    model = getattr(get_exam_client(), "_model_name", "?")
+    cache_key = exam_cache.key_for(block.text, prompt, model)
+    payload = exam_cache.get(cache_key)
+
+    if payload is None:
+        try:
+            chunks = []
+            async for chunk in get_exam_client().analyze_stream(prompt, {}):
+                chunks.append(chunk)
+            raw = "".join(chunks).strip()
+            if raw.startswith("```"):
+                raw = raw.split("```")[1].removeprefix("json").strip()
+            payload = json.loads(raw)
+        except Exception as e:
+            logger.warning("Could not read %s: %s", block.name, e)
+            return BlockResult(None, error=f"{block.name} 提取失败：{e}")
+        exam_cache.put(cache_key, payload)
 
     problem = build_problem(block, payload, seq, source_name)
     return BlockResult(problem, invented=(
