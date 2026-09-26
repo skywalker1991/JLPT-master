@@ -30,13 +30,29 @@ interface QuizUnit {
 //: Types where the text is the unit rather than the question.
 const BY_PASSAGE = new Set(['reading_comp', 'passage_fill'])
 
+/**
+ * The text several questions share, if they share one.
+ *
+ * For 読解 that is the passage, printed on the page. For 聴解問題5 it is the
+ * dialogue: 統合理解 plays one conversation and then asks two questions about
+ * it, and the booklet prints them under a single 番. Grouped by it, they are
+ * one screen with one audio player instead of the same conversation offered
+ * twice. The transcript groups them but is never shown while answering — it
+ * is what the audio says.
+ */
+function sharedText(prob: ProblemDetail, item: ItemSchema): string | null {
+  if (prob.type === 'listening') return item.transcript
+  return item.passage ?? prob.passage
+}
+
 function buildUnits(sections: SectionDetail[], sectionIds: string[]): QuizUnit[] {
   const units: QuizUnit[] = []
   for (const sec of sections) {
     if (!sectionIds.includes(sec.id)) continue
     for (const prob of sec.problems) {
       const base = { sectionId: sec.id, sectionName: sec.name, problem: prob }
-      if (!BY_PASSAGE.has(prob.type)) {
+      const grouped = BY_PASSAGE.has(prob.type) || prob.type === 'listening'
+      if (!grouped) {
         for (const item of prob.items) {
           units.push({ ...base, items: [item], passage: item.passage ?? prob.passage })
         }
@@ -44,16 +60,23 @@ function buildUnits(sections: SectionDetail[], sectionIds: string[]): QuizUnit[]
       }
       // Questions about the same text belong together, in the order printed.
       // 問題8 holds four unrelated texts under one heading; 問題9 three, with
-      // three questions each.
+      // three questions each; 聴解問題5 two questions on one conversation.
       let current: QuizUnit | null = null
+      let currentKey: string | null = null
       for (const item of prob.items) {
-        const text = item.passage ?? prob.passage
-        if (current && current.passage === text) {
+        const key = sharedText(prob, item)
+        if (current && key != null && key === currentKey) {
           current.items.push(item)
-        } else {
-          current = { ...base, items: [item], passage: text }
-          units.push(current)
+          continue
         }
+        currentKey = key
+        current = {
+          ...base,
+          items: [item],
+          // 聴解 groups on the dialogue but must not print it.
+          passage: prob.type === 'listening' ? null : key,
+        }
+        units.push(current)
       }
     }
   }
@@ -171,6 +194,7 @@ function SentenceOrderStem({ stem }: { stem: string }) {
 
 function ItemDisplay({
   item, selected, onSelect, reviewMode, correctAnswer, problemType, attemptId,
+  showAudio = true,
 }: {
   item: ItemSchema
   selected: string | null
@@ -180,6 +204,9 @@ function ItemDisplay({
   isCorrect?: boolean | null
   problemType?: string
   attemptId?: string | null
+  /** False for the second question on a shared dialogue — one conversation,
+   *  one player, and one synthesis rather than the same audio made twice. */
+  showAudio?: boolean
 }) {
   const isSentenceOrder = problemType === 'sentence_order'
 
@@ -208,7 +235,7 @@ function ItemDisplay({
       )}
       {/* 聴解 is answered from the audio, and the audio is the only thing the
           paper does not print. Without this the section cannot be attempted. */}
-      {problemType === 'listening' && item.transcript && (
+      {problemType === 'listening' && item.transcript && showAudio && (
         <div className="py-1"><PlayAudio itemId={item.id} /></div>
       )}
 
@@ -484,10 +511,11 @@ export default function ExamSession({
 
         {/* The questions on this text — several where the paper prints several. */}
         <div className="space-y-6">
-          {unit.items.map(it => (
+          {unit.items.map((it, index) => (
             <div key={it.id} className="space-y-2">
               <ItemDisplay
                 item={it}
+                showAudio={index === 0}
                 selected={answers[it.id] ?? null}
                 onSelect={ans => handleSelect(it.id, ans)}
                 reviewMode={reviewMode}
