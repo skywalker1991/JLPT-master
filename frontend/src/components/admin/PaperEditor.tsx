@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Check, Loader2 } from 'lucide-react'
 import { editExamItem, getBankPaper } from '../../services/api'
 import Passage from '../exam/Passage'
-import Stem from '../exam/Stem'
+import QuestionText from '../exam/QuestionText'
 import type { ExamPaperDetail, ItemSchema } from '../../types'
 
 const OPTS = ['1', '2', '3', '4']
@@ -119,9 +119,8 @@ function ItemRow({ item, type }: { item: ItemSchema; type: string }) {
       )}
       <p className="font-jp text-sm text-fg leading-relaxed">
         <span className="font-sans text-xs text-fg-subtle mr-1.5">{item.num ?? item.seq}.</span>
-        {item.stem
-          ? <Stem text={item.stem} />
-          : <span className="text-fg-subtle">（音声のみ）</span>}
+        <QuestionText stem={item.stem} type={type} num={item.num}
+                      transcript={item.transcript} />
       </p>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pl-5">
         {OPTS.filter(k => k in item.options).map(k => (
@@ -135,9 +134,7 @@ function ItemRow({ item, type }: { item: ItemSchema; type: string }) {
             <span className="font-sans font-bold mr-1">{k}</span>{item.options[k]}
           </button>
         ))}
-        {type === 'listening' && item.transcript && (
-          <span className="text-xs text-fg-subtle">原文 {item.transcript.length} 字</span>
-        )}
+
         {/* 並べ替え is scored on one blank but only makes sense as the whole
             sentence — without the ordering there is no way to see whether the
             marked answer is the right one. */}
@@ -151,6 +148,19 @@ function ItemRow({ item, type }: { item: ItemSchema; type: string }) {
           </span>
         )}
       </div>
+      {/* For 聴解 the dialogue IS the question — the paper prints nothing, and
+          the text is filled in from the 解析 booklet. A character count says
+          something landed; only the text says it landed on the right 番. */}
+      {item.transcript && (
+        <details className="ml-5 rounded-lg border border-border">
+          <summary className="px-2.5 py-1 text-xs text-fg-subtle cursor-pointer">
+            聴解原文（{item.transcript.length} 字）
+          </summary>
+          <p className="px-2.5 pb-2 font-jp text-xs text-fg-muted leading-relaxed whitespace-pre-wrap">
+            {item.transcript}
+          </p>
+        </details>
+      )}
     </div>
   )
 }

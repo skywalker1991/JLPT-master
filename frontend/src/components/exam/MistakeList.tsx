@@ -3,7 +3,7 @@ import { ChevronDown, Loader2 } from 'lucide-react'
 import { listMistakes } from '../../services/api'
 import AnalysisPanel from './AnalysisPanel'
 import PlayAudio from './PlayAudio'
-import Stem from './Stem'
+import QuestionText from './QuestionText'
 import type { MistakeItem } from '../../types'
 
 const CATS = [
@@ -92,7 +92,7 @@ export default function MistakeList() {
                 </div>
                 <p className="font-jp text-sm text-fg leading-relaxed">
                   <span className="text-xs text-fg-subtle mr-1.5">{m.num}.</span>
-                  {m.stem ? <Stem text={m.stem} /> : <span className="text-fg-subtle">（音声のみ）</span>}
+                  <QuestionText stem={m.stem} type={m.problem_type} num={m.num} />
                 </p>
               </button>
 

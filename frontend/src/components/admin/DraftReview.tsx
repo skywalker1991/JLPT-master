@@ -4,7 +4,7 @@ import clsx from 'clsx'
 import { editDraftItem } from '../../services/api'
 import type { CanonicalItem, DraftDetail } from '../../types'
 import Passage from '../exam/Passage'
-import Stem from '../exam/Stem'
+import QuestionText from '../exam/QuestionText'
 
 const OPTS = ['1', '2', '3', '4']
 
@@ -259,14 +259,8 @@ function ItemRow({
 
       <p className="text-sm text-fg leading-relaxed">
         <span className="text-xs text-fg-subtle mr-1.5">{item.num ?? item.seq}.</span>
-        {item.stem
-          ? <Stem text={item.stem} />
-          : type === 'listening' && item.transcript
-            ? <span className="text-fg-subtle">（音声のみ — 原文见下）</span>
-          : type === 'passage_fill' && item.num != null
-            // The question is the gap in the passage above, not a missing stem.
-            ? <span className="text-fg-subtle">文章中的第 {item.num} 个空</span>
-            : <span className="text-fg-subtle italic">（试卷上未印内容）</span>}
+        <QuestionText stem={item.stem} type={type} num={item.num ?? item.seq}
+                      transcript={item.transcript} />
       </p>
 
       {/* For 聴解 the dialogue is the question — the paper prints nothing.

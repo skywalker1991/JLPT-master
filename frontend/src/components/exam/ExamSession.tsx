@@ -6,7 +6,7 @@ import AnalysisPanel from './AnalysisPanel'
 import ReportItemButton from './ReportItemButton'
 import Passage from './Passage'
 import PlayAudio from './PlayAudio'
-import Stem from './Stem'
+import QuestionText from './QuestionText'
 
 // ─── Quiz unit ────────────────────────────────────────────────────────────────
 
@@ -185,7 +185,10 @@ function ItemDisplay({
 
   return (
     <div className="space-y-3">
-      {item.stem && (
+      {/* 文章の文法 prints no stem — the question is the gap in the passage
+          above — so this used to draw nothing at all, leaving five sets of
+          four options in a row with no number to tie them to 【41】…【45】. */}
+      {(item.stem || problemType === 'passage_fill') && (
         isSentenceOrder
           ? <><span className="text-xs text-fg-muted">{item.num != null ? `Q${item.num}. ` : ''}</span><SentenceOrderStem stem={item.stem} /></>
           : <p className="font-jp text-base text-fg leading-loose">
@@ -196,7 +199,8 @@ function ItemDisplay({
                   {item.num}
                 </span>
               )}
-              <Stem text={item.stem} />
+              <QuestionText stem={item.stem} type={problemType ?? ''} num={item.num}
+                            transcript={item.transcript} />
             </p>
       )}
       {isSentenceOrder && (
