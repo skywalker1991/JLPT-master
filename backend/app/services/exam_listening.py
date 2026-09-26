@@ -281,6 +281,51 @@ def _clean(transcript: str) -> str:
     return "\n".join(l for l in transcript.split("\n") if not _is_page_number(l))
 
 
+#: How a 問題 heading is written where the booklet does not use digits:
+#: 2013年12月 heads its listening 「問題⼀」「問題⼆」.
+_CJK_NUM = {c: i for i, c in enumerate("一二三四五六七八九", start=1)}
+_PROBLEM_CJK = re.compile(r"(?:^|\n)\s*(?:問題|问题)\s*([一二三四五六七八九])\s*(?=[\n。、.]|$)")
+
+#: An item marker where the booklet does not print 「N番」. All three real
+#: forms are a number at the head of a line and then something that is not
+#: more text: 2014年07月 writes 「1.」, 2015年07月 「1、正解：3」, and
+#: 2013年12月 the number by itself.
+_LOOSE_BAN = re.compile(
+    r"(?:^|\n)[^\S\n]*([0-9０-９]{1,2})[^\S\n]*(?:[、.．]|(?=\n)|(?=[^\S\n]*(?:正解|答案)))"
+)
+
+
+#: No 問題 holds more than this many items, so a marker numbered higher is
+#: the page. Both are a number alone on a line — 2013年12月's 「１」 is a
+#: question and its 「45」 is a page — and only the value tells them apart.
+MAX_BAN = 20
+
+
+def _runs_ok(numbers: list[int]) -> bool:
+    """Whether these look like item numbers rather than something else.
+
+    Item numbers restart at 1 in every 問題 and climb by one; a page number
+    sequence does neither once the pages are filtered out by value. A marker
+    can still go missing where the number failed to extract, so a few breaks
+    are tolerated — but only a few, since tolerating many would accept any
+    run of digits at all.
+    """
+    if len(numbers) < 25:
+        return False
+    runs = breaks = 0
+    expect = 1
+    for n in numbers:
+        if n == 1:
+            runs += 1
+            expect = 2
+        elif n == expect:
+            expect += 1
+        else:
+            breaks += 1
+            expect = n + 1
+    return 3 <= runs <= 6 and breaks <= len(numbers) // 10
+
+
 def parse_listening(text: str) -> list[ListeningItem]:
     """Every 番 in the booklet, with its answer, options and dialogue."""
     section, _translation = listening_section(text)
@@ -289,11 +334,18 @@ def parse_listening(text: str) -> list[ListeningItem]:
 
     # 問題 boundaries first, so a 番 is attributed to the right one — numbering
     # restarts at 一番 in every 問題.
-    problems = [(m.start(), int(_digits(m.group(1)))) for m in _PROBLEM.finditer(section)]
-    if not problems:
-        return []
+    folded = _folded(section)
+    # Both spellings, merged rather than one or the other: 2013年12月 heads
+    # its first two 「問題⼀」「問題⼆」 and the rest 「問題3」, and taking only
+    # the digits loses where the first two begin.
+    problems = sorted(
+        [(m.start(), int(_digits(m.group(1)))) for m in _PROBLEM.finditer(folded)]
+        + [(m.start(), _CJK_NUM[m.group(1)]) for m in _PROBLEM_CJK.finditer(folded)]
+    )
 
     def problem_at(position: int) -> int:
+        if not problems:
+            return 0
         current = problems[0][1]
         for start, number in problems:
             if start > position:
@@ -301,7 +353,15 @@ def parse_listening(text: str) -> list[ListeningItem]:
             current = number
         return current
 
-    hits = list(_BAN.finditer(section))
+    hits = list(_BAN.finditer(folded))
+    if len(hits) < 25:
+        # No 「N番」 in this booklet, or too few to be the whole section.
+        # Fall back to the looser marker, but only if what it finds is
+        # shaped like item numbers rather than like page numbers.
+        loose = [m for m in _LOOSE_BAN.finditer(folded)
+                 if int(_digits(m.group(1))) <= MAX_BAN]
+        if _runs_ok([int(_digits(m.group(1))) for m in loose]):
+            hits = loose
     items: list[ListeningItem] = []
     for index, match in enumerate(hits):
         end = hits[index + 1].start() if index + 1 < len(hits) else len(section)
@@ -315,13 +375,23 @@ def parse_listening(text: str) -> list[ListeningItem]:
 
         options, transcript = _options_and_transcript(body)
         items.append(ListeningItem(
-            problem=problem_at(match.start()),
+            problem=problem_at(match.start()) if problems else 0,
             ban=int(_digits(match.group(1))),
             answer=answers[0] if answers else None,
             options=options,
             transcript=_clean(transcript),
             answers=answers,
         ))
+
+    if not problems:
+        # 2014年07月 prints no 問題 heading in its transcript at all, only
+        # 「1.」 straight through. The restarts are the boundaries: a marker
+        # numbered 1 begins the next 問題.
+        number = 0
+        for item in items:
+            if item.ban == 1:
+                number += 1
+            item.problem = number
     return items
 
 
