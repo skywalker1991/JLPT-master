@@ -82,18 +82,28 @@ class ListeningItem:
 
 
 def _folded(text: str) -> str:
-    """The text as a pattern should see it.
+    """The text as a pattern should see it, character for character.
 
     These PDFs write CJK as Kangxi radicals — 听⼒原⽂ is U+2F12 and U+2F42,
     not the characters anyone would type — so a pattern matching 力 or 文
-    misses them. NFKC maps the radicals onto the ordinary ideographs and
-    leaves the offsets alone, both being one code point.
+    misses them. NFKC maps the radicals onto the ordinary ideographs.
 
     Only for finding things. What is returned to the caller is sliced out of
     the original, because the same fold would turn 「１・２・３・４」 half
     width and that is the paper's own text.
+
+    Which is why this folds one character at a time and keeps any whose
+    replacement is not also one character. Folding the whole string does not
+    preserve offsets: 2013年07月's 解析 has eighteen 「…」, and NFKC writes
+    each as three dots. Two of them fall before the 聴解 heading, so a cut
+    made at a folded offset landed four characters late and ate the 「問」 of
+    「問題 1」 — leaving its six transcripts to be counted under 問題2, and
+    six questions in the paper with no transcript at all.
     """
-    return unicodedata.normalize("NFKC", text)
+    return "".join(
+        folded if len(folded := unicodedata.normalize("NFKC", ch)) == 1 else ch
+        for ch in text
+    )
 
 
 def listening_section(text: str) -> tuple[str, str]:

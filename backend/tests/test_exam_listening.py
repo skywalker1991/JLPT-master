@@ -6,7 +6,7 @@ booklet has every 番 with its answer, options and dialogue, and it is regular
 enough to cut without a model — which matters, because a misplaced boundary
 would attach one dialogue to another question's number.
 """
-from app.services.exam_listening import parse_listening
+from app.services.exam_listening import _PROBLEM, _folded, parse_listening
 
 
 def section(body: str) -> str:
@@ -65,3 +65,26 @@ def test_a_heading_followed_by_a_particle_is_still_a_heading():
 講師：成果を出すには。
 """))
     assert [(i.problem, i.ban) for i in items] == [(5, 3)]
+
+
+def test_folding_keeps_every_offset_where_it_was():
+    """A fold is used to find things and the original is what gets cut, so a
+    fold that moves offsets cuts in the wrong place.
+
+    NFKC writes 「…」 as three dots. 2013年07月's 解析 has eighteen of them,
+    two before the 聴解 heading, so the cut landed four characters late and
+    ate the 「問」 of 「問題 1」 — its six transcripts were counted under
+    問題2 and six questions went into the bank with no transcript. Thirty-
+    three of the thirty-five booklets shift by something.
+    """
+    text = "聴⼒原⽂…と…\n問題 1\n1 番"
+    assert len(_folded(text)) == len(text)
+    # And it still does the job it exists for: the Kangxi radicals fold.
+    assert "聴力原文" in _folded(text)
+
+
+def test_the_first_問題_is_found_after_an_ellipsis():
+    """The 「問」 eaten by the shift left 問題1 invisible, and its transcripts
+    were attributed to whichever heading came next."""
+    folded = _folded("…" * 3 + "\n問題 1\n1 番\n")
+    assert _PROBLEM.search(folded) is not None
