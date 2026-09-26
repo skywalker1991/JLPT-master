@@ -46,7 +46,28 @@ _PROBLEM = re.compile(r"(?:^|\n)\s*(?:問題|问题)\s*([1-5１-５])\s*(?=[\n�
 _BAN = re.compile(
     r"(?:^|\n)\s*([0-9０-９]{1,2})\s*番(?:\s*[：:]|(?![^\n]{0,2}[はにをがのでと]))"
 )
-_ANSWER_AFTER = re.compile(r"^\s*(?:正解|答案)\s*[：:]\s*([1-4])")
+#: An answer line, printed on a line of its own.
+#:
+#: Where it sits is not fixed and cannot be assumed: 2013年07月 puts it right
+#: under the 番, 2011年12月 after the four options, and 2010年12月 at the very
+#: end, past the question. What holds everywhere is that it occupies a whole
+#: line — no line of dialogue is 「正解：2」 — so it is found by shape rather
+#: than by position, and removed wherever it turns up. Leaving it in puts the
+#: answer into the audio, which is then read aloud before the question.
+#:
+#: The variants, all real: the digit may be full width (2021年07月 writes
+#: 「正解：３」, and an ASCII [1-4] missed it in eleven of thirty-five
+#: booklets); 問題5's 統合理解 asks two questions about one conversation and
+#: prints 「質問１正解：１」「質問２正解：４」, sometimes as 「質問１：正解：１」,
+#: sometimes with the 問 misprinted as 間, and 2010年12月 puts both on one
+#: line as 「答案：2、4」. 2012年07月 runs the dialogue on from it without a
+#: break — 「正解：3 会社で男の⼈と…」 — so what follows the digits is kept
+#: rather than the whole line being dropped.
+_ANSWER_LINE = re.compile(
+    r"^[^\S\n]*(?:[質质][問问間间]\s*[0-9０-９]\s*[：:]?\s*)?"
+    r"(?:正解|答案)\s*[：:]\s*([0-9０-９])"
+    r"(?:\s*[、,，]\s*([0-9０-９]))?(?=[^\S\n]|$)"
+)
 
 #: The options printed under it, "１ ちぎれた部分を探す".
 _OPTION = re.compile(r"(?:^|\n)\s*([1-4１-４])\s*[．.、]?\s*(\S[^\n]{0,60})")
@@ -79,6 +100,9 @@ class ListeningItem:
     answer: str | None
     options: dict[str, str] = field(default_factory=dict)
     transcript: str = ""
+    #: One per question this 番 asks. Usually one; 問題5's 統合理解 asks two
+    #: about a single conversation, and they have different answers.
+    answers: list[str] = field(default_factory=list)
 
 
 def _folded(text: str) -> str:
@@ -216,6 +240,27 @@ def _options_and_transcript(body: str) -> tuple[dict[str, str], str]:
     return (leading or trailing), "\n".join(lines[taken:] if leading else lines).strip()
 
 
+def _take_answers(body: str) -> tuple[list[str], str]:
+    """Pull every answer line out of one 番, and say what they were.
+
+    Taken out before the options are read, so that removing a line from
+    between the options and the dialogue puts the two back together — which
+    is the order 2011年12月 prints them in.
+    """
+    answers: list[str] = []
+    kept: list[str] = []
+    for line in body.split("\n"):
+        found = _ANSWER_LINE.match(line)
+        if not found:
+            kept.append(line)
+            continue
+        answers.extend(_digits(d) for d in found.groups() if d)
+        rest = line[found.end():].strip()
+        if rest:
+            kept.append(rest)
+    return answers, "\n".join(kept)
+
+
 def _clean(transcript: str) -> str:
     return "\n".join(l for l in transcript.split("\n") if not _is_page_number(l))
 
@@ -250,19 +295,16 @@ def parse_listening(text: str) -> list[ListeningItem]:
         if heading:
             body = body[:heading.start()]
 
-        answer = None
-        found = _ANSWER_AFTER.match(body.lstrip("\n"))
-        if found:
-            answer = found.group(1)
-            body = body.lstrip("\n")[found.end():]
+        answers, body = _take_answers(body)
 
         options, transcript = _options_and_transcript(body)
         items.append(ListeningItem(
             problem=problem_at(match.start()),
             ban=int(_digits(match.group(1))),
-            answer=answer,
+            answer=answers[0] if answers else None,
             options=options,
             transcript=_clean(transcript),
+            answers=answers,
         ))
     return items
 

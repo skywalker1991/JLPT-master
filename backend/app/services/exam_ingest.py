@@ -210,11 +210,19 @@ def _expand(slots: list) -> list:
     the booklet prints them under a single 番. Zipping questions against 番
     without this shifts every following question onto the wrong dialogue.
     """
+    from dataclasses import replace
+
     expanded = []
     for slot in slots:
-        expanded.append(slot)
-        if slot.transcript.count("質問") >= 2:
+        if slot.transcript.count("質問") < 2:
             expanded.append(slot)
+            continue
+        # Two questions, two answers — the booklet prints 「質問１正解：１」
+        # and 「質問２正解：４」. Handing both copies the first one puts a
+        # wrong answer in the bank, which is worse than none.
+        for index in range(2):
+            answer = slot.answers[index] if index < len(slot.answers) else None
+            expanded.append(replace(slot, answer=answer))
     return expanded
 
 
