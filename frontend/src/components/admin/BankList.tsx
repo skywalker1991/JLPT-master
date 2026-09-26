@@ -1,20 +1,23 @@
 import { useRef } from 'react'
 import { AlertTriangle, Loader2, Upload } from 'lucide-react'
-import type { BankEntry } from '../../types'
+import type { BankEntry, Coverage } from '../../types'
 
 /**
- * The bank, and what is being added to it.
+ * Every sitting the test has held, and what the bank has of each.
+ *
+ * Listed as a calendar rather than as an inventory, because the question this
+ * page exists to answer is which sitting to go and find next — and a list of
+ * what is already here cannot be read for what is not. The test has run every
+ * July and December since 2010, so the rows that are missing are as knowable
+ * as the rows that are filled, and they are shown greyed with what they need.
  *
  * A draft is a paper mid-arrival, not a separate kind of thing, so it sits in
- * the same list under the sitting it belongs to. What each row carries is what
- * you would otherwise have to open the paper to find out: whether every
- * question has an answer, whether the listening can be heard, and whether it
- * came in through the old extractor — which split one 読解 heading into four
- * 問題8 and left the questions without their own text.
+ * the row of the sitting it belongs to.
  */
 export default function BankList({
-  entries, selectedId, onSelect, onUpload, uploading,
+  coverage, entries, selectedId, onSelect, onUpload, uploading,
 }: {
+  coverage: Coverage[]
   entries: BankEntry[]
   selectedId: string | null
   onSelect: (e: BankEntry) => void
@@ -22,23 +25,26 @@ export default function BankList({
   uploading: boolean
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
+  const byId = new Map(entries.map(e => [e.id, e]))
 
-  const byLevel = new Map<string, BankEntry[]>()
-  for (const e of entries) {
-    if (!byLevel.has(e.level)) byLevel.set(e.level, [])
-    byLevel.get(e.level)!.push(e)
+  const held = coverage.filter(c => c.state === 'held').length
+  const drafts = coverage.filter(c => c.state === 'draft').length
+  const wanted = coverage.filter(c => c.state === 'missing').length
+
+  // Newest first: the sitting most people are studying for is the last one.
+  const byYear = new Map<number, Coverage[]>()
+  for (const c of [...coverage].reverse()) {
+    if (!byYear.has(c.year)) byYear.set(c.year, [])
+    byYear.get(c.year)!.push(c)
   }
 
   return (
     <div className="flex flex-col h-full min-h-0">
       <div className="shrink-0 flex items-center gap-3 px-5 py-3 border-b border-border">
         <p className="text-xs text-fg-muted">
-          {entries.filter(e => e.kind === 'paper').length} 份已入库
-          {entries.some(e => e.kind === 'draft') && (
-            <span className="text-accent">
-              {' · '}{entries.filter(e => e.kind === 'draft').length} 份待校对
-            </span>
-          )}
+          {held} / {coverage.filter(c => c.state !== 'cancelled').length} 场已入库
+          {drafts > 0 && <span className="text-accent">{' · '}{drafts} 份待校对</span>}
+          {wanted > 0 && <span className="text-fg-subtle">{' · '}{wanted} 场缺资料</span>}
         </p>
         <button
           onClick={() => fileRef.current?.click()}
@@ -63,38 +69,71 @@ export default function BankList({
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {entries.length === 0 && (
-          <p className="text-sm text-fg-muted text-center py-12">题库还是空的</p>
-        )}
-        {[...byLevel.entries()].map(([level, rows]) => (
-          <div key={level}>
+        {[...byYear.entries()].map(([year, rows]) => (
+          <div key={year}>
             <p className="sticky top-0 bg-surface px-5 py-1.5 text-xs font-semibold text-fg-muted
-                          border-b border-border">{level}</p>
-            {rows.map(e => (
-              <button
-                key={e.id}
-                onClick={() => onSelect(e)}
-                className={`w-full text-left px-5 py-3 border-b border-border transition-colors
-                            ${e.id === selectedId ? 'bg-accent-light' : 'hover:bg-bg'}`}
-              >
-                <div className="flex items-baseline gap-2">
-                  <span className="text-sm font-medium text-fg">{e.source || e.title}</span>
-                  <span className="text-xs text-fg-subtle">{e.items} 题</span>
-                  {e.kind === 'draft' && (
-                    <span className={`ml-auto text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
-                      e.findings > 0 ? 'bg-danger-light text-danger-fg' : 'bg-orange-100 text-orange-700'
-                    }`}>
-                      {e.findings > 0 ? `待校对 ${e.findings} 处` : '待校对'}
-                    </span>
-                  )}
-                </div>
-                {e.kind === 'paper' && <Health entry={e} />}
-              </button>
+                          border-b border-border">{year} 年</p>
+            {rows.map(c => (
+              <Row
+                key={c.label}
+                sitting={c}
+                entry={c.entry_id ? byId.get(c.entry_id) : undefined}
+                selected={!!c.entry_id && c.entry_id === selectedId}
+                onSelect={onSelect}
+              />
             ))}
           </div>
         ))}
       </div>
     </div>
+  )
+}
+
+function Row({
+  sitting, entry, selected, onSelect,
+}: {
+  sitting: Coverage
+  entry: BankEntry | undefined
+  selected: boolean
+  onSelect: (e: BankEntry) => void
+}) {
+  const month = `${sitting.month} 月`
+
+  // Nothing to open: no paper, and none coming.
+  if (!entry) {
+    const off = sitting.state === 'cancelled'
+    return (
+      <div className={`px-5 py-3 border-b border-border ${off ? 'opacity-40' : 'opacity-60'}`}>
+        <div className="flex items-baseline gap-2">
+          <span className="text-sm text-fg-subtle">{month}</span>
+          <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded-full bg-border/50 text-fg-subtle">
+            {off ? '未举行' : '待上传资料'}
+          </span>
+        </div>
+        {off && <p className="text-xs text-fg-subtle mt-0.5">{sitting.note}</p>}
+      </div>
+    )
+  }
+
+  return (
+    <button
+      onClick={() => onSelect(entry)}
+      className={`w-full text-left px-5 py-3 border-b border-border transition-colors
+                  ${selected ? 'bg-accent-light' : 'hover:bg-bg'}`}
+    >
+      <div className="flex items-baseline gap-2">
+        <span className="text-sm font-medium text-fg">{month}</span>
+        <span className="text-xs text-fg-subtle">{entry.items} 题</span>
+        {entry.kind === 'draft' && (
+          <span className={`ml-auto text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+            entry.findings > 0 ? 'bg-danger-light text-danger-fg' : 'bg-orange-100 text-orange-700'
+          }`}>
+            {entry.findings > 0 ? `待校对 ${entry.findings} 处` : '待校对'}
+          </span>
+        )}
+      </div>
+      {entry.kind === 'paper' && <Health entry={entry} />}
+    </button>
   )
 }
 

@@ -584,7 +584,20 @@ export interface TypeTotal {
   papers: number
 }
 
+export interface Coverage {
+  label: string
+  year: number
+  month: number
+  /** held | draft | cancelled | missing */
+  state: string
+  note: string | null
+  items: number
+  entry_id: string | null
+}
+
 export interface BankOverview {
   entries: BankEntry[]
   types: TypeTotal[]
+  /** Every sitting the test has held, and what the bank has of it. */
+  coverage: Coverage[]
 }

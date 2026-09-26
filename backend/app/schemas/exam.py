@@ -303,9 +303,27 @@ class TypeTotal(BaseModel):
     papers: int
 
 
+class Coverage(BaseModel):
+    """One sitting of the test, held or not, in the bank or not.
+
+    Listing only what the bank holds cannot be read for what it lacks, and
+    what it lacks is what has to be found and uploaded next.
+    """
+    label: str                     # 2013年07月
+    year: int
+    month: int
+    #: held | draft | cancelled | missing
+    state: str
+    #: Set for held and draft: what is wrong with it, in words.
+    note: str | None = None
+    items: int = 0
+    entry_id: str | None = None
+
+
 class BankOverview(BaseModel):
     entries: list[BankEntry]
     types: list[TypeTotal]
+    coverage: list[Coverage] = []
 
 
 class MediaUploadResponse(BaseModel):

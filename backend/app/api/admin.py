@@ -20,9 +20,10 @@ from app.models.db import (
     async_session_factory,
 )
 from app.schemas.exam import (
-    BankEntry, BankOverview, DraftSummary, DraftDetail, DraftSource,
+    BankEntry, BankOverview, Coverage, DraftSummary, DraftDetail, DraftSource,
     ExamPaperDetail, MediaUploadResponse, TypeTotal,
 )
+from app.services.exam_calendar import sittings
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -613,6 +614,50 @@ async def get_bank_paper(paper_id: UUID, db: AsyncSession = Depends(get_db)):
     return await build_paper_detail(db, paper, with_answers=True)
 
 
+def _coverage(entries: list[BankEntry]) -> list[Coverage]:
+    """Every sitting the test has held, against what the bank has of it."""
+    by_source: dict[str, BankEntry] = {}
+    for entry in entries:
+        # A paper wins over a draft of the same sitting: the draft is what it
+        # arrived as, the paper is what it became.
+        if entry.kind == "paper" or entry.source not in by_source:
+            by_source[entry.source] = entry
+
+    out = []
+    for sitting in sittings():
+        entry = by_source.get(sitting.label)
+        if sitting.cancelled:
+            out.append(Coverage(label=sitting.label, year=sitting.year,
+                                month=sitting.month, state="cancelled",
+                                note=sitting.cancelled))
+        elif entry is None:
+            out.append(Coverage(label=sitting.label, year=sitting.year,
+                                month=sitting.month, state="missing",
+                                note="待上传资料"))
+        else:
+            out.append(Coverage(
+                label=sitting.label, year=sitting.year, month=sitting.month,
+                state="held" if entry.kind == "paper" else "draft",
+                note=_shortfall(entry), items=entry.items, entry_id=entry.id,
+            ))
+    return out
+
+
+def _shortfall(entry: BankEntry) -> str | None:
+    """What is wrong with a paper, in as many words as it takes."""
+    if entry.kind == "draft":
+        return f"{entry.findings} 项待确认" if entry.findings else "待确认"
+    said = []
+    if entry.answered < entry.items:
+        said.append(f"缺 {entry.items - entry.answered} 个答案")
+    short = entry.listening - entry.transcripts
+    if short > 0:
+        said.append(f"缺 {short} 段听力原文")
+    if entry.empty_problems:
+        said.append(f"{entry.empty_problems} 个空題组")
+    return "、".join(said) or None
+
+
 @router.get("/bank", response_model=BankOverview)
 async def get_bank(db: AsyncSession = Depends(get_db)):
     """Every paper in the bank, what state it is in, and what it is short of.
@@ -707,6 +752,7 @@ async def get_bank(db: AsyncSession = Depends(get_db)):
         ))
 
     return BankOverview(
+        coverage=_coverage(entries),
         entries=sorted(entries, key=lambda e: (e.level, e.source), reverse=True),
         types=sorted(
             (TypeTotal(type=t["type"], items=t["items"], papers=len(t["papers"]))

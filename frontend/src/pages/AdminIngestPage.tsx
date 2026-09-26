@@ -142,6 +142,7 @@ export default function AdminIngestPage() {
         )}
         {!loadingDrafts && tab === 'papers' && bank && (
           <BankList
+            coverage={bank.coverage}
             entries={bank.entries}
             selectedId={selectedId}
             onSelect={openEntry}
