@@ -80,6 +80,21 @@ def test_anything_in_the_listening_booklet_is_a_listening_problem():
     assert guess_type(block("問題3 何も印刷されていません", section="聴解")) == "listening"
 
 
+def test_anything_in_the_reading_booklet_is_a_reading_problem():
+    """All six 読解 types score alike, so the instruction adds nothing."""
+    assert guess_type(block("問題13 下のページは、ある病院の案内である。",
+                            section="読解")) == "reading_comp"
+    assert guess_type(block("問題13 下の問いに対する答えとして最もよいものを",
+                            section="読解")) == "reading_comp"
+
+
+def test_a_passage_about_word_usage_is_not_a_word_usage_question():
+    """2020年12月問題11 opens on an essay about 「頭の使い方」. Reading the
+    instruction filed a 読解 passage under 文字・語彙."""
+    text = "問題11 次のAとBの文章を読んで、後の問いに答えなさい。 A 変化の激しい時代に必要な頭の使い方というと、"
+    assert guess_type(block(text, section="読解")) == "reading_comp"
+
+
 # --- item numbers ----------------------------------------------------------------
 
 def test_an_item_number_is_read_however_it_was_printed():

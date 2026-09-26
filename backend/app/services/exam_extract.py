@@ -81,6 +81,17 @@ def guess_type(block: Block) -> str:
     """What kind of 問題 this is, from the instruction above it."""
     if block.section == "聴解":
         return "listening"
+    # Every 読解 問題 is one of six named types — 短文, 中文, 長文, 統合理解,
+    # 主張理解, 情報検索 — and all six are answered the same way and score in
+    # the same part, so they are one type here and the instruction has nothing
+    # left to say. Read it anyway and it only misleads: 問題13 says 「下の
+    # ページは」 or nothing at all, 2019年12月 prints ページ with a Kangxi
+    # radical for the ー, and 2020年12月's 問題11 opens on an essay about
+    # 「頭の使い⽅」 — which the vocabulary rule for 用法 duly matched, filing a
+    # reading passage under 文字・語彙. Five blocks across thirty sittings,
+    # every one of them from reading a sentence the section had already settled.
+    if block.section == "読解":
+        return "reading_comp"
     head = block.text[:200]
     for pattern, kind in _TYPE_RULES:
         if pattern.search(head):
