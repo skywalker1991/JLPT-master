@@ -17,8 +17,18 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+#: The largest number a 問題 heading carries. N1's written booklet runs to
+#: 問題13 and its listening to 問題5; no level numbers higher.
+#:
+#: The bound is what keeps 問題 from being read as the ordinary word it also
+#: is. 2012年07月's 問題7 ends 「…文化の問題 45 と思うのである。」 — a
+#: sentence about a problem, followed by the passage's last blank — and read
+#: as a heading it cut 問題7 off before its options, leaving the 問題 with no
+#: questions at all.
+MAX_HEADING = 20
+
 #: 問題 heading. The number may be half-width, full-width, or spaced away.
-_HEADING = re.compile(r"問題\s*([0-9０-９]{1,2})")
+_HEADING = re.compile(r"問題\s*([0-9０-９]{1,2})(?![0-9０-９])")
 
 #: Where 読解 begins. Printed as its own word above 問題8 in both sittings.
 _READING_MARKER = re.compile(r"(?<![^\s])読解(?![^\s])")
@@ -81,6 +91,10 @@ def split_problems(text: str) -> list[Block]:
     headings: list[tuple[int, int]] = []
     for match in _HEADING.finditer(text):
         number = _number(match.group(1))
+        # 問題 is also an ordinary word, and a passage that uses it before a
+        # blank reads exactly like a heading. No level numbers this high.
+        if not 1 <= number <= MAX_HEADING:
+            continue
         # Every heading is restated by the instruction below it; keep the first.
         if headings and headings[-1][1] == number and match.start() - headings[-1][0] < 120:
             continue
