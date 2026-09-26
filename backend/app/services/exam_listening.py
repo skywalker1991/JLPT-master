@@ -54,12 +54,18 @@ _OPTION = re.compile(r"(?:^|\n)\s*([1-4１-４])\s*[．.、]?\s*(\S[^\n]{0,60})"
 #: A line of dialogue: speaker, then what they said.
 _SPEECH = re.compile(r"(?:^|\n)\s*([男女⼥]\d?|M|F)\s*[：:]")
 
-#: Some booklets print the whole listening section twice, once in Japanese and
-#: once translated — 2019年12月 does, which read as every 番 existing twice.
-#: The translation is worth keeping, just not as more questions.
-#: Variant forms matter: the text layer uses Kangxi radicals (⼒ ⽂ ⼒) where
-#: the ordinary characters would be expected, so both have to be accepted.
-_TRANSLATION = re.compile(r"[听聴][⼒力][原⽂文]{2}翻译|[原⽂文]{2}翻译|翻译\s*$", re.M)
+#: Kana. A Japanese transcript is full of them and a Chinese translation of it
+#: has none, which is what tells the two halves apart — the words printed
+#: between them cannot. 2023年7月 heads the whole section
+#: 「听力原文翻译」, so a rule keyed on 「翻译」 fires at the title and calls
+#: all 18,000 characters of Japanese a translation.
+_KANA = re.compile(r"[ぁ-んァ-ヶ]")
+
+
+def _kana_ratio(text: str) -> float:
+    if not text:
+        return 0.0
+    return len(_KANA.findall(text)) / len(text)
 
 
 def _digits(raw: str) -> str:
@@ -100,10 +106,20 @@ def listening_section(text: str) -> tuple[str, str]:
     if not match:
         return "", ""
     body = text[match.start():]
-    translated = _TRANSLATION.search(_folded(body))
-    if translated:
-        return body[: translated.start()], body[translated.start():]
-    return body, ""
+
+    # Where the Japanese stops and its translation begins. Found by looking
+    # for the point after which there is no more kana, rather than for a word
+    # saying so: some booklets print 「听力原文翻译」 as the heading of the
+    # whole section, and some print nothing at the join at all.
+    window = 400
+    blocks = [(i, body[i:i + window]) for i in range(0, len(body), window)]
+    japanese = [i for i, block in blocks if _kana_ratio(block) > 0.05]
+    if not japanese:
+        return "", body
+    end = japanese[-1] + window
+    if end >= len(body) - window:
+        return body, ""
+    return body[:end], body[end:]
 
 
 #: The page number, printed on its own line. It falls wherever the page breaks,
