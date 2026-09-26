@@ -168,35 +168,68 @@ def render_pages(data: bytes, *, limit: int = 3, dpi: int = 200) -> list[bytes]:
         document.close()
 
 
-def page_image_for(data: bytes, needle: str, *, dpi: int = 150) -> bytes | None:
-    """The page carrying this text, as a PNG.
+def page_image_for(data: bytes, passage: str, *, dpi: int = 150) -> bytes | None:
+    """The passage as it is printed, cropped out of its page.
 
     情報検索 asks the reader to find something on a printed page — a notice,
-    a timetable, a fee table — and the finding is the question. Extraction
-    keeps the words and loses the arrangement, which is the half being
-    tested, so the page itself is kept alongside the text.
+    a timetable, a fee table — and the finding is the arrangement, which
+    extraction does not carry and cannot put back afterwards.
 
-    Not reconstructed: the arrangement cannot be recovered from the text
-    afterwards, and the two rules that come closest both merge the rows of a
-    table into a paragraph. A picture of the page is exact and costs nothing
-    to be sure of.
+    Cropped to the passage rather than kept as a page, because the page also
+    holds the questions: shown whole under the questions it belongs to, it
+    asks them a second time. The crop runs from the passage's first line to
+    its last, found by searching for their text, so it works whether or not
+    the notice happens to be drawn inside a box.
     """
     import fitz
 
-    fitz.TOOLS.mupdf_display_errors(False)
-    # The markers ingest adds are not on the page.
-    needle = "".join(needle.replace("__", "").split())[:24]
-    if not needle:
+    lines = [l for l in (passage or "").split("\n") if l.strip()]
+    if not lines:
+        return None
+    # Searched as the page spells it. Collapsing the spaces first finds
+    # nothing: the notice heads itself 「緑町病院 雇用時健康診断のご案内」, and
+    # 「緑町病院雇用時健康診断の」 is not on the page anywhere.
+    head = lines[0].replace("__", "").split()[0][:16] if lines[0].split() else ""
+    tail = lines[-1].replace("__", "").split()[-1][-16:] if lines[-1].split() else ""
+    if not head:
         return None
 
+    fitz.TOOLS.mupdf_display_errors(False)
     document = fitz.open(stream=data, filetype="pdf")
     try:
         for page in document:
-            # Compared against the same geometric reading the passage came
-            # from: get_text() returns storage order, in which the passage's
-            # opening words are not necessarily next to each other.
-            if needle in "".join(page_text(page, mark_underlines=False).split()):
-                return page.get_pixmap(dpi=dpi).tobytes("png")
+            # Matched against the same geometric reading the passage came
+            # from: get_text() returns storage order, in which the opening
+            # words are not necessarily next to each other.
+            if head not in "".join(page_text(page, mark_underlines=False).split()):
+                continue
+            clip = _passage_box(page, head, tail)
+            return page.get_pixmap(dpi=dpi, clip=clip).tobytes("png")
         return None
     finally:
         document.close()
+
+
+#: Room left around the crop. The top is tight because the line above is the
+#: end of the instruction, printed close enough that five points of slack
+#: leaves a strip of its descenders across the picture.
+CROP_PAD_TOP = 1.0
+CROP_PAD = 12.0
+
+
+def _passage_box(page, head: str, tail: str):
+    """Where on the page the passage sits, or the whole page if unclear."""
+    import fitz
+
+    tops = page.search_for(head)
+    bottoms = page.search_for(tail) if tail else []
+    if not tops or not bottoms:
+        return None                      # a full page beats a wrong crop
+    top = min(r.y0 for r in tops)
+    bottom = max(r.y1 for r in bottoms)
+    if bottom <= top:
+        return None
+    return fitz.Rect(
+        page.rect.x0, max(page.rect.y0, top - CROP_PAD_TOP),
+        page.rect.x1, min(page.rect.y1, bottom + CROP_PAD),
+    )
