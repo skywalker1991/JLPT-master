@@ -206,6 +206,58 @@ def parse_booklet_table(text: str, listening_counts: dict[int, int] | None = Non
     return parse_answer_sheet(table, listening_counts)
 
 
+#: 「問題1 （1）：正解：4」 — five of the thirty booklets number the answers
+#: within each 問題 rather than straight through the paper, and put the number
+#: in brackets. (1) under 問題2 is the paper's 第7题, so the heading has to be
+#: read alongside it.
+#: A heading, not a mention. 解析 prose quotes 問題7 in the middle of a
+#: sentence all the time, and a mention taken for a heading resets the count
+#: and throws every number after it out.
+_PROBLEM_HEAD = re.compile(r"(?:^|\n)[^\S\n]*[問问][題题]\s*([0-9０-９]{1,2})")
+_BRACKETED = re.compile(r"[（(]\s*([0-9０-９]{1,2})\s*[)）]\s*[：:]?\s*(?:正解|答案)\s*[：:]?\s*([1-4])(?![0-9])")
+
+
+def _digits(raw: str) -> str:
+    return raw.translate(str.maketrans("０１２３４５６７８９", "0123456789"))
+
+
+def _parse_bracketed(text: str) -> dict[int, str]:
+    """Answers numbered from one inside every 問題.
+
+    Restored to the paper's own numbering by counting the questions seen so
+    far. That it came out right is checkable: the numbers have to run from 1
+    without a gap, and a booklet where they do not is not read this way.
+    """
+    found: dict[int, str] = {}
+    offset = 0
+    seen_in_problem = 0
+    position = 0
+    for match in sorted(
+        [*_PROBLEM_HEAD.finditer(text), *_BRACKETED.finditer(text)],
+        key=lambda m: m.start(),
+    ):
+        if match.re is _PROBLEM_HEAD:
+            offset += seen_in_problem
+            seen_in_problem = 0
+            continue
+        local = int(_digits(match.group(1)))
+        seen_in_problem = max(seen_in_problem, local)
+        found[offset + local] = match.group(2)
+        position += 1
+
+    # Keep the run that starts at 1 and stop where it breaks, rather than
+    # throwing the lot away. 問題 numbers are quoted inside explanations as
+    # well as printed as headings, so the offset goes wrong partway down a
+    # booklet — but everything before that point is still right, and a booklet
+    # whose 解析 only covers the first 25 questions is the normal case here.
+    run: dict[int, str] = {}
+    expected = 1
+    while expected in found:
+        run[expected] = found[expected]
+        expected += 1
+    return run
+
+
 def parse_explanations(text: str) -> AnswerKey:
     """The 解析 booklet, which states an answer alongside each explanation.
 
@@ -224,6 +276,13 @@ def parse_explanations(text: str) -> AnswerKey:
     for num, answer in _SOLUTION.findall(text):
         if int(num) not in key.orders:
             key.written[int(num)] = answer
+
+    # Five of the thirty number their answers from one inside every 問題
+    # instead of straight through, which the pattern above cannot see at all.
+    # Only consulted when it found nothing, and only trusted when the restored
+    # numbering comes out unbroken.
+    if not key.written:
+        key.written.update(_parse_bracketed(text))
     return key
 
 
