@@ -25,11 +25,19 @@ from dataclasses import dataclass, field
 #: (⼒ ⽂) these PDFs are full of.
 _SECTION = re.compile(r"[听聴]力\s*(?:原文|文本|解析|原稿)")
 
-#: 問題N heading on its own line, in either script.
 #: 問題N heading on its own line. 2014年7月 writes the Chinese 问题 and puts
 #: the number on the same line as what follows, so the line-end anchor has to
 #: give way to "nothing but the heading up to here".
-_PROBLEM = re.compile(r"(?:^|\n)\s*(?:問題|问题)\s*([1-5１-５])\s*(?=[\n。、.]|$)")
+#:
+#: Matched a character at a time rather than as either whole word, because
+#: these reprints mix the two scripts inside it: 2023年7月 and 2024年7月
+#: write 「問题」, the Japanese 問 with the simplified 题. Read as 問題 or
+#: 问题 and nothing else, those two headings went unseen and their 番 were
+#: counted under the 問題 before them — thirteen questions in one, none in
+#: the other. A colon may follow the number too, as 2015年12月 writes it.
+_PROBLEM = re.compile(
+    r"(?:^|\n)\s*[問问][題题]\s*([1-5１-５])\s*(?=[\n。、.：:]|$)"
+)
 
 #: "1 番" begins a question. The answer may follow on the same line, on the
 #: next one, or not at all — 2018年07月 breaks after 番, 2019年12月 does not,
@@ -284,7 +292,9 @@ def _clean(transcript: str) -> str:
 #: How a 問題 heading is written where the booklet does not use digits:
 #: 2013年12月 heads its listening 「問題⼀」「問題⼆」.
 _CJK_NUM = {c: i for i, c in enumerate("一二三四五六七八九", start=1)}
-_PROBLEM_CJK = re.compile(r"(?:^|\n)\s*(?:問題|问题)\s*([一二三四五六七八九])\s*(?=[\n。、.]|$)")
+_PROBLEM_CJK = re.compile(
+    r"(?:^|\n)\s*[問问][題题]\s*([一二三四五六七八九])\s*(?=[\n。、.：:]|$)"
+)
 
 #: An item marker where the booklet does not print 「N番」. All three real
 #: forms are a number at the head of a line and then something that is not
