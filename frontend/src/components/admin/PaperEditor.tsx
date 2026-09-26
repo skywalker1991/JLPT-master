@@ -87,9 +87,7 @@ export default function PaperEditor({ paperId }: { paperId: string }) {
 }
 
 function ItemRow({ item, type }: { item: ItemSchema; type: string }) {
-  // The paper does not hand back the answer it is scored against, so this
-  // starts blank and only sends what is actually changed.
-  const [answer, setAnswer] = useState('')
+  const [answer, setAnswer] = useState(item.correct_answer ?? '')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
@@ -129,6 +127,12 @@ function ItemRow({ item, type }: { item: ItemSchema; type: string }) {
         ))}
         {type === 'listening' && item.transcript && (
           <span className="text-xs text-fg-subtle">原文 {item.transcript.length} 字</span>
+        )}
+        {/* 並べ替え is scored on one blank but only makes sense as the whole
+            sentence — without the ordering there is no way to see whether the
+            marked answer is the right one. */}
+        {type === 'sentence_order' && item.answer_order && (
+          <span className="font-sans text-xs text-fg-subtle">语序 {item.answer_order}</span>
         )}
         {saving && <Loader2 className="w-3 h-3 animate-spin text-fg-muted" />}
         {saved && !saving && (
