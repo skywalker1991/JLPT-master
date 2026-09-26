@@ -320,6 +320,16 @@ export function mediaUrl(mediaId: string): string {
   return `${BASE_URL}/api/media/${mediaId}`
 }
 
+/**
+ * The same paper as `getExam`, but with the answers.
+ *
+ * Answering must not be sent the answer, so `/api/exams` leaves it out; the
+ * editor cannot check an answer it is not shown, so it asks the bank.
+ */
+export async function getBankPaper(paperId: string): Promise<ExamPaperDetail> {
+  return request<ExamPaperDetail>(`/api/admin/papers/${paperId}`)
+}
+
 export async function getBank(): Promise<BankOverview> {
   return request<BankOverview>('/api/admin/bank')
 }

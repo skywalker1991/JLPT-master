@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Check, Loader2 } from 'lucide-react'
-import { editExamItem, getExam } from '../../services/api'
+import { editExamItem, getBankPaper } from '../../services/api'
 import Passage from '../exam/Passage'
 import Stem from '../exam/Stem'
 import type { ExamPaperDetail, ItemSchema } from '../../types'
@@ -24,7 +24,7 @@ export default function PaperEditor({ paperId }: { paperId: string }) {
 
   useEffect(() => {
     setLoading(true)
-    getExam(paperId)
+    getBankPaper(paperId)
       .then(setPaper)
       .catch(() => setPaper(null))
       .finally(() => setLoading(false))

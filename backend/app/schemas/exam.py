@@ -35,6 +35,12 @@ class ItemSchema(BaseModel):
     passage: str | None = None
     options: dict
     meta: dict | None
+    #: Left out of the answering view on purpose — sending the answer to the
+    #: page that asks the question defeats the question. Only the bank's own
+    #: endpoints fill these in, so a leak has to be written deliberately
+    #: rather than happening by forgetting.
+    correct_answer: str | None = None
+    answer_order: str | None = None
 
 
 class ProblemDetail(BaseModel):

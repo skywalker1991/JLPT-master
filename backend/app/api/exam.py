@@ -823,14 +823,17 @@ async def list_exams(db: AsyncSession = Depends(get_db)):
 
 # ── 试卷详情（题目不含正解） ──────────────────────────────────────────────────
 
-@router.get("/exams/{paper_id}", response_model=ExamPaperDetail)
-async def get_exam(paper_id: UUID, db: AsyncSession = Depends(get_db)):
-    paper = await db.get(ExamPaper, paper_id)
-    if paper is None:
-        raise HTTPException(status_code=404, detail="Exam paper not found")
+async def build_paper_detail(
+    db: AsyncSession, paper: ExamPaper, *, with_answers: bool = False,
+) -> ExamPaperDetail:
+    """A whole paper, shaped for reading.
 
+    `with_answers` is what separates the two callers: answering must not be
+    told the answer, and the bank's editor cannot check one it is not shown.
+    One function so the two views cannot drift apart in anything else.
+    """
     sections = (await db.execute(
-        select(ExamSection).where(ExamSection.paper_id == paper_id).order_by(ExamSection.seq)
+        select(ExamSection).where(ExamSection.paper_id == paper.id).order_by(ExamSection.seq)
     )).scalars().all()
 
     section_details = []
@@ -851,9 +854,13 @@ async def get_exam(paper_id: UUID, db: AsyncSession = Depends(get_db)):
                 id=prob.id, seq=prob.seq, name=prob.name, type=prob.type,
                 instruction=prob.instruction, passage=prob.passage, transcript=prob.transcript,
                 media=[ExamMediaItem(id=m.id, url=m.url, caption=m.caption, seq=m.seq) for m in media],
-                items=[ItemSchema(id=i.id, seq=i.seq, num=i.num, stem=i.stem,
-                                  transcript=i.transcript, passage=i.passage,
-                                  options=i.options, meta=i.meta) for i in items],
+                items=[ItemSchema(
+                    id=i.id, seq=i.seq, num=i.num, stem=i.stem,
+                    transcript=i.transcript, passage=i.passage,
+                    options=i.options, meta=i.meta,
+                    correct_answer=i.correct_answer if with_answers else None,
+                    answer_order=i.answer_order if with_answers else None,
+                ) for i in items],
             ))
 
         section_details.append(SectionDetail(
@@ -864,6 +871,14 @@ async def get_exam(paper_id: UUID, db: AsyncSession = Depends(get_db)):
         id=paper.id, title=paper.title, level=paper.level,
         source=paper.source, sections=section_details, created_at=paper.created_at,
     )
+
+
+@router.get("/exams/{paper_id}", response_model=ExamPaperDetail)
+async def get_exam(paper_id: UUID, db: AsyncSession = Depends(get_db)):
+    paper = await db.get(ExamPaper, paper_id)
+    if paper is None:
+        raise HTTPException(status_code=404, detail="Exam paper not found")
+    return await build_paper_detail(db, paper)
 
 
 # ── 开始答题 ──────────────────────────────────────────────────────────────────

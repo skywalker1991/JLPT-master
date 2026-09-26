@@ -3,6 +3,7 @@ import asyncio
 import json
 import logging
 import uuid as _uuid
+from uuid import UUID
 from copy import deepcopy
 from pathlib import Path
 from datetime import datetime
@@ -19,7 +20,7 @@ from app.models.db import (
 )
 from app.schemas.exam import (
     BankEntry, BankOverview, DraftSummary, DraftDetail, DraftSource,
-    MediaUploadResponse, TypeTotal,
+    ExamPaperDetail, MediaUploadResponse, TypeTotal,
 )
 from app.config import get_settings
 
@@ -582,6 +583,24 @@ async def upload_media(file: UploadFile = File(...)):
 
 
 # ── 题库全貌 ──────────────────────────────────────────────────────────────────
+
+@router.get("/papers/{paper_id}", response_model=ExamPaperDetail)
+async def get_bank_paper(paper_id: UUID, db: AsyncSession = Depends(get_db)):
+    """A paper as the bank sees it — with the answers.
+
+    The answering endpoint returns the same paper without them, because
+    sending the answer to the page asking the question defeats the question.
+    The editor is the other case: an answer it is not shown is one nobody can
+    check, and a wrong answer in the bank is wrong on every attempt made
+    against it from here on.
+    """
+    from app.api.exam import build_paper_detail
+
+    paper = await db.get(ExamPaper, paper_id)
+    if paper is None:
+        raise HTTPException(status_code=404, detail="Exam paper not found")
+    return await build_paper_detail(db, paper, with_answers=True)
+
 
 @router.get("/bank", response_model=BankOverview)
 async def get_bank(db: AsyncSession = Depends(get_db)):

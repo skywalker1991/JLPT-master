@@ -193,6 +193,10 @@ export interface ItemSchema {
   passage: string | null
   options: Record<string, string>
   meta: Record<string, unknown> | null
+  /** Null from `/api/exams` by design — answering is not told the answer.
+   *  `/api/admin/papers` fills these in for the bank's editor. */
+  correct_answer?: string | null
+  answer_order?: string | null
 }
 
 export interface ProblemDetail {
