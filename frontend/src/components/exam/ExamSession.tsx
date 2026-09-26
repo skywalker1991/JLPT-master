@@ -41,7 +41,12 @@ const BY_PASSAGE = new Set(['reading_comp', 'passage_fill'])
  * is what the audio says.
  */
 function sharedText(prob: ProblemDetail, item: ItemSchema): string | null {
-  if (prob.type === 'listening') return item.transcript
+  // 聴解 groups on the 番, which is what the booklet prints them under — not
+  // on the dialogue, which is stored once and so is absent on the second.
+  if (prob.type === 'listening') {
+    const ban = (item.meta as { ban?: number } | null)?.ban
+    return ban == null ? null : `ban:${ban}`
+  }
   return item.passage ?? prob.passage
 }
 

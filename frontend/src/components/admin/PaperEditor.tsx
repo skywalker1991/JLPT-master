@@ -75,19 +75,8 @@ export default function PaperEditor({ paperId }: { paperId: string }) {
                                className="px-3 pb-2.5 text-xs text-fg-muted leading-relaxed whitespace-pre-wrap" />
                     </details>
                   )}
-                  {problem.items.map((item, index) => (
-                    <ItemRow
-                      key={item.id}
-                      item={item}
-                      type={problem.type}
-                      // 聴解問題5 asks two questions about one conversation and
-                      // both carry it; printing it twice says there are two.
-                      repeatsTranscript={
-                        index > 0
-                        && !!item.transcript
-                        && item.transcript === problem.items[index - 1].transcript
-                      }
-                    />
+                  {problem.items.map(item => (
+                    <ItemRow key={item.id} item={item} type={problem.type} />
                   ))}
                 </div>
               ))}
@@ -99,10 +88,7 @@ export default function PaperEditor({ paperId }: { paperId: string }) {
   )
 }
 
-function ItemRow(
-  { item, type, repeatsTranscript }:
-  { item: ItemSchema; type: string; repeatsTranscript?: boolean },
-) {
+function ItemRow({ item, type }: { item: ItemSchema; type: string }) {
   const [answer, setAnswer] = useState(item.correct_answer ?? '')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -167,7 +153,7 @@ function ItemRow(
       {/* For 聴解 the dialogue IS the question — the paper prints nothing, and
           the text is filled in from the 解析 booklet. A character count says
           something landed; only the text says it landed on the right 番. */}
-      {item.transcript && !repeatsTranscript && (
+      {item.transcript && (
         <details className="ml-5 rounded-lg border border-border">
           <summary className="px-2.5 py-1 text-xs text-fg-subtle cursor-pointer">
             聴解原文（{item.transcript.length} 字）

@@ -222,7 +222,12 @@ def _expand(slots: list) -> list:
         # wrong answer in the bank, which is worse than none.
         for index in range(2):
             answer = slot.answers[index] if index < len(slot.answers) else None
-            expanded.append(replace(slot, answer=answer))
+            # One conversation, stored once. The second question finds it on
+            # the first — see dialogue_for, which is the only place that
+            # knows the rule.
+            expanded.append(replace(
+                slot, answer=answer, transcript=slot.transcript if index == 0 else "",
+            ))
     return expanded
 
 

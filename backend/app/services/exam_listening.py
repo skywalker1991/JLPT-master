@@ -332,3 +332,27 @@ def has_dialogue(item: ListeningItem) -> bool:
     synthesising audio from it would produce a clip with nothing in it.
     """
     return len(_SPEECH.findall(item.transcript)) >= 2
+
+
+def dialogue_for(item, siblings) -> str | None:
+    """The conversation this question is asked about.
+
+    Usually its own. 聴解問題5's 統合理解 plays one conversation and asks two
+    questions about it — the booklet prints them under a single 番 — so it is
+    stored once, on the first, and the second finds it here.
+
+    The one place that knows this. Anything reading `item.transcript` straight
+    gets nothing for the second question: no dialogue to speak, and none to
+    explain the answer with.
+    """
+    if item.transcript:
+        return item.transcript
+    ban = (item.meta or {}).get("ban")
+    if ban is None:
+        return None
+    for other in siblings:
+        if other is item:
+            break
+        if (other.meta or {}).get("ban") == ban and other.transcript:
+            return other.transcript
+    return None

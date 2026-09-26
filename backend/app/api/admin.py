@@ -624,7 +624,7 @@ async def get_bank(db: AsyncSession = Depends(get_db)):
     rows = (await db.execute(
         select(ExamPaper.id, ExamSection.id, ExamProblem.id, ExamProblem.name,
                ExamProblem.type, ExamItem.id, ExamItem.correct_answer,
-               ExamItem.transcript)
+               ExamItem.transcript, ExamItem.meta)
         .join(ExamSection, ExamSection.paper_id == ExamPaper.id)
         .join(ExamProblem, ExamProblem.section_id == ExamSection.id)
         .outerjoin(ExamItem, ExamItem.problem_id == ExamProblem.id)
@@ -635,7 +635,7 @@ async def get_bank(db: AsyncSession = Depends(get_db)):
     types: dict[str, dict] = {}
 
     for (paper_id, section_id, problem_id, name, ptype,
-         item_id, answer, transcript) in rows:
+         item_id, answer, transcript, meta) in rows:
         stat = per_paper.get(paper_id)
         if stat is None:
             continue
@@ -657,7 +657,11 @@ async def get_bank(db: AsyncSession = Depends(get_db)):
             stat["answered"] += 1
         if ptype == "listening":
             stat["listening"] += 1
-            if transcript:
+            # 聴解問題5 asks two questions about one conversation, stored once
+            # on the first of them. The second is not short of a transcript;
+            # counting it so reports a gap that does not exist.
+            follow_up = (meta or {}).get("question", 1) > 1
+            if transcript or follow_up:
                 stat["transcripts"] += 1
         bucket = types.setdefault(ptype, {"type": ptype, "items": 0, "papers": set()})
         bucket["items"] += 1

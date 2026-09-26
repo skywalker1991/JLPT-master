@@ -22,6 +22,7 @@ from app.schemas.exam import (
 )
 from app.services.llm.factory import get_llm_client
 from app.services import exam_edit
+from app.services.exam_listening import dialogue_for
 from app.services.tts import TTSUnavailable, speak
 
 logger = logging.getLogger(__name__)
@@ -1322,7 +1323,10 @@ async def _analyse_item(item, problem, db) -> dict | None:
     star_position = (item.meta or {}).get("star_position", "")
     star_word = (item.options or {}).get(str(correct), "") if item.options else ""
 
-    transcript = item.transcript or problem.transcript or ""
+    siblings = (await db.execute(
+        select(ExamItem).where(ExamItem.problem_id == problem.id).order_by(ExamItem.seq)
+    )).scalars().all()
+    transcript = dialogue_for(item, siblings) or problem.transcript or ""
     # Where a 問題 holds several texts, the question is about one of them.
     # Handing the analyser all four is handing it three red herrings.
     passage = item.passage or problem.passage or ""
@@ -1410,7 +1414,10 @@ async def make_audio(item_id: UUID, db: AsyncSession = Depends(get_db)):
     if existing is not None:
         return {"media_id": str(existing.id), "cached": True}
 
-    text = item.transcript or (item.problem.transcript if item.problem else None)
+    siblings = (await db.execute(
+        select(ExamItem).where(ExamItem.problem_id == item.problem_id).order_by(ExamItem.seq)
+    )).scalars().all()
+    text = dialogue_for(item, siblings) or (item.problem.transcript if item.problem else None)
     if not text:
         raise HTTPException(status_code=400, detail="这道题没有听力原文，无法合成")
 
