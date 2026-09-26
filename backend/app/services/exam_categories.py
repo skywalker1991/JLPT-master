@@ -49,15 +49,25 @@ def _number(name: str) -> int | None:
 
 
 def type_by_number(level: str | None, section: str, problem_name: str) -> str | None:
-    """The type this 問題 number means, or None where the number says nothing."""
+    """The type this 問題 number means, or None where the number says nothing.
+
+    The number decides which half of the written booklet it is in as well as
+    what it is, so the section is only consulted to keep 聴解 out: its
+    numbering starts over, and its 問題1 is not 漢字読み.
+
+    Not taken from the section, because where 読解 begins is not reliably
+    printed. 2013年07月 repeats 「読解」 as a divider inside the booklet and
+    2016年12月 prints it only on the cover, so a split keyed on the word put
+    that sitting's 問題8 to 問題13 under 言語知識 — and 問題13 was never
+    recognised as 情報検索, so its page was not kept.
+    """
+    if "聴解" in section:
+        return None
     number = _number(problem_name)
     if not number:
         return None
-    if section == "読解":
-        return READING_BY_NUMBER.get(level or "", {}).get(number)
-    if section != "言語知識":
-        return None
-    return BY_NUMBER.get(level or "", {}).get(number)
+    return (BY_NUMBER.get(level or "", {}).get(number)
+            or READING_BY_NUMBER.get(level or "", {}).get(number))
 
 
 #: The four parts a paper is practised in. N1 runs 170 minutes and almost

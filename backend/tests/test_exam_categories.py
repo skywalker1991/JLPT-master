@@ -15,14 +15,22 @@ def test_the_number_tells_grammar_from_vocabulary():
     assert type_by_number("N1", "言語知識", "問題5") == "grammar_fill"
 
 
-def test_it_says_nothing_outside_言語知識():
-    """聴解 states what it is, and its numbering carries no such meaning.
-
-    読解's does, but only for the last 問題 — the other five are one type.
-    """
-    assert type_by_number("N1", "読解", "問題5") is None
-    assert type_by_number("N1", "読解", "問題9") is None
+def test_聴解_numbering_means_nothing_because_it_starts_over():
+    """聴解問題1 is 課題理解, not 漢字読み. It is the one section the number
+    cannot speak for."""
+    assert type_by_number("N1", "聴解", "問題1") is None
     assert type_by_number("N1", "聴解", "問題5") is None
+
+
+def test_the_number_says_which_half_of_the_booklet_too():
+    """Where 読解 begins is not reliably printed — 2013年07月 repeats it as a
+    divider, 2016年12月 prints it only on the cover — so 問題13 is 情報検索
+    whichever half a split happened to put it in."""
+    assert type_by_number("N1", "言語知識", "問題13") == "info_search"
+    assert type_by_number("N1", "読解", "問題13") == "info_search"
+    assert type_by_number("N1", "言語知識", "問題5") == "grammar_fill"
+    #: 読解's other five are one type, so the number says nothing for them.
+    assert type_by_number("N1", "読解", "問題9") is None
 
 
 def test_the_last_読解_問題_is_information_retrieval():
