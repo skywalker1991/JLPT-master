@@ -552,3 +552,35 @@ export function askTargets(entry: AskEntry): AskTarget[] {
   if ((p.kind === 'vocab' || p.kind === 'grammar') && p.target) return [{ kind: p.kind, key: p.target }]
   return []
 }
+
+// ─── Bank overview (admin) ────────────────────────────────────────────────────
+
+/** A paper in the bank, or one being added. A draft is a paper mid-arrival
+ *  rather than a different kind of thing, so both share this shape. */
+export interface BankEntry {
+  kind: 'paper' | 'draft'
+  id: string
+  level: string
+  source: string
+  title: string
+  items: number
+  answered: number
+  listening: number
+  transcripts: number
+  empty_problems: number
+  /** 問題8 four times over — how the old extractor split a 読解 heading. */
+  duplicate_names: number
+  status: string | null
+  findings: number
+}
+
+export interface TypeTotal {
+  type: string
+  items: number
+  papers: number
+}
+
+export interface BankOverview {
+  entries: BankEntry[]
+  types: TypeTotal[]
+}

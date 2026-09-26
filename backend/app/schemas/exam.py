@@ -266,5 +266,41 @@ class DraftDetail(BaseModel):
     updated_at: datetime
 
 
+class BankEntry(BaseModel):
+    """A paper in the bank, or one being added.
+
+    A draft is a paper mid-arrival rather than a different kind of thing, so
+    both shapes come back in one list; `kind` says which, and the fields that
+    only make sense for one are left at their defaults.
+    """
+    kind: str                      # paper | draft
+    id: str
+    level: str
+    source: str
+    title: str
+    items: int = 0
+    #: Papers only: how complete it is.
+    answered: int = 0
+    listening: int = 0
+    transcripts: int = 0
+    empty_problems: int = 0
+    #: 問題8 four times over — how the old extractor split a 読解 heading.
+    duplicate_names: int = 0
+    #: Drafts only.
+    status: str | None = None
+    findings: int = 0
+
+
+class TypeTotal(BaseModel):
+    type: str
+    items: int
+    papers: int
+
+
+class BankOverview(BaseModel):
+    entries: list[BankEntry]
+    types: list[TypeTotal]
+
+
 class MediaUploadResponse(BaseModel):
     url: str

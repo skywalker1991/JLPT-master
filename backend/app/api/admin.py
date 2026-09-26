@@ -17,7 +17,10 @@ from app.models.db import (
     ExamPaper, ExamSection, ExamProblem, ExamItem, ExamDraft, get_db,
     async_session_factory,
 )
-from app.schemas.exam import DraftSummary, DraftDetail, DraftSource, MediaUploadResponse
+from app.schemas.exam import (
+    BankEntry, BankOverview, DraftSummary, DraftDetail, DraftSource,
+    MediaUploadResponse, TypeTotal,
+)
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -576,3 +579,104 @@ async def upload_media(file: UploadFile = File(...)):
         await f.write(content)
 
     return MediaUploadResponse(url=f"/media/{filename}")
+
+
+# ── 题库全貌 ──────────────────────────────────────────────────────────────────
+
+@router.get("/bank", response_model=BankOverview)
+async def get_bank(db: AsyncSession = Depends(get_db)):
+    """Every paper in the bank, what state it is in, and what it is short of.
+
+    One call rather than a list of papers and then a request per paper: the
+    page shows all of them at once, and the counts it needs are three grouped
+    queries over the whole bank.
+
+    A draft is a paper being added, not a separate kind of thing, so the two
+    come back in one list keyed by level and sitting.
+    """
+    papers = (await db.execute(select(ExamPaper))).scalars().all()
+
+    # How complete each paper is: answers landed, listening spoken for.
+    per_paper: dict[_uuid.UUID, dict] = {
+        p.id: {"items": 0, "answered": 0, "listening": 0, "transcripts": 0,
+               "empty_problems": 0, "duplicate_names": 0}
+        for p in papers
+    }
+    rows = (await db.execute(
+        select(ExamPaper.id, ExamSection.id, ExamProblem.id, ExamProblem.name,
+               ExamProblem.type, ExamItem.id, ExamItem.correct_answer,
+               ExamItem.transcript)
+        .join(ExamSection, ExamSection.paper_id == ExamPaper.id)
+        .join(ExamProblem, ExamProblem.section_id == ExamSection.id)
+        .outerjoin(ExamItem, ExamItem.problem_id == ExamProblem.id)
+    )).all()
+
+    seen_names: dict[_uuid.UUID, set] = {p.id: set() for p in papers}
+    seen_problems: dict[_uuid.UUID, set] = {p.id: set() for p in papers}
+    types: dict[str, dict] = {}
+
+    for (paper_id, section_id, problem_id, name, ptype,
+         item_id, answer, transcript) in rows:
+        stat = per_paper.get(paper_id)
+        if stat is None:
+            continue
+        if problem_id not in seen_problems[paper_id]:
+            seen_problems[paper_id].add(problem_id)
+            # 問題8 four times over is how the old extractor split a 読解
+            # heading's several texts; the current one keeps them under one.
+            # Counted within a section: 問題1 exists in both 言語知識 and 聴解
+            # on every paper ever printed, and that is not a duplicate.
+            if (section_id, name) in seen_names[paper_id]:
+                stat["duplicate_names"] += 1
+            seen_names[paper_id].add((section_id, name))
+            if item_id is None:
+                stat["empty_problems"] += 1
+        if item_id is None:
+            continue
+        stat["items"] += 1
+        if answer:
+            stat["answered"] += 1
+        if ptype == "listening":
+            stat["listening"] += 1
+            if transcript:
+                stat["transcripts"] += 1
+        bucket = types.setdefault(ptype, {"type": ptype, "items": 0, "papers": set()})
+        bucket["items"] += 1
+        bucket["papers"].add(paper_id)
+
+    entries = [
+        BankEntry(
+            kind="paper", id=str(p.id), level=p.level, source=p.source or "",
+            title=p.title, **per_paper[p.id],
+        )
+        for p in papers
+    ]
+
+    # Drafts not yet imported. The level and sitting live in the canonical, so
+    # a draft can sit in the same list as the papers rather than in its own.
+    drafts = (await db.execute(
+        select(ExamDraft).where(ExamDraft.paper_id.is_(None)).order_by(ExamDraft.created_at.desc())
+    )).scalars().all()
+    for d in drafts:
+        canonical = d.canonical or {}
+        report = d.report or {}
+        entries.append(BankEntry(
+            kind="draft", id=str(d.id),
+            level=canonical.get("level") or "?",
+            source=canonical.get("source") or "",
+            title=canonical.get("title") or (d.filename or "")[:40],
+            status=d.status,
+            findings=len(report.get("hard") or []) + len(report.get("invented") or []),
+            items=sum(len(pr.get("items") or [])
+                      for s in canonical.get("sections") or []
+                      for pr in s.get("problems") or []),
+        ))
+
+    return BankOverview(
+        entries=sorted(entries, key=lambda e: (e.level, e.source), reverse=True),
+        types=sorted(
+            (TypeTotal(type=t["type"], items=t["items"], papers=len(t["papers"]))
+             for t in types.values()),
+            key=lambda t: -t.items,
+        ),
+    )

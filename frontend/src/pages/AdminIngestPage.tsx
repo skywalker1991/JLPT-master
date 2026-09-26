@@ -1,126 +1,35 @@
-import { useEffect, useRef, useState } from 'react'
-import { FileText, Loader2, Trash2, Upload } from 'lucide-react'
-import { listDrafts, createDraft, getDraft, deleteDraft, confirmDraft } from '../services/api'
-import type { DraftSummary, DraftDetail } from '../types'
+import { useEffect, useState } from 'react'
+import { FileText, Loader2 } from 'lucide-react'
+import {
+  getBank, createDraft, getDraft, confirmDraft,
+} from '../services/api'
+import type { BankEntry, BankOverview, DraftDetail } from '../types'
 import DraftEditor from '../components/admin/DraftEditor'
 import ReportQueue from '../components/admin/ReportQueue'
+import BankList from '../components/admin/BankList'
+import TypeTotals from '../components/admin/TypeTotals'
+import PaperEditor from '../components/admin/PaperEditor'
 import DraftReview from '../components/admin/DraftReview'
 
 // ─── Draft list sidebar ───────────────────────────────────────────────────────
 
-function DraftList({
-  drafts, selectedId, onSelect, onUpload, onDelete, uploading,
-}: {
-  drafts: DraftSummary[]
-  selectedId: string | null
-  onSelect: (id: string) => void
-  onUpload: (files: File[]) => void
-  onDelete: (id: string) => void
-  uploading: boolean
-}) {
-  const fileRef = useRef<HTMLInputElement>(null)
-
-  return (
-    <div className="w-52 shrink-0 flex flex-col border-r border-border">
-      <div className="px-4 py-3 border-b border-border shrink-0">
-        <button
-          onClick={() => fileRef.current?.click()}
-          disabled={uploading}
-          className="w-full flex items-center justify-center gap-2 py-2 rounded-lg border border-dashed border-border text-xs text-fg-muted hover:border-accent/50 hover:text-accent transition-colors disabled:opacity-40"
-        >
-          {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-          {uploading ? '识别中…' : '上传一次考试的文件'}
-        </button>
-        <input
-          ref={fileRef}
-          type="file"
-          accept="application/pdf"
-          multiple
-          className="hidden"
-          onChange={e => {
-            // A sitting is 試題 + 解析 + 答案表; which is which is worked out
-            // from the files, so they go up together.
-            const picked = Array.from(e.target.files ?? [])
-            if (picked.length) onUpload(picked)
-            e.target.value = ''
-          }}
-        />
-      </div>
-
-      <div className="flex-1 overflow-y-auto py-1">
-        {drafts.length === 0 && (
-          <p className="text-xs text-fg-muted text-center py-8">暂无草稿</p>
-        )}
-        {drafts.map(d => {
-          const isSelected = d.id === selectedId
-          const date = new Date(d.updated_at)
-          return (
-            <div
-              key={d.id}
-              className={[
-                'group relative border-b border-border/50 transition-colors',
-                isSelected ? 'bg-accent-light' : 'hover:bg-bg',
-              ].join(' ')}
-            >
-              <button
-                onClick={() => onSelect(d.id)}
-                className="w-full text-left px-4 py-2.5 pr-8"
-              >
-                <p className="text-xs font-medium text-fg truncate">{d.filename ?? '无文件名'}</p>
-                <div className="flex items-center gap-1.5 mt-0.5">
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium flex items-center gap-1 ${
-                    d.status === 'confirmed'
-                      ? 'bg-success-light text-success-fg'
-                      : d.status === 'processing'
-                      ? 'bg-blue-100 text-blue-700'
-                      : d.status === 'failed'
-                      ? 'bg-red-100 text-red-700'
-                      : 'bg-orange-100 text-orange-700'
-                  }`}>
-                    {d.status === 'processing' && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
-                    {d.status === 'confirmed' ? '已入库'
-                      : d.status === 'processing' ? '识别中'
-                      : d.status === 'failed' ? '识别失败'
-                      : '待校对'}
-                  </span>
-                  <span className="text-[10px] text-fg-subtle">
-                    {date.getMonth() + 1}/{date.getDate()}
-                  </span>
-                </div>
-              </button>
-              <button
-                onClick={() => onDelete(d.id)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 text-fg-muted hover:text-danger transition-all"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-// ─── Main page ────────────────────────────────────────────────────────────────
-
 export default function AdminIngestPage() {
-  const [drafts, setDrafts] = useState<DraftSummary[]>([])
   const [loadingDrafts, setLoadingDrafts] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [draft, setDraft] = useState<DraftDetail | null>(null)
   const [loadingDraft, setLoadingDraft] = useState(false)
+  const [tab, setTab] = useState<'papers' | 'types' | 'reports'>('papers')
+  const [bank, setBank] = useState<BankOverview | null>(null)
+  // A paper already in the bank, opened to be corrected.
+  const [paperId, setPaperId] = useState<string | null>(null)
 
   async function refresh() {
-    const list = await listDrafts()
-    setDrafts(list)
+    setBank(await getBank())
   }
 
   useEffect(() => {
-    listDrafts()
-      .then(list => { setDrafts(list); setLoadingDrafts(false) })
-      .catch(() => setLoadingDrafts(false))
+    refresh().finally(() => setLoadingDrafts(false))
   }, [])
 
   // Poll when selected draft is still processing
@@ -157,10 +66,7 @@ export default function AdminIngestPage() {
     setUploading(true)
     try {
       const d = await createDraft(files)
-      setDrafts(prev => [
-        { id: d.id, filename: d.filename, status: d.status, paper_id: d.paper_id, created_at: d.created_at, updated_at: d.updated_at },
-        ...prev,
-      ])
+      await refresh()
       setSelectedId(d.id)
       setDraft(d)
     } catch (e) {
@@ -196,51 +102,72 @@ export default function AdminIngestPage() {
     }
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm('确认删除该草稿？')) return
-    try {
-      await deleteDraft(id)
-      if (selectedId === id) {
-        setSelectedId(null)
-        setDraft(null)
-      }
-      await refresh()
-    } catch (e) {
-      alert(`删除失败：${(e as Error).message}`)
-    }
-  }
 
   // suppress unused warning
   void loadingDrafts
 
+  function openEntry(entry: BankEntry) {
+    if (entry.kind === 'draft') {
+      setPaperId(null)
+      void handleSelect(entry.id)
+    } else {
+      // An imported paper is corrected in place; a wrong answer there is
+      // wrong on every attempt made against it from here on.
+      setSelectedId(entry.id)
+      setDraft(null)
+      setPaperId(entry.id)
+    }
+  }
+
   return (
     <div className="flex h-full">
-      <DraftList
-        drafts={drafts}
-        selectedId={selectedId}
-        onSelect={handleSelect}
-        onUpload={handleUpload}
-        onDelete={handleDelete}
-        uploading={uploading}
-      />
+      <div className="w-[22rem] shrink-0 flex flex-col border-r border-border min-h-0">
+        <div className="shrink-0 flex items-center gap-1 px-4 pt-3">
+          {([['papers', '试卷'], ['types', '题型'], ['reports', '报错']] as const).map(([k, label]) => (
+            <button
+              key={k}
+              onClick={() => { setTab(k); setSelectedId(null); setPaperId(null) }}
+              className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                tab === k ? 'bg-fg/10 text-fg font-semibold' : 'text-fg-muted hover:text-fg'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {loadingDrafts && (
+          <div className="flex-1 flex items-center justify-center">
+            <Loader2 className="w-5 h-5 animate-spin text-fg-muted" />
+          </div>
+        )}
+        {!loadingDrafts && tab === 'papers' && bank && (
+          <BankList
+            entries={bank.entries}
+            selectedId={selectedId}
+            onSelect={openEntry}
+            onUpload={handleUpload}
+            uploading={uploading}
+          />
+        )}
+        {!loadingDrafts && tab === 'types' && bank && <TypeTotals types={bank.types} />}
+        {!loadingDrafts && tab === 'reports' && (
+          <div className="flex-1 overflow-y-auto p-4"><ReportQueue /></div>
+        )}
+      </div>
 
-      {/* Nothing selected: show what was flagged while answering, since that
-          is the other thing this page exists to deal with. */}
       {!selectedId && (
-        <div className="flex-1 overflow-y-auto p-5">
-          <div className="max-w-3xl mx-auto space-y-4">
-            <div className="text-center text-fg-muted py-6 space-y-2">
-              <FileText className="w-10 h-10 mx-auto opacity-20" />
-              <p className="text-sm">上传一次考试的全部 PDF，或选择草稿开始校对</p>
-              <p className="text-xs text-fg-subtle">
-                試題 / 解析 / 答案表一起选，级别和年月会从文件里读出来
-              </p>
-            </div>
-            <h2 className="section-label">做题时标记的问题</h2>
-            <ReportQueue />
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center text-fg-muted space-y-2 px-8">
+            <FileText className="w-10 h-10 mx-auto opacity-20" />
+            <p className="text-sm">选一份卷子查看或修改</p>
+            <p className="text-xs text-fg-subtle">
+              导入时 試題 / 解析 / 答案表 一起选，级别和年月会从文件里读出来
+            </p>
           </div>
         </div>
       )}
+
+      {paperId && <PaperEditor paperId={paperId} />}
 
       {selectedId && loadingDraft && (
         <div className="flex-1 flex items-center justify-center">

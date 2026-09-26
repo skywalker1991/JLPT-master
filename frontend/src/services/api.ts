@@ -20,6 +20,7 @@ import {
   AccuracyStats,
   AttemptSummary,
   MistakeItem,
+  BankOverview,
   AttemptReviewData,
   DraftSummary,
   DraftDetail,
@@ -317,6 +318,10 @@ export async function makeItemAudio(itemId: string): Promise<{ media_id: string;
 
 export function mediaUrl(mediaId: string): string {
   return `${BASE_URL}/api/media/${mediaId}`
+}
+
+export async function getBank(): Promise<BankOverview> {
+  return request<BankOverview>('/api/admin/bank')
 }
 
 export async function listMistakes(category?: string): Promise<MistakeItem[]> {
