@@ -177,11 +177,18 @@ def _parse_listening_groups(text: str, key: AnswerKey, counts: dict[int, int] | 
 
 
 #: Where the booklet stops explaining the written booklet and starts on 聴解.
-#: Both sittings head it the same way, and it matters: listening items are
-#: numbered inside their 問題, so "63 正解：2" down there is 問題5's third item,
-#: not written item 63 — which is what made a cross-check report a conflict
-#: against an answer sheet that was right.
-_LISTENING_SECTION = re.compile(r"听力原文|聴解原文|听力解析")
+#: It matters: listening items are numbered inside their 問題, so "63 正解：2"
+#: down there is 問題5's third item, not written item 63 — and read as written
+#: it overwrites the real answer. 2015年07月 lost its first fourteen that way,
+#: and only showed it because a second source disagreed.
+#:
+#: The heading is the listening module's to know — it has counted how the
+#: thirty booklets write it, and 「听力文本」 is the commonest of them. Kept in
+#: one place because a second, narrower copy is how this went wrong: that one
+#: was fixed and this one was not.
+def _listening_section(text: str):
+    from app.services.exam_listening import _SECTION, _folded
+    return _SECTION.search(_folded(text))
 
 
 def parse_booklet_table(text: str, listening_counts: dict[int, int] | None = None) -> AnswerKey | None:
@@ -264,7 +271,7 @@ def parse_explanations(text: str) -> AnswerKey:
     Only the written half is read. The listening half restates answers against
     its own numbering, which would collide with written item numbers.
     """
-    boundary = _LISTENING_SECTION.search(text)
+    boundary = _listening_section(text)
     if boundary:
         text = text[: boundary.start()]
 
