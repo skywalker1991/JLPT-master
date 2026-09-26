@@ -152,8 +152,24 @@ def listening_section(text: str) -> tuple[str, str]:
         return "", body
     end = japanese[-1] + window
     if end >= len(body) - window:
-        return body, ""
-    return body[:end], body[end:]
+        return _trim_furniture(body), ""
+    return _trim_furniture(body[:end]), body[end:]
+
+
+def _trim_furniture(japanese: str) -> str:
+    """Drop what the page carries after the last thing anyone says.
+
+    The boundary above is found 400 characters at a time, which is coarse
+    enough to overshoot: the last 番 of 2013年07月 came out with 「2013 年7 月
+    日语能力考试N1 听力原文翻译」 on the end — the page header and the title
+    of the section that follows, sitting inside the dialogue that is read
+    aloud. Japanese is what is spoken, so a trailing line with no kana in it
+    is furniture.
+    """
+    lines = japanese.split("\n")
+    while lines and not _KANA.search(lines[-1]):
+        lines.pop()
+    return "\n".join(lines)
 
 
 #: The page number, printed on its own line. It falls wherever the page breaks,
