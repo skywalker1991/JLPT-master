@@ -365,6 +365,18 @@ def _segments(text: str) -> list[str]:
     return [text[bounds[i]:bounds[i + 1]].strip() for i in range(len(cuts))]
 
 
+def _either(num: int) -> str:
+    """The number as a pattern that matches it printed either width.
+
+    2017年12月 numbers its 読解 questions 「４６」 and the rest of the paper
+    「46」, and a pattern built from the digits alone found neither the first
+    question of 問題8 nor of 問題9 nor of 問題11 — so those questions could
+    not be placed against the texts printed under their heading.
+    """
+    wide = {str(d): chr(ord("０") + d) for d in range(10)}
+    return "".join(f"[{d}{wide[d]}]" for d in str(num))
+
+
 def _where(num: int, stem: str, source: str) -> int | None:
     """Where in the source this question is printed.
 
@@ -373,7 +385,9 @@ def _where(num: int, stem: str, source: str) -> int | None:
     and the number alone is the fallback, because a stem the model tidied would
     otherwise lose the question its position.
     """
-    opening = re.compile(rf"(?:^|\n)[^\S\n]*{num}(?![0-9])[^\S\n]*[、.．]?[^\S\n]*(?=\S)")
+    opening = re.compile(
+        rf"(?:^|\n)[^\S\n]*{_either(num)}(?![0-9０-９])[^\S\n]*[、.．]?[^\S\n]*(?=\S)"
+    )
     hits = [m.start() for m in opening.finditer(source)]
     if not hits:
         return None
