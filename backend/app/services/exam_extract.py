@@ -435,4 +435,11 @@ def split_passages(problem: CanonicalProblem, source: str) -> list[str]:
 
     for index, which in placed.items():
         problem.items[index].passage = in_passage[which]
+
+    # The 問題's own passage held all four texts run together, and now every
+    # question carries the one it is about. Keeping both leaves two answers to
+    # "what is this question about" and makes every reader responsible for
+    # preferring the right one — the editor forgot, and drew all four texts
+    # over a question asked about one.
+    problem.passage = None
     return []

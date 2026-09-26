@@ -66,7 +66,9 @@ export default function PaperEditor({ paperId }: { paperId: string }) {
                     <span className="text-xs text-fg-subtle">{problem.type}</span>
                     <span className="text-xs text-fg-subtle">{problem.items.length} 题</span>
                   </div>
-                  {problem.passage && !problem.items.some(i => i.passage) && (
+                  {/* Where the questions carry their own texts the 問題 has
+                      none — see split_passages. */}
+                  {problem.passage && (
                     <details className="rounded-lg border border-border">
                       <summary className="px-3 py-1.5 text-xs text-fg-muted cursor-pointer">文章</summary>
                       <Passage text={problem.passage}
