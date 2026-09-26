@@ -75,6 +75,19 @@ export default function PaperEditor({ paperId }: { paperId: string }) {
                                className="px-3 pb-2.5 text-xs text-fg-muted leading-relaxed whitespace-pre-wrap" />
                     </details>
                   )}
+                  {/* 情報検索 keeps the printed page: the arrangement is
+                      what the question asks about, so it is the thing to
+                      check, not the flattened text beside it. */}
+                  {problem.media.length > 0 && (
+                    <div className="flex flex-wrap gap-3">
+                      {problem.media.map(m => (
+                        <a key={m.id} href={m.url} target="_blank" rel="noreferrer">
+                          <img src={m.url} alt={m.caption ?? ''}
+                               className="max-h-80 rounded-lg border border-border" />
+                        </a>
+                      ))}
+                    </div>
+                  )}
                   {problem.items.map(item => (
                     <ItemRow key={item.id} item={item} type={problem.type} />
                   ))}

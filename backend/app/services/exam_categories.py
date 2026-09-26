@@ -30,6 +30,16 @@ BY_NUMBER: dict[str, dict[int, str]] = {
     },
 }
 
+#: 読解's six 問題 are all answered the same way and score in the same part,
+#: so they are one type — except the last. 問題13 is 情報検索: a notice, a
+#: timetable, a fee table, where the question is to find something in the
+#: arrangement rather than to understand a text. It is the one reading type
+#: that needs the page kept as printed, which is why it is worth telling
+#: apart when the other five are not.
+READING_BY_NUMBER: dict[str, dict[int, str]] = {
+    "N1": {13: "info_search"},
+}
+
 
 def _number(name: str) -> int | None:
     digits = re.sub(
@@ -40,10 +50,14 @@ def _number(name: str) -> int | None:
 
 def type_by_number(level: str | None, section: str, problem_name: str) -> str | None:
     """The type this 問題 number means, or None where the number says nothing."""
+    number = _number(problem_name)
+    if not number:
+        return None
+    if section == "読解":
+        return READING_BY_NUMBER.get(level or "", {}).get(number)
     if section != "言語知識":
         return None
-    number = _number(problem_name)
-    return BY_NUMBER.get(level or "", {}).get(number) if number else None
+    return BY_NUMBER.get(level or "", {}).get(number)
 
 
 #: The four parts a paper is practised in. N1 runs 170 minutes and almost
@@ -62,7 +76,7 @@ LISTENING = "聴解"
 _PART_OF_TYPE = {
     "kanji_reading": VOCAB, "vocab_fill": VOCAB, "synonym": VOCAB, "usage": VOCAB,
     "grammar_fill": GRAMMAR, "sentence_order": GRAMMAR, "passage_fill": GRAMMAR,
-    "reading_comp": READING,
+    "reading_comp": READING, "info_search": READING,
     "listening": LISTENING,
 }
 

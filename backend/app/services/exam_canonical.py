@@ -68,6 +68,9 @@ class CanonicalProblem:
     passage: str | None = None
     passage_translation: str | None = None
     transcript: str | None = None
+    #: A PNG of the printed page, base64, where the arrangement is part of
+    #: the question — 情報検索. Base64 because a draft is stored as JSON.
+    page_image: str | None = None
     items: list[CanonicalItem] = field(default_factory=list)
 
 
@@ -147,6 +150,7 @@ def from_dict(data: dict) -> CanonicalPaper:
             instruction=raw.get("instruction"), passage=raw.get("passage"),
             passage_translation=raw.get("passage_translation"),
             transcript=raw.get("transcript"),
+            page_image=raw.get("page_image"),
             items=[_item(i) for i in raw.get("items") or []],
         )
 

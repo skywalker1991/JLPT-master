@@ -166,3 +166,37 @@ def render_pages(data: bytes, *, limit: int = 3, dpi: int = 200) -> list[bytes]:
         ]
     finally:
         document.close()
+
+
+def page_image_for(data: bytes, needle: str, *, dpi: int = 150) -> bytes | None:
+    """The page carrying this text, as a PNG.
+
+    情報検索 asks the reader to find something on a printed page — a notice,
+    a timetable, a fee table — and the finding is the question. Extraction
+    keeps the words and loses the arrangement, which is the half being
+    tested, so the page itself is kept alongside the text.
+
+    Not reconstructed: the arrangement cannot be recovered from the text
+    afterwards, and the two rules that come closest both merge the rows of a
+    table into a paragraph. A picture of the page is exact and costs nothing
+    to be sure of.
+    """
+    import fitz
+
+    fitz.TOOLS.mupdf_display_errors(False)
+    # The markers ingest adds are not on the page.
+    needle = "".join(needle.replace("__", "").split())[:24]
+    if not needle:
+        return None
+
+    document = fitz.open(stream=data, filetype="pdf")
+    try:
+        for page in document:
+            # Compared against the same geometric reading the passage came
+            # from: get_text() returns storage order, in which the passage's
+            # opening words are not necessarily next to each other.
+            if needle in "".join(page_text(page, mark_underlines=False).split()):
+                return page.get_pixmap(dpi=dpi).tobytes("png")
+        return None
+    finally:
+        document.close()

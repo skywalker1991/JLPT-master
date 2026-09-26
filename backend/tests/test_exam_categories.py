@@ -16,10 +16,20 @@ def test_the_number_tells_grammar_from_vocabulary():
 
 
 def test_it_says_nothing_outside_言語知識():
-    """読解 and 聴解 state what they are, and their numbering carries no such
-    meaning."""
+    """聴解 states what it is, and its numbering carries no such meaning.
+
+    読解's does, but only for the last 問題 — the other five are one type.
+    """
     assert type_by_number("N1", "読解", "問題5") is None
+    assert type_by_number("N1", "読解", "問題9") is None
     assert type_by_number("N1", "聴解", "問題5") is None
+
+
+def test_the_last_読解_問題_is_information_retrieval():
+    """問題13 prints a notice and asks the reader to find something in it, so
+    it is the one reading type whose page has to be kept as printed."""
+    assert type_by_number("N1", "読解", "問題13") == "info_search"
+    assert type_by_number("N2", "読解", "問題13") is None
 
 
 def test_a_level_with_no_table_falls_back_to_the_instruction():

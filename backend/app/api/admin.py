@@ -1,5 +1,6 @@
 """Admin API — exam ingestion, draft management, media upload."""
 import asyncio
+import base64
 import json
 import logging
 import uuid as _uuid
@@ -14,7 +15,7 @@ from sqlalchemy import select, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.db import (
-    ExamItemRevision,
+    ExamItemRevision, ExamMedia,
     ExamPaper, ExamSection, ExamProblem, ExamItem, ExamDraft, get_db,
     async_session_factory,
 )
@@ -439,6 +440,16 @@ async def confirm_draft(draft_id: _uuid.UUID, db: AsyncSession = Depends(get_db)
             )
             db.add(problem)
             await db.flush()
+
+            # 情報検索 keeps the printed page, because the arrangement is what
+            # the question asks about and the text cannot carry it.
+            if getattr(problem_data, "page_image", None):
+                db.add(ExamMedia(
+                    problem_id=problem.id, media_type="image",
+                    data=base64.b64decode(problem_data.page_image),
+                    caption="試験用紙のページ", seq=0,
+                ))
+                await db.flush()
 
             for item_data in problem_data.items:
                 item = ExamItem(

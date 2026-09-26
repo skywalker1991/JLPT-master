@@ -9,6 +9,7 @@ const LABEL: Record<string, string> = {
   sentence_order: '文の組み立て',
   passage_fill: '文章の文法',
   reading_comp: '読解',
+  info_search: '情報検索',
   listening: '聴解',
 }
 
@@ -16,7 +17,7 @@ const PART: Record<string, string> = {
   kanji_reading: '文字・語彙', vocab_fill: '文字・語彙',
   synonym: '文字・語彙', usage: '文字・語彙',
   grammar_fill: '文法', sentence_order: '文法', passage_fill: '文法',
-  reading_comp: '読解', listening: '聴解',
+  reading_comp: '読解', info_search: '読解', listening: '聴解',
 }
 
 /**

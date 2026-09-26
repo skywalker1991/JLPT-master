@@ -854,7 +854,12 @@ async def build_paper_detail(
             problem_details.append(ProblemDetail(
                 id=prob.id, seq=prob.seq, name=prob.name, type=prob.type,
                 instruction=prob.instruction, passage=prob.passage, transcript=prob.transcript,
-                media=[ExamMediaItem(id=m.id, url=m.url, caption=m.caption, seq=m.seq) for m in media],
+                media=[ExamMediaItem(
+                    # Media held as bytes has no path of its own; it is
+                    # served by id, the way synthesised audio already is.
+                    id=m.id, url=m.url or f"/api/media/{m.id}",
+                    caption=m.caption, seq=m.seq,
+                ) for m in media],
                 items=[ItemSchema(
                     id=i.id, seq=i.seq, num=i.num, stem=i.stem,
                     transcript=i.transcript, passage=i.passage,
@@ -1599,7 +1604,12 @@ async def get_attempt_review(attempt_id: UUID, db: AsyncSession = Depends(get_db
             review_problems.append(ReviewProblem(
                 id=prob.id, seq=prob.seq, name=prob.name, type=prob.type,
                 instruction=prob.instruction, passage=prob.passage, transcript=prob.transcript,
-                media=[ExamMediaItem(id=m.id, url=m.url, caption=m.caption, seq=m.seq) for m in media],
+                media=[ExamMediaItem(
+                    # Media held as bytes has no path of its own; it is
+                    # served by id, the way synthesised audio already is.
+                    id=m.id, url=m.url or f"/api/media/{m.id}",
+                    caption=m.caption, seq=m.seq,
+                ) for m in media],
                 items=review_items,
             ))
 

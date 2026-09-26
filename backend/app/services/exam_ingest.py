@@ -27,7 +27,7 @@ from app.services.exam_extract import (
 from app.services.exam_merge import merge_answers
 from app.services.exam_sources import Role, Source, assess, classify_all, detect_identity
 from app.services.exam_split import split_problems
-from app.services.exam_text import joined, read_pdf
+from app.services.exam_text import joined, page_image_for, read_pdf
 from app.services.exam_validation import learn_baseline, validate
 
 logger = logging.getLogger(__name__)
@@ -231,6 +231,32 @@ def _expand(slots: list) -> list:
     return expanded
 
 
+def _keep_the_page(paper: CanonicalPaper, data: bytes, report: IngestReport) -> None:
+    """Keep 情報検索's page as printed, next to its text.
+
+    The question is to find something in a notice or a timetable, and the
+    finding is the arrangement — which extraction does not carry and cannot
+    be put back afterwards. Both rules that come closest to unwrapping the
+    printed line breaks merge the rows of a table into a paragraph, so the
+    page is photographed rather than reconstructed.
+    """
+    import base64
+
+    for _section, problem in paper.problems():
+        if problem.type != "info_search" or not problem.passage:
+            continue
+        try:
+            png = page_image_for(data, problem.passage)
+        except Exception as e:                      # never lose a paper over a picture
+            logger.warning("could not render the page for %s: %s", problem.name, e)
+            continue
+        if png is None:
+            report.notes.append(f"{problem.name}：情報検索，但在试题里找不到它那一页，只有文字")
+            continue
+        problem.page_image = base64.b64encode(png).decode()
+        report.notes.append(f"{problem.name}：情報検索，已保留原版面（{len(png) // 1024} KB）")
+
+
 def _fill_listening(paper: CanonicalPaper, sources: list[Source], report: IngestReport) -> None:
     """Put the listening questions and dialogue onto the paper."""
     from app.services.exam_listening import parse_listening, pick_transcript_source
@@ -351,6 +377,9 @@ async def ingest(
     # off a paper still missing those nineteen send every later answer to the
     # wrong question.
     _fill_listening(paper, sources, report)
+
+    if questions is not None:
+        _keep_the_page(paper, files_by_name.get(questions.filename) or b"", report)
 
     counts = paper.listening_counts()
     written_expected = sum(
