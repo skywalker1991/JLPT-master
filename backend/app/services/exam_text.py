@@ -109,9 +109,12 @@ def page_text(page, *, mark_underlines: bool = True) -> str:
         "\n".join(_lines(column)) for column in _split_columns(words)
     )
     if mark_underlines:
-        from app.services.exam_underline import mark_underlines as _mark
+        from app.services.exam_underline import (
+            mark_star_blanks as _stars, mark_underlines as _mark,
+        )
         try:
             text = _mark(page, text)
+            text = _stars(page, text)
         except Exception:      # never lose a page over a decoration
             pass
     return text

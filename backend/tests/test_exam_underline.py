@@ -11,7 +11,10 @@ and 2018年07月's rules sit 2.8pt above the following line. Choosing the row by
 distance picks that one; the row whose glyph boxes contain the rule is the
 right one, because the rule is drawn through the characters it marks.
 """
-from app.services.exam_underline import MARK, find_underlines, mark_underlines, underlined_spans
+from app.services.exam_underline import (
+    MARK, find_underlines, mark_star_blanks, mark_underlines, star_slots,
+    underlined_spans,
+)
 
 
 class _Rect:
@@ -102,3 +105,81 @@ def test_a_word_already_marked_is_not_marked_twice():
     page = _Page([(100.0, 120.0, 158.9)], chars)
     once = mark_underlines(page, "回顧した")
     assert mark_underlines(page, once) == once
+
+
+# --- the ★ in a 並べ替え question ---------------------------------------------
+
+class _StarPage(_Page):
+    """A page whose 並べ替え blanks are drawn rules rather than ＿ characters."""
+    def __init__(self, rules, stars):
+        super().__init__(rules, [])
+        self._stars = stars
+
+    def search_for(self, needle):
+        assert needle == "★"
+        return [_Rect(x0, y - 10.0, x0 + 10.5, y) for x0, y in self._stars]
+
+
+def line_of_blanks(y, *, left=284.0, star_at=3, number_rule=True):
+    """One question's row: a short number rule, then four blanks.
+
+    The blank holding the ★ is set wider to make room for it — 32pt against
+    26pt — which is how the papers themselves distinguish it.
+    """
+    rules = [(90.7, 104.7, y)] if number_rule else []
+    x = left
+    star_x = None
+    for slot in range(1, 5):
+        width = 32.2 if slot == star_at else 26.2
+        rules.append((x, x + width, y))
+        if slot == star_at:
+            star_x = x + 10.0
+        x += width + 5.2
+    return rules, (star_x, y)
+
+
+def test_the_star_sits_in_the_widest_blank_on_its_line():
+    rules, star = line_of_blanks(322.0, star_at=3)
+    assert star_slots(_StarPage(rules, [star])) == [3]
+
+
+def test_the_question_number_rule_is_not_counted_as_a_blank():
+    """Without dropping it, every ★ reads one slot later than it is."""
+    rules, star = line_of_blanks(322.0, star_at=1)
+    assert star_slots(_StarPage(rules, [star])) == [1]
+
+
+def test_a_star_over_a_single_rule_is_the_instruction_not_a_question():
+    """「次の文の ★ に入る」 heads the 問題 and has no blanks to sit in."""
+    page = _StarPage([(175.9, 213.4, 270.0)], [(192.0, 270.0)])
+    assert star_slots(page) == []
+
+
+def test_the_blanks_are_written_back_into_the_text():
+    rules, star = line_of_blanks(322.0, star_at=2)
+    page = _StarPage(rules, [star])
+    assert mark_star_blanks(page, "この本が ★ 喜びはありません。") == (
+        "この本が ＿＿＿＿ ＿★＿＿ ＿＿＿＿ ＿＿＿＿ 喜びはありません。"
+    )
+
+
+def test_the_instruction_keeps_its_bare_star():
+    """It is counted so the questions after it stay lined up, not rewritten."""
+    rules, star = line_of_blanks(322.0, star_at=3)
+    page = _StarPage([(175.9, 213.4, 270.0)] + rules, [(192.0, 270.0), star])
+    marked = mark_star_blanks(page, "次の文の ★ に入る\n36 できるもんなら ★ 困っている。")
+    assert marked.startswith("次の文の ★ に入る")
+    assert marked.endswith("＿＿＿＿ ＿＿＿＿ ＿★＿＿ ＿＿＿＿ 困っている。")
+
+
+def test_a_page_whose_blanks_are_characters_is_left_alone():
+    """2018年7月 prints 「＿★＿＿」 itself; there is nothing to recover."""
+    text = "３６ 妹は、来月初めに＿＿＿ ＿＿＿＿ ＿★＿＿ ＿＿＿そうだ。"
+    assert mark_star_blanks(_StarPage([], [(192.0, 322.0)]), text) == text
+
+
+def test_nothing_is_written_when_the_text_and_the_page_disagree():
+    """A column split reorders the page; guessing would move the blanks."""
+    rules, star = line_of_blanks(322.0, star_at=3)
+    page = _StarPage(rules, [star])
+    assert mark_star_blanks(page, "★ と ★") == "★ と ★"

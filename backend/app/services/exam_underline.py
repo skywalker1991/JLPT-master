@@ -120,3 +120,87 @@ def mark_underlines(page, text: str) -> str:
         # where it is being asked about, and that is the one printed first.
         marked = marked.replace(phrase, f"{MARK}{phrase}{MARK}", 1)
     return marked
+
+
+#: 並べ替え prints four blanks and marks one with ★. Where the blanks are ＿
+#: characters the text layer carries 「＿★＿＿」 and says which slot plainly;
+#: where they are drawn as rules — 2013年7月 — nothing of it survives
+#: extraction, and a model asked for the position has nothing to read.
+#:
+#: It is still on the page. The star is a glyph with coordinates, the blanks
+#: are rules with coordinates, and the rule holding the star is set wider than
+#: its neighbours to make room for it: 32pt against 26pt, every time. That
+#: width is what identifies it, and it is also what separates the four blanks
+#: from the question-number rule on the same line, which is 14pt.
+BLANK_MIN_WIDTH = 18.0
+BLANK_MAX_WIDTH = 60.0
+
+
+def _stars(page) -> list[tuple[float, int | None]]:
+    """Every ★ on the page, top to bottom, with the blank it sits in.
+
+    The slot is None where the star is not part of a run of four blanks: the
+    instruction line reads 「次の文の ★ に入る」 over a single rule and is not
+    a question. It is still returned, because the caller lines these up
+    against the ★ characters in the page's text and a dropped one shifts
+    every question after it.
+    """
+    rules = [r for r in find_underlines(page)
+             if BLANK_MIN_WIDTH <= r.x1 - r.x0 <= BLANK_MAX_WIDTH]
+    found: list[tuple[float, int | None]] = []
+
+    for star in page.search_for("★"):
+        slot = None
+        row = sorted((r for r in rules if abs(r.y - star.y1) < 6.0),
+                     key=lambda r: r.x0)
+        # The last four rules on the line are the blanks; anything before
+        # them is the question number's rule, set far shorter.
+        for index, rule in enumerate(row[-4:], start=1) if len(row) >= 4 else ():
+            if rule.x0 - 2 <= star.x0 and star.x1 <= rule.x1 + 2:
+                slot = index
+                break
+        found.append((star.y1, slot))
+
+    return sorted(found)
+
+
+def star_slots(page) -> list[int]:
+    """Which blank each ★ sits in, for the stars that are in one."""
+    return [slot for _, slot in _stars(page) if slot is not None]
+
+
+#: What a drawn blank is written as once it is back in the text, matching the
+#: 「＿＿＿ ＿★＿＿」 the papers that use ＿ characters already print.
+BLANK = "＿＿＿＿"
+
+
+def mark_star_blanks(page, text: str) -> str:
+    """Write the drawn 並べ替え blanks into the page's text.
+
+    Papers that set the blanks as ＿ characters say where the ★ is and need
+    nothing; this puts the other kind into the same shape, so that one reading
+    of the stem works for both and the position is read rather than guessed.
+    """
+    stars = _stars(page)
+    if not any(slot for _, slot in stars):
+        return text
+    # The text is assembled top to bottom, so the nth ★ in it is the nth down
+    # the page — but only if both agree on how many there are. They disagree
+    # when a column split reorders the page, and then a substitution would
+    # move the blanks onto the wrong question.
+    if text.count("★") != len(stars):
+        return text
+
+    out: list[str] = []
+    rest = text
+    for _y, slot in stars:
+        before, _, rest = rest.partition("★")
+        out.append(before)
+        if slot is None:
+            out.append("★")
+            continue
+        blanks = [BLANK] * 4
+        blanks[slot - 1] = "＿★＿＿"
+        out.append(" ".join(blanks))
+    out.append(rest)
+    return "".join(out)
