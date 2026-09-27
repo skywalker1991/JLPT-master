@@ -71,19 +71,19 @@ def merge_answers(
         if problem.type == "listening":
             group = _problem_number(problem.name)
             slot = (group, item.seq)
-            answer = _settle(
-                {name: key.listening[slot] for name, key in sources if slot in key.listening},
-                f"{problem.name} 第{item.seq}题", report,
-            ) if group else None
+            votes = ({_who(name, key): key.listening[slot]
+                      for name, key in sources if slot in key.listening} if group else {})
+            item.votes = votes
+            answer = _settle(votes, f"{problem.name} 第{item.seq}题", report) if group else None
         elif problem.type == "sentence_order":
             answer = _apply_order(item, orders, report)
         elif item.num is None:
             answer = None
         else:
-            answer = _settle(
-                {name: key.written[item.num] for name, key in sources if item.num in key.written},
-                f"第{item.num}题", report,
-            )
+            votes = {_who(name, key): key.written[item.num]
+                     for name, key in sources if item.num in key.written}
+            item.votes = votes
+            answer = _settle(votes, f"第{item.num}题", report)
 
         if answer:
             item.correct_answer = answer
@@ -101,6 +101,17 @@ def merge_answers(
     if report.unanswered:
         report.notes.append(f"{report.unanswered} 题没有答案，可入库但这些题无法判分")
     return report
+
+
+def _who(role: str, key) -> str:
+    """Name a source by the file it was read from as well as its role.
+
+    Two statements of an answer corroborate each other only if they come from
+    different files. The front table and the per-item 正解 lines are usually
+    printed in the same booklet, and counting them as two witnesses is how a
+    paper came to be reported as having three sources when it had one.
+    """
+    return f"{key.origin}·{role}" if getattr(key, "origin", None) else role
 
 
 def _settle(votes: dict[str, str], what: str, report: MergeReport) -> str | None:

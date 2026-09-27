@@ -56,6 +56,11 @@ class AnswerKey:
     written: dict[int, str] = field(default_factory=dict)
     orders: dict[int, str] = field(default_factory=dict)          # 並べ替え full orderings
     listening: dict[tuple[int, int], str] = field(default_factory=dict)
+    #: The file it was read out of. Two statements of an answer corroborate
+    #: each other only if they come from different files: the front table and
+    #: the per-item 正解 lines are usually printed in the same booklet, and a
+    #: booklet agreeing with itself says only that it is consistent.
+    origin: str | None = None
 
     @property
     def total(self) -> int:

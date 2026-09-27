@@ -461,9 +461,16 @@ async def ingest(
     explanations = _pick(sources, Role.EXPLANATIONS)
     if explanations is not None:
         explanation_key = parse_explanations(explanations.text)
+        explanation_key.origin = explanations.filename
         grid_key = parse_booklet_table(explanations.text, counts)
         if grid_key is not None:
-            report.notes.append(f"{explanations.filename} 开头有答案表，作为第三个答案来源")
+            grid_key.origin = explanations.filename
+            # The same booklet, read twice. Said plainly, because reported as
+            # a third source it reads as corroboration and it is not: a file
+            # agreeing with itself says only that it is consistent.
+            report.notes.append(
+                f"{explanations.filename} 开头也有答案表；与逐题正解同属一个文件，不算独立来源"
+            )
 
     sheet_key = None
     sheet = _pick(sources, Role.ANSWER_SHEET)
@@ -473,6 +480,8 @@ async def ingest(
             written_expected=written_expected, always_verify=verify_answers,
         )
         sheet_key = result.key
+        if sheet_key is not None:
+            sheet_key.origin = sheet.filename
         report.answers = {"method": result.method, "agreed": result.agreed}
         report.notes.extend(result.notes)
     elif not _covers_the_paper(grid_key, explanation_key, expected=written_expected):

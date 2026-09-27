@@ -463,6 +463,7 @@ async def confirm_draft(draft_id: _uuid.UUID, db: AsyncSession = Depends(get_db)
                     meta=item_data.meta or None,
                     source_file=item_data.provenance.source,
                     source_page=item_data.provenance.page,
+                    answer_votes=item_data.votes or None,
                 )
                 db.add(item)
                 await db.flush()

@@ -294,6 +294,9 @@ class ExamItem(Base):
     #: opens that file rather than a second copy of it.
     source_file = Column(Text, nullable=True)
     source_page = Column(Integer, nullable=True)
+    #: What each source said about this answer, keyed by the file it came
+    #: from. The evidence, so how far to trust the answer can be read off.
+    answer_votes = Column(JSONB, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
 
     problem = relationship("ExamProblem", back_populates="items")

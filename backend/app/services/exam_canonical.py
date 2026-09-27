@@ -56,6 +56,12 @@ class CanonicalItem:
     passage: str | None = None
     #: 並べ替え carries star_position here; other types may carry nothing.
     meta: dict[str, Any] = field(default_factory=dict)
+    #: What each source said about this answer, keyed by the file it was read
+    #: from. The evidence behind the answer, kept so that how far to trust it
+    #: can be read off rather than guessed at — two statements corroborate
+    #: each other only if they come from different files, and the front table
+    #: and the per-item 正解 lines are usually printed in the same booklet.
+    votes: dict[str, str] = field(default_factory=dict)
     provenance: Provenance = field(default_factory=Provenance)
 
 
@@ -138,6 +144,7 @@ def from_dict(data: dict) -> CanonicalPaper:
             answer_order=raw.get("answer_order"),
             transcript=raw.get("transcript"), passage=raw.get("passage"),
             meta=raw.get("meta") or {},
+            votes=raw.get("votes") or {},
             provenance=Provenance(
                 source=prov.get("source"), page=prov.get("page"),
                 extractor=prov.get("extractor"),
