@@ -10,7 +10,7 @@ from pathlib import Path
 from datetime import datetime
 
 import aiofiles
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile, File, Form
 from sqlalchemy import select, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -709,6 +709,38 @@ def _shortfall(entry: BankEntry) -> str | None:
     if entry.empty_problems:
         said.append(f"{entry.empty_problems} 个空題组")
     return "、".join(said) or None
+
+
+@router.get("/source-page")
+async def get_source_page(file: str, page: int):
+    """One page of the booklet a question was read from, as a picture.
+
+    The material is not copied into the bank — ingest runs where it already
+    is — so this reads it from the configured library. Looked up by filename
+    rather than by path: a path from the client is a path to anywhere, and
+    the only files worth serving are the ones already named in the bank.
+    """
+    root = get_settings().EXAM_SOURCE_DIR
+    if not root:
+        raise HTTPException(status_code=501, detail="没有配置资料目录 EXAM_SOURCE_DIR")
+
+    name = Path(file).name
+    found = next((p for p in Path(root).rglob(name) if p.is_file()), None)
+    if found is None:
+        raise HTTPException(status_code=404, detail=f"资料目录里找不到 {name}")
+
+    import fitz
+
+    fitz.TOOLS.mupdf_display_errors(False)
+    document = fitz.open(found)
+    try:
+        if not 1 <= page <= len(document):
+            raise HTTPException(status_code=404, detail=f"这份只有 {len(document)} 页")
+        png = document[page - 1].get_pixmap(dpi=140).tobytes("png")
+    finally:
+        document.close()
+    return Response(content=png, media_type="image/png",
+                    headers={"Cache-Control": "private, max-age=3600"})
 
 
 @router.get("/bank", response_model=BankOverview)

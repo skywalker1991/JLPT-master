@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL: str = "BAAI/bge-m3"
     JMDICT_PATH: str = "/app/data/JMdict.xml"
     TARGET_LEVEL: str = "N2"
+    #: Where the source booklets live, for a reviewer to open the page a
+    #: question was read from. A reference, not a copy: ingest is offline
+    #: tooling run where the material already is, and one copy of it stays
+    #: the truth of it. Empty means no source viewing.
+    EXAM_SOURCE_DIR: str = ""
 
     model_config = SettingsConfigDict(env_file=".env")
 

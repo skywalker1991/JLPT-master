@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Check, Loader2 } from 'lucide-react'
-import { editExamItem, getBankPaper } from '../../services/api'
+import { BookOpen, Check, Loader2 } from 'lucide-react'
+import { editExamItem, getBankPaper, sourcePageUrl } from '../../services/api'
 import Passage from '../exam/Passage'
 import QuestionText from '../exam/QuestionText'
 import type { ExamPaperDetail, ItemSchema } from '../../types'
@@ -101,6 +101,58 @@ export default function PaperEditor({ paperId }: { paperId: string }) {
   )
 }
 
+/**
+ * How far this answer is to be trusted, and why.
+ *
+ * Not a score — the evidence does not support that kind of precision. What
+ * there is to say is how many separate files said it, and the hover names
+ * them, so a reviewer can see whether "多源一致" means two booklets or one
+ * booklet quoted twice.
+ */
+function Confidence({ item }: { item: ItemSchema }) {
+  const level = item.confidence
+  if (!level) return null
+  const tone = {
+    已核对: 'bg-success-light text-success-fg',
+    多源一致: 'bg-accent-light text-accent-fg',
+    单源: 'bg-orange-100 text-orange-700',
+    无答案: 'bg-danger-light text-danger-fg',
+  }[level] ?? 'bg-border/50 text-fg-muted'
+  const said = Object.entries(item.answer_votes ?? {})
+    .map(([who, value]) => `${who} → ${value}`)
+    .join('\n')
+  return (
+    <span title={said || undefined}
+          className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded-full font-medium ${tone}`}>
+      {level}
+    </span>
+  )
+}
+
+/** The page this question is printed on, fetched only when asked for. */
+function SourcePage({ item }: { item: ItemSchema }) {
+  const [open, setOpen] = useState(false)
+  if (!item.source_file || !item.source_page) return null
+  return (
+    <>
+      <button
+        onClick={() => setOpen(!open)}
+        title={item.source_file}
+        className="shrink-0 flex items-center gap-1 text-xs text-fg-subtle hover:text-accent transition-colors"
+      >
+        <BookOpen className="w-3 h-3" />第 {item.source_page} 页
+      </button>
+      {open && (
+        <img
+          src={sourcePageUrl(item.source_file, item.source_page)}
+          alt={`${item.source_file} 第 ${item.source_page} 页`}
+          className="w-full mt-2 rounded-lg border border-border"
+        />
+      )}
+    </>
+  )
+}
+
 function ItemRow({ item, type }: { item: ItemSchema; type: string }) {
   const [answer, setAnswer] = useState(item.correct_answer ?? '')
   const [saving, setSaving] = useState(false)
@@ -138,6 +190,7 @@ function ItemRow({ item, type }: { item: ItemSchema; type: string }) {
                       transcript={item.transcript} />
       </p>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pl-5">
+        <Confidence item={item} />
         {OPTS.filter(k => k in item.options).map(k => (
           <button
             key={k}
@@ -162,6 +215,7 @@ function ItemRow({ item, type }: { item: ItemSchema; type: string }) {
             <Check className="w-3 h-3" />已保存
           </span>
         )}
+        <span className="ml-auto"><SourcePage item={item} /></span>
       </div>
       {/* For 聴解 the dialogue IS the question — the paper prints nothing, and
           the text is filled in from the 解析 booklet. A character count says

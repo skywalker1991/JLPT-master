@@ -330,6 +330,11 @@ export async function getBankPaper(paperId: string): Promise<ExamPaperDetail> {
   return request<ExamPaperDetail>(`/api/admin/papers/${paperId}`)
 }
 
+/** One page of the booklet a question was read from. */
+export function sourcePageUrl(file: string, page: number): string {
+  return `/api/admin/source-page?file=${encodeURIComponent(file)}&page=${page}`
+}
+
 export async function getBank(): Promise<BankOverview> {
   return request<BankOverview>('/api/admin/bank')
 }

@@ -197,6 +197,13 @@ export interface ItemSchema {
    *  `/api/admin/papers` fills these in for the bank's editor. */
   correct_answer?: string | null
   answer_order?: string | null
+  /** Where it was read from, so the page can be opened rather than hunted. */
+  source_file?: string | null
+  source_page?: number | null
+  /** What each source said, keyed by the file it came from. */
+  answer_votes?: Record<string, string> | null
+  /** 已核对 | 多源一致 | 单源 | 无答案 */
+  confidence?: string | null
 }
 
 export interface ProblemDetail {

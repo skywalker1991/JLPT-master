@@ -824,6 +824,30 @@ async def list_exams(db: AsyncSession = Depends(get_db)):
 
 # ── 试卷详情（题目不含正解） ──────────────────────────────────────────────────
 
+def confidence_of(item) -> str:
+    """How far the answer is to be trusted, read off the evidence.
+
+    Not a score. A score would invent precision the evidence does not have;
+    what there is to say is how many separate files said it and whether a
+    person has ruled on it, and that is four cases.
+
+    Counted by file, because that is what independence means here. The front
+    answer table and the per-item 正解 lines are usually printed in the same
+    booklet, and a booklet agreeing with itself says only that it is
+    consistent — which is how one paper came to be reported as having three
+    sources when it had one.
+    """
+    if item.correct_answer is None:
+        return "无答案"
+    votes = item.answer_votes or {}
+    if not votes:
+        # Filled from somewhere that keeps no vote: a person, or a 並べ替え
+        # answer worked out from the ordering and the ★.
+        return "已核对"
+    files = {str(k).split("·")[0] for k in votes}
+    return "多源一致" if len(files) > 1 else "单源"
+
+
 async def build_paper_detail(
     db: AsyncSession, paper: ExamPaper, *, with_answers: bool = False,
 ) -> ExamPaperDetail:
@@ -866,6 +890,12 @@ async def build_paper_detail(
                     options=i.options, meta=i.meta,
                     correct_answer=i.correct_answer if with_answers else None,
                     answer_order=i.answer_order if with_answers else None,
+                    # Only the bank is shown where an answer came from and how
+                    # far it is to be trusted; answering is told none of it.
+                    source_file=i.source_file if with_answers else None,
+                    source_page=i.source_page if with_answers else None,
+                    answer_votes=i.answer_votes if with_answers else None,
+                    confidence=confidence_of(i) if with_answers else None,
                 ) for i in items],
             ))
 

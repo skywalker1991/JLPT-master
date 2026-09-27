@@ -41,6 +41,16 @@ class ItemSchema(BaseModel):
     #: rather than happening by forgetting.
     correct_answer: str | None = None
     answer_order: str | None = None
+    #: Where it was read from, so a reviewer can open the page rather than
+    #: hunt through forty of them.
+    source_file: str | None = None
+    source_page: int | None = None
+    #: What each source said, keyed by the file it came from — the evidence
+    #: behind the answer.
+    answer_votes: dict | None = None
+    #: What that evidence adds up to: 已核对 | 多源一致 | 单源 | 无答案.
+    #: Derived, never stored, so it cannot drift from the votes.
+    confidence: str | None = None
 
 
 class ProblemDetail(BaseModel):
