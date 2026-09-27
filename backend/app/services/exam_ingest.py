@@ -236,6 +236,41 @@ def _expand(slots: list) -> list:
     return expanded
 
 
+def _apply_decided(paper: CanonicalPaper, decided: dict | None, merge) -> list[str]:
+    """Lay a person's rulings over what the sources said.
+
+    Keyed (section, 問題, num, field), which is where a question sits rather
+    than which import it belongs to — the same ruling holds for every
+    re-import of that sitting.
+    """
+    if not decided:
+        return []
+    said: list[str] = []
+    settled: set[int | None] = set()
+    for section, problem, item in paper.items():
+        for field in ("correct_answer", "answer_order", "stem", "transcript"):
+            key = (section.name, problem.name, item.num, field)
+            if key not in decided:
+                continue
+            value, reason = decided[key]
+            if getattr(item, field) != value:
+                said.append(
+                    f"{problem.name} 第{item.num}题 {field}：按人工判定改为 {value}"
+                    + (f"（{reason}）" if reason else "")
+                )
+            setattr(item, field, value)
+            settled.add(item.num)
+    # A dispute somebody has ruled on is no longer a dispute. Left in the
+    # findings it asks the same question on every re-import, and the answer
+    # has to be given again.
+    if settled:
+        merge.conflicts[:] = [
+            c for c in merge.conflicts
+            if not any(f"第{num}题" in c for num in settled)
+        ]
+    return said
+
+
 def _record_page(problem, block, source) -> None:
     """Note which page of which file each question was read from.
 
@@ -391,6 +426,7 @@ async def ingest(
     source_label: str | None = None,
     baseline: dict | None = None,
     verify_answers: bool = False,
+    decided: dict | None = None,
 ) -> tuple[CanonicalPaper | None, IngestReport]:
     """Read a sitting end to end.
 
@@ -492,6 +528,13 @@ async def ingest(
         sheet_key = await _read_scanned_sheet(files_by_name, sources, report)
 
     merge = merge_answers(paper, sheet_key, explanation_key, grid_key)
+
+    # A person has already settled some of this. Applied before the checks
+    # rather than after the import, so that a dispute somebody has ruled on
+    # stops being reported as a dispute — otherwise every re-import asks the
+    # same question again and the answer has to be given again.
+    for said in _apply_decided(paper, decided, merge):
+        report.notes.append(said)
     report.answers.update({
         "answered": merge.answered, "unanswered": merge.unanswered,
         "orders": merge.orders_applied,

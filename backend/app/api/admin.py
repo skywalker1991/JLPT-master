@@ -15,7 +15,7 @@ from sqlalchemy import select, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.db import (
-    ExamItemRevision, ExamMedia,
+    ExamAdjudication, ExamItemRevision, ExamMedia,
     ExamPaper, ExamSection, ExamProblem, ExamItem, ExamDraft, get_db,
     async_session_factory,
 )
@@ -476,6 +476,10 @@ async def confirm_draft(draft_id: _uuid.UUID, db: AsyncSession = Depends(get_db)
                     note=f"来源：{item_data.provenance.source or '未知'}",
                 ))
 
+    applied = await _apply_adjudications(db, paper)
+    if applied:
+        logger.info("applied %d adjudications to %s", applied, paper.source)
+
     draft.paper_id = paper.id
     draft.status = "confirmed"
     await db.commit()
@@ -582,6 +586,52 @@ async def import_answers(
 
 
 # ── Media Upload ──────────────────────────────────────────────────────────────
+
+async def _apply_adjudications(db: AsyncSession, paper) -> int:
+    """Lay what a person decided back over a freshly imported paper.
+
+    Decisions are kept by sitting rather than by paper, so this runs on every
+    import of that sitting — including the fifth re-import after a parser
+    fix. Without it each re-import quietly reverts to what the machine reads,
+    and the machine is what was overruled.
+    """
+    rows = (await db.execute(
+        select(ExamAdjudication).where(
+            ExamAdjudication.level == paper.level,
+            ExamAdjudication.sitting == paper.source,
+        )
+    )).scalars().all()
+    if not rows:
+        return 0
+
+    by_where = {(r.section, r.problem_name, r.num, r.field): r for r in rows}
+    done = 0
+    sections = (await db.execute(
+        select(ExamSection).where(ExamSection.paper_id == paper.id)
+    )).scalars().all()
+    for section in sections:
+        problems = (await db.execute(
+            select(ExamProblem).where(ExamProblem.section_id == section.id)
+        )).scalars().all()
+        for problem in problems:
+            items = (await db.execute(
+                select(ExamItem).where(ExamItem.problem_id == problem.id)
+            )).scalars().all()
+            for item in items:
+                for field in ("correct_answer", "answer_order", "stem", "transcript"):
+                    row = by_where.get((section.name, problem.name, item.num, field))
+                    if row is None:
+                        continue
+                    setattr(item, field, row.value)
+                    db.add(ExamItemRevision(
+                        item_id=item.id, field=field,
+                        new_value=row.value, source="user",
+                        note=f"人工判定：{row.reason or '无说明'}",
+                    ))
+                    done += 1
+    await db.flush()
+    return done
+
 
 @router.post("/media/upload", response_model=MediaUploadResponse)
 async def upload_media(file: UploadFile = File(...)):

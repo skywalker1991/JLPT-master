@@ -86,6 +86,31 @@ async def import_paper(canonical: dict, report: dict, files: list[str]) -> str:
     return draft_id
 
 
+async def rulings(level: str | None, sitting: str | None) -> dict:
+    """What a person has already decided about this sitting.
+
+    Loaded here rather than inside ingest so that ingest stays a function of
+    its files; the decisions are the one thing about a sitting that does not
+    come out of them.
+    """
+    from app.models.db import ExamAdjudication
+    from sqlalchemy import select
+
+    if not (level and sitting):
+        return {}
+    async with async_session_factory() as db:
+        rows = (await db.execute(
+            select(ExamAdjudication).where(
+                ExamAdjudication.level == level,
+                ExamAdjudication.sitting == sitting,
+            )
+        )).scalars().all()
+    return {
+        (r.section, r.problem_name, r.num, r.field): (r.value, r.reason)
+        for r in rows
+    }
+
+
 async def confirm(draft_id: str) -> None:
     from uuid import UUID
 
@@ -171,6 +196,7 @@ async def main() -> int:
             paper, report = await ingest(
                 [(p.name, p.read_bytes()) for p in paths],
                 level=level, source_label=sitting,
+                decided=await rulings(level, sitting),
             )
         except Exception as exc:
             print(f"   failed: {exc}")

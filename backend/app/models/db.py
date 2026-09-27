@@ -429,6 +429,40 @@ class ProblemAnalysis(Base):
     )
 
 
+class ExamAdjudication(Base):
+    """What a person decided about a question, kept apart from the paper.
+
+    A human judgement is not part of an import; it is a layer over every
+    import of that sitting. Held on the paper it looks exactly like a value
+    the machine filled in, and any re-import discards it without a word —
+    which nearly happened to three decisions made by hand, all three cases
+    where the 解析 booklet was wrong and the answer table right.
+
+    Keyed by where the question sits rather than by paper id, so it outlives
+    the paper being deleted and built again.
+    """
+    __tablename__ = "exam_adjudications"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    level = Column(Text, nullable=False)
+    sitting = Column(Text, nullable=False)          # 2015年07月
+    section = Column(Text, nullable=False)
+    problem_name = Column(Text, nullable=False)
+    num = Column(Integer, nullable=True)
+    field = Column(Text, nullable=False)
+    #: NULL is a decision too: "this one is deliberately left blank".
+    value = Column(Text, nullable=True)
+    reason = Column(Text, nullable=True)
+    decided_by = Column(Text, nullable=False, server_default=text("'user'"))
+    decided_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+
+    __table_args__ = (
+        UniqueConstraint("level", "sitting", "section", "problem_name", "num", "field",
+                         name="exam_adjudications_level_sitting_section_problem_name_num_fi"),
+        Index("ix_exam_adjudications_sitting", "level", "sitting"),
+    )
+
+
 class ExamItemRevision(Base):
     """What changed on a question, and when.
 
