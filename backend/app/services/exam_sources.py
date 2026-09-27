@@ -14,7 +14,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 
 
@@ -33,6 +33,8 @@ class Source:
     text_pages: int
     text: str
     role: Role = Role.UNKNOWN
+    #: Where each page starts in `text`, so an offset can name its page.
+    page_starts: list[int] = field(default_factory=list)
 
     @property
     def text_coverage(self) -> float:

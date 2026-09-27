@@ -27,7 +27,7 @@ from app.services.exam_extract import (
 from app.services.exam_merge import merge_answers
 from app.services.exam_sources import Role, Source, assess, classify_all, detect_identity
 from app.services.exam_split import split_problems
-from app.services.exam_text import joined, page_image_for, read_pdf
+from app.services.exam_text import joined, page_image_for, page_of, page_starts, read_pdf
 from app.services.exam_validation import learn_baseline, validate
 
 logger = logging.getLogger(__name__)
@@ -67,6 +67,7 @@ def read_sources(files: list[tuple[str, bytes]]) -> list[Source]:
             page_count=len(pages),
             text_pages=sum(1 for p in pages if p.has_text_layer),
             text=joined(pages),
+            page_starts=page_starts(pages),
         ))
     return classify_all(sources)
 
@@ -129,6 +130,10 @@ async def build_paper(
         # splitting them, answering 第46题 means being shown all four.
         if result.problem.type == "reading_comp":
             invented.extend(split_passages(result.problem, block.text))
+
+        # Where it is printed, so a reviewer settling a disputed answer can
+        # open the page rather than hunt through forty of them.
+        _record_page(result.problem, block, questions)
 
         # A paper is practised in four parts, not three: 言語知識 is 文字・語彙
         # and 文法, and nobody sits 45 questions of it in one go. The part comes
@@ -229,6 +234,26 @@ def _expand(slots: list) -> list:
                 slot, answer=answer, transcript=slot.transcript if index == 0 else "",
             ))
     return expanded
+
+
+def _record_page(problem, block, source) -> None:
+    """Note which page of which file each question was read from.
+
+    The block already knows where it starts in the source, and the source
+    now knows where each of its pages starts, so this is arithmetic rather
+    than another pass over the PDF. Per question where the question can be
+    found in its block, and the 問題's own page otherwise — a question this
+    close to its heading is on the same page or the one after.
+    """
+    from app.services.exam_extract import _where
+
+    here = page_of(source.page_starts, block.start)
+    for item in problem.items:
+        item.provenance.source = source.filename
+        at = _where(item.num, item.stem, block.text) if item.num else None
+        item.provenance.page = (
+            page_of(source.page_starts, block.start + at) if at is not None else here
+        )
 
 
 def _keep_the_page(paper: CanonicalPaper, data: bytes, report: IngestReport) -> None:

@@ -144,6 +144,32 @@ def joined(pages: list[PageText]) -> str:
     return "\n".join(p.text for p in pages)
 
 
+def page_starts(pages: list[PageText]) -> list[int]:
+    """Where each page begins in `joined`, so an offset can name its page.
+
+    Kept because a reviewer settling a disputed answer has to see the page it
+    was read from, and a forty-page booklet with no page number is a page to
+    go hunting for.
+    """
+    starts, at = [], 0
+    for page in pages:
+        starts.append(at)
+        at += len(page.text) + 1        # the newline joined() puts between
+    return starts
+
+
+def page_of(starts: list[int], offset: int) -> int | None:
+    """Which page an offset falls on, numbered from one."""
+    if not starts:
+        return None
+    number = 0
+    for index, start in enumerate(starts):
+        if start > offset:
+            break
+        number = index + 1
+    return number or None
+
+
 def render_pages(data: bytes, *, limit: int = 3, dpi: int = 200) -> list[bytes]:
     """The first few pages as PNGs, for a file that has no text to read.
 

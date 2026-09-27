@@ -289,6 +289,11 @@ class ExamItem(Base):
     # answer but never show the sentence put right.
     answer_order = Column(String(8), nullable=True)
     meta = Column(JSONB, nullable=True)
+    #: Which file it was read from, and which page of it. Not a copy of the
+    #: material — ingest runs where the material already is, and a reviewer
+    #: opens that file rather than a second copy of it.
+    source_file = Column(Text, nullable=True)
+    source_page = Column(Integer, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
 
     problem = relationship("ExamProblem", back_populates="items")
