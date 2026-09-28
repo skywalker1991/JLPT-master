@@ -203,13 +203,18 @@ def check_official(paper: dict) -> Report:
                 continue
             if "聴解" in name:
                 # A sitting may run a 番 short or long; only a real gap is
-                # worth saying anything about.
+                # worth saying anything about, and it is worth asking rather
+                # than blocking.
                 if abs(got - want) > 1:
                     report.add("soft", pname,
                                f"本卷 {got} 题，官方公式問題集是 {want} 题")
                 continue
-            report.add("soft", pname,
-                       f"本卷 {got} 题，官方公式問題集是 {want} 题")
+            # The written half does not vary. A 問題 short of its count is a
+            # question that did not make it, and importing it that way puts a
+            # paper in the bank that can never be sat as printed — so this
+            # holds the paper back rather than noting it in passing.
+            report.add("hard", pname,
+                       f"本卷 {got} 题，官方公式問題集是 {want} 题——有题没提取出来")
     return report
 
 

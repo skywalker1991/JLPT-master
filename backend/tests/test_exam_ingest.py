@@ -152,7 +152,9 @@ def test_a_clean_paper_is_importable_without_being_read(monkeypatch):
         source(QUESTIONS, Role.QUESTIONS),
         source(ANSWER_SHEET, Role.ANSWER_SHEET),
         source(EXPLANATIONS, Role.EXPLANATIONS),
-    ])
+    # Reported under a level with no official shape: this fixture is two
+    # questions standing in for a paper, and 問題1 of N1 holds six.
+    ], level="N9")
     assert report.clean
 
 
