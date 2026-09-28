@@ -5,6 +5,7 @@ import { editDraftItem } from '../../services/api'
 import type { CanonicalItem, DraftDetail } from '../../types'
 import Passage from '../exam/Passage'
 import QuestionText from '../exam/QuestionText'
+import { Confidence, SourcePage } from './Provenance'
 
 const OPTS = ['1', '2', '3', '4']
 
@@ -278,6 +279,11 @@ function ItemRow({
       )}
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pl-5">
+        {/* Where the answer came from and how far that goes. Here rather
+            than only after the import, because this is the moment the
+            question is open: the findings are still on the table and what
+            settles them is the page. */}
+        <Confidence answer={answer || item.correct_answer} votes={item.votes} />
         {OPTS.filter(k => k in item.options).map(k => (
           <button
             key={k}
@@ -291,6 +297,9 @@ function ItemRow({
         {Object.keys(item.options).length === 0 && (
           <span className="text-xs text-fg-subtle italic">（音声のみ）</span>
         )}
+        <span className="ml-auto">
+          <SourcePage file={item.provenance?.source} page={item.provenance?.page} />
+        </span>
       </div>
 
       {(flagged || dirty || type === 'sentence_order') && (

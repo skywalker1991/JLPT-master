@@ -379,7 +379,12 @@ export interface DraftItem {
   passage?: string | null
   options: Record<string, string>
   correct_answer: string | null
+  answer_order?: string | null
   meta: Record<string, unknown> | null
+  /** What each source said, keyed by the file it came from. */
+  votes?: Record<string, string> | null
+  /** Which file and page it was read from. */
+  provenance?: { source?: string | null; page?: number | null } | null
 }
 
 export interface DraftProblem {
@@ -424,6 +429,12 @@ export interface CanonicalItem {
    *  one of them; otherwise the 問題's own passage is the one to show. */
   passage: string | null
   meta: Record<string, unknown>
+  /** What each source said about the answer, keyed by the file it came from.
+   *  The evidence, so the draft can be reviewed against it rather than on
+   *  trust — this is the moment the question is still open. */
+  votes?: Record<string, string> | null
+  /** Which file and page it was read from. */
+  provenance?: { source?: string | null; page?: number | null } | null
 }
 
 export interface CanonicalProblem {
