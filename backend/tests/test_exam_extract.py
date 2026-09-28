@@ -364,3 +364,27 @@ def test_the_parts_of_a_key_cannot_run_together():
     """Without a separator, ("ab", "c") and ("a", "bc") would collide."""
     from app.services import exam_cache
     assert exam_cache.key_for("ab", "c", "m") != exam_cache.key_for("a", "bc", "m")
+
+
+# --- the characters the text is kept in ----------------------------------------
+
+def test_a_radical_standing_in_for_a_kanji_is_folded():
+    """These PDFs set 「人」 as U+2F08, the Kangxi radical. It draws the same
+    glyph and matches nothing: searching for 人 misses it, and the same word
+    off two papers can be two different strings."""
+    from app.services.exam_clean import clean
+    assert clean("⼈の⾔う") == "人の言う"
+
+
+def test_full_width_punctuation_is_the_paper_s_own_text():
+    """NFKC over everything would turn 「（１・２）」 half-width, and that is
+    how the paper is printed — so the fold goes by code block, not by
+    whether NFKC changes anything."""
+    from app.services.exam_clean import clean
+    assert clean("（１・２・３・４）：") == "（１・２・３・４）："
+
+
+def test_text_with_nothing_to_fold_is_returned_unchanged():
+    from app.services.exam_clean import clean
+    text = "この店のハンバーガーは、値段は多少高めだ。"
+    assert clean(text) is text

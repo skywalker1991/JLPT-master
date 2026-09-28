@@ -21,6 +21,7 @@ from app.services.exam_canonical import (
     CanonicalItem, CanonicalPaper, CanonicalSection,
 )
 from app.services.exam_categories import part_of_type, type_by_number
+from app.services.exam_clean import clean_paper
 from app.services.exam_extract import (
     extract_block_with_retry, mark_blanks, split_passages,
 )
@@ -526,6 +527,13 @@ async def ingest(
         # character of text layer, and is that sitting's only source for the
         # 並べ替え orderings.
         sheet_key = await _read_scanned_sheet(files_by_name, sources, report)
+
+    # Into the characters it is meant to be written in, before anything is
+    # checked against it or stored. The verbatim check folds both sides, so
+    # a cleaned stem still matches the page it was copied from.
+    moved = clean_paper(paper)
+    if moved:
+        report.notes.append(f"字形清洗：{moved} 处文本含康熙部首码位，已折成常规汉字")
 
     merge = merge_answers(paper, sheet_key, explanation_key, grid_key)
 
