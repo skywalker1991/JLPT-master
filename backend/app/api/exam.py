@@ -7,6 +7,7 @@ from sqlalchemy import delete, distinct, select, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.db import (
+    ExamAdjudication,
     ExamPaper, ExamSection, ExamProblem, ExamItem, ExamMedia,
     QuestionAnalysis, ProblemAnalysis, ExamAttempt, AttemptAnswer,
     ExamItemRevision, ExamItemReport, get_db,
@@ -1663,12 +1664,51 @@ async def get_attempt_review(attempt_id: UUID, db: AsyncSession = Depends(get_db
 # fixed by deleting its paper and losing the attempts recorded against it.
 # ---------------------------------------------------------------------------
 
+#: Fields where an edit is a judgement about the paper rather than a tidy-up,
+#: and so has to outlive the import it was made on.
+DECIDED_FIELDS = {"correct_answer", "answer_order", "stem", "transcript"}
+
+
+async def _record_decision(db, item, revisions, note) -> None:
+    """Keep an edit as a ruling, not only as a change to this paper.
+
+    A paper is deleted and built again every time the extractor improves, and
+    an edit written only onto the paper goes with it — silently, since what a
+    person typed looks exactly like what the machine read. It happened twice
+    in one afternoon before this existed.
+    """
+    fields = [r.field for r in revisions if r.field in DECIDED_FIELDS]
+    if not fields:
+        return
+
+    problem = await db.get(ExamProblem, item.problem_id)
+    section = await db.get(ExamSection, problem.section_id) if problem else None
+    paper = await db.get(ExamPaper, section.paper_id) if section else None
+    if not (problem and section and paper and paper.source):
+        return
+
+    for field in fields:
+        where = dict(level=paper.level, sitting=paper.source, section=section.name,
+                     problem_name=problem.name, num=item.num, field=field)
+        existing = (await db.execute(
+            select(ExamAdjudication).filter_by(**where)
+        )).scalars().first()
+        if existing is None:
+            existing = ExamAdjudication(**where)
+            db.add(existing)
+        existing.value = getattr(item, field)
+        existing.reason = note or "在题库界面上修改"
+        existing.decided_by = "user"
+    await db.flush()
+
+
 @router.patch("/exam/items/{item_id}")
 async def edit_item(item_id: UUID, body: dict, db: AsyncSession = Depends(get_db)):
     """Correct one question. Scoped to the item so the paper is not rebuilt
     and attempt history keeps pointing at the same rows."""
     note = body.pop("note", None)
     item, revisions = await exam_edit.apply_item_edit(db, item_id, body, note=note)
+    await _record_decision(db, item, revisions, note)
     await db.commit()
     return {
         "id": str(item.id),
