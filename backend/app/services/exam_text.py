@@ -261,12 +261,22 @@ def _passage_box(page, head: str, tail: str):
     )
 
 
-def page_png(data: bytes, page: int, *, dpi: int = 150) -> bytes | None:
-    """One page of a PDF, by number.
+#: A drawn box this big holds a passage rather than decorating something.
+BOX_MIN = 120.0
 
-    For a passage whose text cannot be trusted, where searching for it to
-    crop by is not possible — the text is in the wrong order, which is the
-    whole reason the picture is wanted.
+
+def boxed_passage(data: bytes, page: int, *, dpi: int = 150) -> bytes | None:
+    """The framed passage on this page, as a picture.
+
+    For a passage whose text cannot be trusted — a page set in columns,
+    which extraction reads across. Cropping it by searching for its text is
+    not possible, the text being in the wrong order, which is the whole
+    reason the picture is wanted.
+
+    The frame is the way in. These pages put the vertical passage inside a
+    drawn box and the questions below it, so the box is the passage and
+    nothing else: kept whole, the picture carries the next two questions and
+    their options as well.
     """
     import fitz
 
@@ -275,6 +285,16 @@ def page_png(data: bytes, page: int, *, dpi: int = 150) -> bytes | None:
     try:
         if not 1 <= page <= len(document):
             return None
-        return document[page - 1].get_pixmap(dpi=dpi).tobytes("png")
+        sheet = document[page - 1]
+        boxes = [
+            item[1] for drawing in sheet.get_drawings() for item in drawing["items"]
+            if item[0] == "re"
+            and item[1].width > BOX_MIN and item[1].height > BOX_MIN
+        ]
+        clip = None
+        if boxes:
+            box = max(boxes, key=lambda b: b.width * b.height)
+            clip = fitz.Rect(box.x0 - 6, box.y0 - 6, box.x1 + 6, box.y1 + 6)
+        return sheet.get_pixmap(dpi=dpi, clip=clip).tobytes("png")
     finally:
         document.close()

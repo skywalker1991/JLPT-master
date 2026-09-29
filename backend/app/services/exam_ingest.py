@@ -28,7 +28,7 @@ from app.services.exam_extract import (
 from app.services.exam_merge import merge_answers
 from app.services.exam_sources import Role, Source, assess, classify_all, detect_identity
 from app.services.exam_split import split_problems
-from app.services.exam_text import joined, page_image_for, page_of, page_png, page_starts, read_pdf
+from app.services.exam_text import joined, page_image_for, page_of, boxed_passage, page_starts, read_pdf
 from app.services.exam_validation import learn_baseline, validate
 
 logger = logging.getLogger(__name__)
@@ -373,7 +373,7 @@ def _picture_the_unreadable(paper: CanonicalPaper, data: bytes, report: IngestRe
             report.notes.append(f"第{item.num}题：文章是竖排的，但不知道它在第几页，无法留图")
             continue
         try:
-            png = page_png(data, page)
+            png = boxed_passage(data, page)
         except Exception as e:                    # never lose a paper over a picture
             logger.warning("could not render page %s: %s", page, e)
             continue
