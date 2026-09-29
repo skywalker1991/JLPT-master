@@ -114,7 +114,13 @@ _ANSWER_RUN = r"[1-4]{2,}(?:(?:[^\S\n]+|[^\S\n]*/[^\S\n]*)[1-4]+)*(?![0-9])"
 #: single digits under them. Written numbers run straight through; 聴解's
 #: start again at (1) in every 問題.
 _LABEL = re.compile(r"[（(]\s*(\d{1,2})\s*[)）]")
-_LABEL_ROW = re.compile(r"^(?:\s*[（(]\s*\d{1,2}\s*[)）])+\s*$", re.M)
+#: Five labels at least: a lone 「（1）」 on a line is 解析 prose, and 2011年12月's
+#: table region has six of them — taken for this layout, its whole key read
+#: as empty.
+_LABEL_ROW = re.compile(r"^(?:\s*[（(]\s*\d{1,2}\s*[)）]){5,}\s*$", re.M)
+#: Any row of labels, once the layout is known to be this one — 2023年07月
+#: ends on 「（65）（66）」.
+_ANY_LABEL_ROW = re.compile(r"^(?:\s*[（(]\s*\d{1,2}\s*[)）])+\s*$", re.M)
 _DIGIT_ROW = re.compile(r"^\s*[1-4](?:\s+[1-4])*\s*$")
 _LISTENING_PART = re.compile(r"[听聴][解力]")
 
@@ -127,7 +133,7 @@ def _parse_label_rows(text: str, counts: dict[int, int] | None) -> AnswerKey:
     for line in text.split("\n"):
         if _LISTENING_PART.search(line) and not _LABEL.search(line):
             listening = True
-        if _LABEL_ROW.match(line):
+        if _ANY_LABEL_ROW.match(line):
             labels = [int(n) for n in _LABEL.findall(line)]
             problems = []
         elif _LISTENING_GROUP.search(line) and not _DIGIT_ROW.match(line):
@@ -256,6 +262,9 @@ def _listening_section(text: str):
     return _SECTION.search(_folded(text))
 
 
+_EXPLAINED = re.compile(r"[⽂文]字解析")
+
+
 def parse_booklet_table(text: str, listening_counts: dict[int, int] | None = None) -> AnswerKey | None:
     """The summary table some 解析 booklets print before the explanations.
 
@@ -272,7 +281,11 @@ def parse_booklet_table(text: str, listening_counts: dict[int, int] | None = Non
     Returns None when the booklet has no such table — 2018年07月's opens
     straight into 文字解析.
     """
-    table = text[: text.find("正解")] if "正解" in text else text
+    # Or the heading the explanations open with: 2011年12月 never writes 正解
+    # until 18,000 characters in, and the 「问题1」 and digits of its prose
+    # overwrote the listening answers read from the table.
+    ends = [m.start() for m in (re.search("正解", text), _EXPLAINED.search(text)) if m]
+    table = text[: min(ends)] if ends else text
     if not _RANGE.search(table) and not _ORDER.search(table):
         return None
     return parse_answer_sheet(table, listening_counts)

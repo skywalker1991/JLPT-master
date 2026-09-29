@@ -191,3 +191,27 @@ def test_a_skipped_ban_leaves_its_question_empty_rather_than_shifting_the_rest()
     _fill_listening(paper, [source], IngestReport())
     said = {i.num: i.transcript for i in problem.items}
     assert "第3番" in said[3] and "第5番" in said[5] and not said[2]
+
+
+def test_options_are_read_past_a_page_number_and_the_next_heading():
+    """2010年07月 ends a 番 with its options, 「答え：３」, the page number
+    「49」, a stray 「番」 and the next heading — read as option 4 = 9, and
+    the transcript cut a line short."""
+    from app.services.exam_listening import _options_and_transcript, _take_answers
+    body = ("あの、何か書くもの拝借してもよろしいですか。\n"
+            "１、じゃあ、拝見しましょう。\n２、これでよろしければ。\n３、すぐお返しします。\n"
+            "答え：３\n49\n番\n問題4 応答問題\n")
+    answers, body = _take_answers(body)
+    options, transcript = _options_and_transcript(body)
+    assert answers == ["3"]
+    assert sorted(options) == ["1", "2", "3"]
+    assert transcript == "あの、何か書くもの拝借してもよろしいですか。"
+
+
+def test_options_printed_before_the_dialogue_are_not_taken_as_trailing():
+    """2018年07月 問題5 3番 prints both option sets first; scanning back past
+    the dialogue found them and cut the transcript by a wrong count."""
+    from app.services.exam_listening import _options_and_transcript
+    body = "質問1\n1 赤山\n2 青山\n3 緑山\n4 白山\nラジオを聞いて夫婦が話しています。\n男：じゃ、行こう。\n女：うん。\n質問1 二人は…\n55\n"
+    options, transcript = _options_and_transcript(body)
+    assert "女：うん。" in transcript

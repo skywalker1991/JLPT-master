@@ -82,7 +82,7 @@ _BAN = re.compile(
 #: rather than the whole line being dropped.
 _ANSWER_LINE = re.compile(
     r"^[^\S\n]*(?:[質质][問问間间]\s*[0-9０-９]\s*[：:]?\s*)?"
-    r"(?:正解|答案)\s*[：:]\s*([0-9０-９])"
+    r"(?:正解|答案|答え)\s*[：:]\s*([0-9０-９])"
     r"(?:\s*[、,，]\s*([0-9０-９]))?(?=[^\S\n]|$)"
 )
 
@@ -213,6 +213,14 @@ def _is_page_number(line: str) -> bool:
 MIN_OPTIONS = 3
 
 
+#: …or the instructions for the next 番, 「まず話を聞いてください。…問題用紙の
+#: 1から4の中から…選んでください」 (2018年12月 問題5).
+_AFTER_OPTIONS = re.compile(
+    r"^\s*(?:番|[問问][題题]\s*[0-9０-９].*|[質质][問问]\s*[0-9０-９２].*"
+    r"|.*(?:問題[用⽤]紙|選んでください|話を聞いてください).*)\s*$"
+)
+
+
 def _take_options(lines: list[str], *, reverse: bool = False) -> tuple[dict[str, str], int]:
     """A run of consecutively numbered options taken from one end of the block."""
     options: dict[str, str] = {}
@@ -223,7 +231,16 @@ def _take_options(lines: list[str], *, reverse: bool = False) -> tuple[dict[str,
         # Read backwards the run has to end at 1, but may start at 3 or 4.
         want = None
         for line in sequence:
-            if options and _is_page_number(line):
+            # A page number can come after the last option too — 2010年07月's
+            # 「３、…／49」 — and read as an option it was 「4 = 9」, and the
+            # transcript was cut a line short. Above 4 it cannot be an option.
+            if _is_page_number(line) and (options or int(_digits(line.strip())) > 4):
+                taken += 1
+                continue
+            # Nor is what can follow the last option before the next 番: a
+            # stray 「番」, the next heading 「問題4 応答問題」 (2010年07月), the
+            # 「質問２ …」 of a two-question 番.
+            if not options and _AFTER_OPTIONS.match(line):
                 taken += 1
                 continue
             match = _OPTION.match("\n" + line)
@@ -236,7 +253,11 @@ def _take_options(lines: list[str], *, reverse: bool = False) -> tuple[dict[str,
                 want -= 1
                 if want == 0:
                     break
-            elif options:
+            else:
+                # Trailing means at the end. Scanning on up past the dialogue
+                # found the set printed before it — 2018年07月 問題5 3番 — and
+                # cut the transcript by a count that never included the lines
+                # skipped on the way.
                 break
         return (options if len(options) >= MIN_OPTIONS and "1" in options else {}), taken
 

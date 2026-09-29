@@ -316,11 +316,20 @@ def test_a_key_printed_as_bracketed_labels_over_digits():
     from app.services.exam_answers import parse_answer_sheet
     text = (
         "2023年7月日语能力考试N1真题答案\n词汇.语法\n"
-        "（1） （2） （3）\n问题1\n4 1 3\n"
-        "(4) (5)\n问题2\n4 2\n"
+        "（1） （2） （3） （4） （5）\n问题1 问题2\n4 1 3 4 2\n"
         "(6) (7) (8) (9) (10)\n问题3\n1 1 2 3 4\n"
-        "听解\n(1) (2) (1) (2)\n问题4 问题5\n2 1 1 3 4\n"
+        "（11）（12）\n问题4\n2 3\n"
+        "听解\n(1) (2) (3) (1) (2)\n问题4 问题5\n2 1 1 3 4 1\n"
+        "(1) (2) (3) (4) (5)\n问题1\n1 2 3 4 1\n"
     )
-    key = parse_answer_sheet(text, {4: 2, 5: 3})
-    assert "".join(key.written[n] for n in range(1, 11)) == "4134211234"
-    assert [key.listening[(5, n)] for n in (1, 2, 3)] == ["1", "3", "4"]
+    key = parse_answer_sheet(text, {1: 5, 4: 3, 5: 3})
+    assert "".join(key.written[n] for n in range(1, 13)) == "413421123423"
+    assert [key.listening[(5, n)] for n in (1, 2, 3)] == ["3", "4", "1"]
+
+
+def test_a_lone_bracketed_number_in_prose_is_not_that_layout():
+    """2011年12月's table region runs into 解析 prose with six lone 「（N）」
+    lines; read as label rows, its whole key came out empty."""
+    from app.services.exam_answers import parse_answer_sheet
+    text = "1-6・1 分/题\n7-13・1 分/题\n21341 4\n42214 23\n" + "（1）\n解析の文\n" * 6
+    assert len(parse_answer_sheet(text).written) == 13

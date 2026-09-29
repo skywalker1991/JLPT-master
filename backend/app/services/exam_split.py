@@ -28,7 +28,9 @@ from dataclasses import dataclass
 MAX_HEADING = 20
 
 #: 問題 heading. The number may be half-width, full-width, or spaced away.
-_HEADING = re.compile(r"問題\s*([0-9０-９]{1,2})(?![0-9０-９])")
+#: 「問 題 1」 too: 2011年07月 spaces its listening headings for furigana, and
+#: 聴解問題1 and 2 — thirteen questions — were never split out.
+_HEADING = re.compile(r"問[^\S\n]*題\s*([0-9０-９]{1,2})(?![0-9０-９])")
 
 #: Where 読解 begins. Printed as its own word above 問題8 in both sittings.
 _READING_MARKER = re.compile(r"(?<![^\s])読解(?![^\s])")
