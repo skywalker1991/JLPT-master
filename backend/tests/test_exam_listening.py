@@ -226,3 +226,20 @@ def test_headings_with_no_space_as_utterances_or_circled_past_nine():
         "\n1 あの、すみません。こちらの椅子を拝借したいんですが。\n1 どうぞ。\n2 はい。\n3 いいえ。\n"
         "\n１ 電話してきたならいいじゃない。\n")]
     assert found[:2] == ["2", "1"] and "１" not in found
+
+
+def test_options_are_read_however_the_booklet_lays_them_out():
+    from app.services.exam_listening import _options_and_transcript
+    same_line = "話しています。\n男：…\n何について話していますか。\n1．古い民家を守る 2．古い民家の活用 3．町の歴史 4．観光の問題"
+    assert _options_and_transcript(same_line)[0]["4"] == "観光の問題"
+    run_on = "…目を通しといてね。1.あ、読んでおきます。\n2.はい、見ておきました。\n3.なんで?"
+    options, transcript = _options_and_transcript(run_on)
+    assert options == {"1": "あ、読んでおきます。", "2": "はい、見ておきました。", "3": "なんで?"}
+    assert transcript == "…目を通しといてね。"
+    speaker = "…どうぞ。\nM：１．あ、遠慮なく。\n２．いえいえ。\n３．またね。"
+    assert _options_and_transcript(speaker)[0]["1"] == "あ、遠慮なく。"
+    two_columns = "女の人は何について話していますか。\n1 赤\n3 青\n2 白\n4 黒"
+    assert _options_and_transcript(two_columns)[0] == {"1": "赤", "2": "白", "3": "青", "4": "黒"}
+    unnumbered = "男：…\n女の人は何について話していますか。\n新しい店\n古い店\n近い店\n遠い店"
+    assert _options_and_transcript(unnumbered) == ({"1": "新しい店", "2": "古い店", "3": "近い店", "4": "遠い店"},
+                                                   "男：…\n女の人は何について話していますか。")

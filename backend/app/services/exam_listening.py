@@ -225,6 +225,150 @@ _AFTER_OPTIONS = re.compile(
 )
 
 
+def _take_trailing(lines: list[str]) -> tuple[dict[str, str], int]:
+    """The options at the end of a 番, and how many lines they take.
+
+    At the end means at the end: past a page number, a stray 「番」, the next
+    heading, 「質問２ …」 or the next 番's instructions, and nothing else —
+    scanning on up past the dialogue found the set printed before it
+    (2018年07月 問題5 3番) and cut the transcript by a count that missed the
+    lines skipped. In any order, since a two-column print reads 1, 3, 2, 4
+    (2012年07月 3-1), as long as the numbers are exactly 1..n.
+    """
+    options: dict[str, str] = {}
+    taken = 0
+    for line in reversed(lines):
+        # A page number can follow the last option — 2010年07月's 「３、…／49」,
+        # read as 「4 = 9」. Above 4 it cannot be an option.
+        if _is_page_number(line) and (options or int(_digits(line.strip())) > 4):
+            taken += 1
+            continue
+        if not options and _AFTER_OPTIONS.match(line):
+            taken += 1
+            continue
+        match = _OPTION.match("\n" + line)
+        number = _digits(match.group(1)) if match else None
+        if number and number not in options:
+            options[number] = match.group(2).strip()
+            taken += 1
+            if len(options) == 4:
+                break
+            continue
+        break
+    numbers = sorted(int(n) for n in options)
+    if len(numbers) >= MIN_OPTIONS and numbers == list(range(1, len(numbers) + 1)):
+        return dict(sorted(options.items())), taken
+    if not options:
+        return _unnumbered(lines)
+    return {}, taken
+
+
+def _unnumbered(lines: list[str]) -> tuple[dict[str, str], int]:
+    """Four options printed without numbers after the question (2018年12月
+    問題3): four short phrases right after 「…話していますか。」 end the 番."""
+    body: list[int] = []            # indexes of content lines, from the end
+    for index in range(len(lines) - 1, -1, -1):
+        if lines[index].strip() and not _is_page_number(lines[index]):
+            body.append(index)
+        if len(body) == 5:
+            break
+    if len(body) < 5:
+        return {}, 0
+    question, *phrases = [lines[i].strip() for i in reversed(body)]
+    if not re.search(r"か[。？?]?$", question):
+        return {}, 0
+    if any(len(p) > 30 or re.search(r"[：:。]", p) or _OPTION.match("\n" + p) for p in phrases):
+        return {}, 0
+    return {str(i): p for i, p in enumerate(phrases, 1)}, len(lines) - body[3]
+
+
+#: Option markers inside a line: 「1.」「１．」「1、」 not followed by a digit,
+#: or a digit and a space.
+_DOT_MARK = re.compile(r"(?<![0-9０-９])([1-4１-４])\s*[．.、](?![0-9])")
+_SPACE_MARK = re.compile(r"(?<![0-9０-９])([1-4１-４])[ 　]+(?=\S)")
+_SPEAKER_BEFORE_OPTION = re.compile(r"^\s*(?:[男女⼥]\d?|[MF]\s*\d?)\s*[：:]\s*(?=[1１]\s*[．.、])")
+_SENTENCE_END = "。？?！!…」）)"
+_MARK_START = re.compile(r"^\s*[1-4１-４](?:\s*[．.、]|[ 　])")
+_MARK_ONLY = re.compile(r"^\s*[1-4１-４]\s*[．.、]?\s*$")
+#: An option is a phrase, not a line of dialogue.
+_OPTION_MAX = 40
+
+
+def _cuts_within(line: str, first: re.Match, pattern: re.Pattern) -> list[int]:
+    """Where the next options begin inside a line that opens with one."""
+    cuts, want = [], int(_digits(first.group(1))) + 1
+    for match in pattern.finditer(line, first.end()):
+        if int(_digits(match.group(1))) == want:
+            cuts.append(match.start())
+            want += 1
+    return cuts
+
+
+def split_option_lines(lines: list[str]) -> list[str]:
+    """One option a line, however the booklet printed them.
+
+    Several on one line — 「1.１番の人 2.２番の人 …」, 「1 大学生の経済的状況2
+    大学生の…」 (2010年12月, 2016年12月, 2020年12月); a reply run on after the
+    line it answers, 「…目を通しといてね。1.あ、読んでおきます。」 (2020年12月
+    問題4); a speaker before option 1, 「M：１．あ、遠慮なく」 (2022年12月);
+    an option the page wrapped, 「1.もう2 度も行っ／たの?」.
+    """
+    out: list[str] = []
+    for index, line in enumerate(lines):
+        line = _SPEAKER_BEFORE_OPTION.sub("", line)
+        stripped = line.strip()
+        following = [l.strip() for l in lines[index + 1:index + 3]]
+        first_dot = _DOT_MARK.match(stripped)
+        first_space = None if first_dot else _SPACE_MARK.match(stripped)
+        cuts: list[int] = []
+        if first_dot:
+            cuts = _cuts_within(stripped, first_dot, _DOT_MARK)
+        elif first_space:
+            cuts = _cuts_within(stripped, first_space, _SPACE_MARK)
+        else:
+            # A reply run on after the prompt — only where the next line
+            # carries on with 2.
+            for pattern, second in ((_DOT_MARK, r"[2２]\s*[．.、]"), (_SPACE_MARK, r"[2２][ 　]+\S")):
+                for match in pattern.finditer(stripped):
+                    before = stripped[match.start() - 1] if match.start() else ""
+                    if (int(_digits(match.group(1))) == 1 and before and before in _SENTENCE_END
+                            and any(re.match(second, l) for l in following)):
+                        cuts = [match.start()] + _cuts_within(stripped, match, pattern)
+                        break
+                if cuts:
+                    break
+        if not cuts:
+            out.append(line)
+            continue
+        pieces, last = [], 0
+        for cut in cuts:
+            pieces.append(stripped[last:cut])
+            last = cut
+        pieces.append(stripped[last:])
+        pieces = [piece.strip() for piece in pieces if piece.strip()]
+        # Space-separated options are phrases; a long piece is dialogue that
+        # happens to say 「タイプ1 は…タイプ2 は」.
+        if first_space and any(len(p) > _OPTION_MAX or "。" in p[:-1] for p in pieces):
+            pieces = [stripped]
+        out.extend(pieces)
+    return _join_wrapped(out)
+
+
+def _join_wrapped(lines: list[str]) -> list[str]:
+    out: list[str] = []
+    for line in lines:
+        previous = out[-1] if out else ""
+        tail = line.strip()
+        if previous and _MARK_START.match(previous) and not _MARK_START.match(line) and (
+                _MARK_ONLY.match(previous)
+                or (len(tail) <= 12 and tail[-1:] in "。？?！!か"
+                    and previous.rstrip()[-1:] not in "。？?！!")):
+            out[-1] = previous.rstrip() + tail
+            continue
+        out.append(line)
+    return out
+
+
 def _take_options(lines: list[str], *, reverse: bool = False) -> tuple[dict[str, str], int]:
     """A run of consecutively numbered options taken from one end of the block."""
     options: dict[str, str] = {}
@@ -232,38 +376,7 @@ def _take_options(lines: list[str], *, reverse: bool = False) -> tuple[dict[str,
     taken = 0
 
     if reverse:
-        # Read backwards the run has to end at 1, but may start at 3 or 4.
-        want = None
-        for line in sequence:
-            # A page number can come after the last option too — 2010年07月's
-            # 「３、…／49」 — and read as an option it was 「4 = 9」, and the
-            # transcript was cut a line short. Above 4 it cannot be an option.
-            if _is_page_number(line) and (options or int(_digits(line.strip())) > 4):
-                taken += 1
-                continue
-            # Nor is what can follow the last option before the next 番: a
-            # stray 「番」, the next heading 「問題4 応答問題」 (2010年07月), the
-            # 「質問２ …」 of a two-question 番.
-            if not options and _AFTER_OPTIONS.match(line):
-                taken += 1
-                continue
-            match = _OPTION.match("\n" + line)
-            number = _digits(match.group(1)) if match else None
-            if number and (want is None or number == str(want)):
-                if want is None:
-                    want = int(number)
-                options[number] = match.group(2).strip()
-                taken += 1
-                want -= 1
-                if want == 0:
-                    break
-            else:
-                # Trailing means at the end. Scanning on up past the dialogue
-                # found the set printed before it — 2018年07月 問題5 3番 — and
-                # cut the transcript by a count that never included the lines
-                # skipped on the way.
-                break
-        return (options if len(options) >= MIN_OPTIONS and "1" in options else {}), taken
+        return _take_trailing(lines)
 
     want = 1
     for line in sequence:
@@ -293,7 +406,7 @@ def _options_and_transcript(body: str) -> tuple[dict[str, str], str]:
     概要理解, where the options are only given afterwards, so they follow the
     transcript. Assuming one order empties the transcript of every 問題3.
     """
-    lines = [l for l in body.split("\n") if l.strip()]
+    lines = split_option_lines([l for l in body.split("\n") if l.strip()])
 
     leading, taken = _take_options(lines)
     if len(leading) >= MIN_OPTIONS:
