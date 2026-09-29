@@ -142,8 +142,13 @@ def _folded(text: str) -> str:
     made at a folded offset landed four characters late and ate the 「問」 of
     「問題 1」 — leaving its six transcripts to be counted under 問題2, and
     six questions in the paper with no transcript at all.
+
+    The control character U+0001 these PDFs put at line ends is read as a
+    space: 2010年07月 writes 「1\x01 番」, and a digit, a control character
+    and 番 is not a heading to any pattern — its whole 問題1 went unseen.
     """
     return "".join(
+        " " if ch == "\x01" else
         folded if len(folded := unicodedata.normalize("NFKC", ch)) == 1 else ch
         for ch in text
     )
@@ -311,8 +316,13 @@ _PROBLEM_CJK = re.compile(
 #: forms are a number at the head of a line and then something that is not
 #: more text: 2014年07月 writes 「1.」, 2015年07月 「1、正解：3」, and
 #: 2013年12月 the number by itself.
+#: 2014年07月 also writes a bare 「17 テレビのニュースでアナウンサーが話して…」.
+#: A number and a space is how an option line looks too — 「1  ペットが…」 —
+#: so that form counts only where the line goes on to set the scene, which
+#: an option never does.
 _LOOSE_BAN = re.compile(
-    r"(?:^|\n)[^\S\n]*([0-9０-９]{1,2})[^\S\n]*(?:[、.．]|(?=\n)|(?=[^\S\n]*(?:正解|答案)))"
+    r"(?:^|\n)[^\S\n]*([0-9０-９]{1,2})"
+    r"(?:[^\S\n]*(?:[、.．]|(?=\n)|(?=[^\S\n]*(?:正解|答案)))|[^\S\n]+(?=[^\n]*(?:話して|紹介して|ています)))"
 )
 
 
@@ -406,7 +416,15 @@ def parse_listening(text: str) -> list[ListeningItem]:
         if _runs_ok([int(_digits(m.group(1))) for m in per_problem]):
             hits = per_problem
         elif _flat_ok([int(_digits(m.group(1))) for m in flat]):
-            hits, problems = flat, []     # the paper divides it, not the booklet
+            # One run, so a number that does not carry it on is not a
+            # heading: 2014年07月's 34番 has a line 「1、2回ぐらいのものが
+            # いいですね」, and taken as a heading it cut 34番 short and
+            # began a thirty-eighth question.
+            rising = []
+            for m in flat:
+                if not rising or int(_digits(m.group(1))) > int(_digits(rising[-1].group(1))):
+                    rising.append(m)
+            hits, problems = rising, []     # the paper divides it, not the booklet
     items: list[ListeningItem] = []
     for index, match in enumerate(hits):
         end = hits[index + 1].start() if index + 1 < len(hits) else len(section)

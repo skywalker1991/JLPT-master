@@ -103,3 +103,28 @@ def test_a_ban_run_on_from_the_last_sentence_is_still_a_ban():
     )
     bans = [item.ban for item in parse_listening(text)]
     assert bans == [3, 4]
+
+
+def test_a_control_character_between_the_number_and_ban_is_not_a_wall():
+    """2010年07月 writes 「1\\x01 番」 — its whole 問題1 went unseen."""
+    from app.services.exam_listening import parse_listening
+    text = (
+        "听力文本\n問題1\x01\n"
+        "1\x01 番\x01 女の人が電話で話しています。\n→F:もしもし。\n→M:はい。\n答え:2\n"
+        "2\x01 番\x01 会社で女の人と男の人が話しています。\n→F:田中さん。\n→M:はい。\n答え:1\n"
+    )
+    assert [item.ban for item in parse_listening(text)] == [1, 2]
+
+
+def test_a_bare_number_setting_a_scene_heads_a_question_but_an_option_does_not():
+    """2014年07月 numbers straight through and writes some headings as
+    「17 テレビの…話して」, which is also how its option lines look."""
+    from app.services.exam_listening import parse_listening
+    lines = ["听力文本"]
+    for n in range(1, 31):
+        lines += [f"{n}. 会社で男の人と女の人が話しています。", "→F:はい。", "→M:ええ。",
+                  "1  ペットが飼い主に似てくる", "2  飼い主がペットに似てくる"]
+    lines += ["31 テレビの旅行番組で観光コースを紹介しています。", "→F:ええ。",
+              "1、2回ぐらいのものがいいですね。", "32 市役所で男の人と係の人が話しています。", "→M:はい。"]
+    bans = [item.ban for item in parse_listening("\n".join(lines))]
+    assert bans == list(range(1, 33))
