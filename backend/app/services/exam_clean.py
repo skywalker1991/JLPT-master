@@ -129,25 +129,47 @@ def clean(text: str | None, *, japanese: bool = True) -> str | None:
     )
 
 
+#: Print furniture the reader sets inside the text: the margin tabs
+#: 「文字・語彙」「文法」「読解」 one character a line or at a line's end
+#: (2024年07月 「…考えていた。 読\n解\n」), and furigana lines of spaced
+#: kana groups (「いっし せんぱくあ」 over 一矢・浅薄). A line of one kana group
+#: is left alone — a wrapped sentence can end a line that way.
+_TAB_LINE = re.compile(r"(?m)^[^\S\n]*[⽂文字語彙法読解][^\S\n]*\n?")
+_TAB_AT_END = re.compile(r"(?m)(?<=\S)[^\S\n]+[⽂文字語彙法読解][^\S\n]*$")
+_RUBY_LINE = re.compile(r"(?m)^[^\S\n]*[ぁ-ゖ]+(?:[^\S\n]+[ぁ-ゖ]+)+[^\S\n]*\n?")
+
+
+def strip_furniture(text: str | None) -> str | None:
+    """The text without the margin tabs and furigana the page set into it."""
+    if not text:
+        return text
+    stripped = _RUBY_LINE.sub("", _TAB_AT_END.sub("", _TAB_LINE.sub("", text)))
+    return stripped if stripped != text else text
+
+
 def clean_paper(paper) -> int:
     """Clean every piece of text on a paper. Returns how much moved."""
     moved = 0
 
-    def fix(holder, field, japanese=True):
+    def fix(holder, field, japanese=True, furniture=False):
         nonlocal moved
         before = getattr(holder, field, None)
         after = clean(before, japanese=japanese)
+        if furniture:
+            after = strip_furniture(after)
         if after != before:
             setattr(holder, field, after)
             moved += 1
 
     for _section, problem in paper.problems():
-        for field in ("instruction", "passage", "transcript"):
-            fix(problem, field)
+        for field in ("instruction", "passage"):
+            fix(problem, field, furniture=True)
+        fix(problem, "transcript")
         fix(problem, "passage_translation", japanese=False)
         for item in problem.items:
-            for field in ("stem", "transcript", "passage"):
-                fix(item, field)
+            for field in ("stem", "passage"):
+                fix(item, field, furniture=True)
+            fix(item, "transcript")
             if item.options:
                 options = {k: clean(v) for k, v in item.options.items()}
                 if options != item.options:

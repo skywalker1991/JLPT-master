@@ -477,3 +477,9 @@ def test_a_page_number_or_margin_tab_inside_a_copied_phrase_is_not_an_invention(
     made_up = CanonicalProblem(name="問題11", type="reading_comp", seq=1, items=[
         CanonicalItem(num=60, seq=1, stem="比較してしまうので不安だと言っている")])
     assert check_verbatim(made_up, source)
+
+
+def test_margin_tabs_and_furigana_are_taken_out_of_stored_text():
+    from app.services.exam_clean import strip_furniture
+    text = "考えていた。 読\n解\n　古代から。\n高名な著者になんとかし\nいっし せんぱくあ\nて批判の一矢を\nわな\n"
+    assert strip_furniture(text) == "考えていた。\n　古代から。\n高名な著者になんとかし\nて批判の一矢を\nわな\n"
