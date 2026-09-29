@@ -340,42 +340,63 @@ async def _run_convert_exam(markdown: str, api_key: str) -> dict:
 async def edit_draft_item(
     draft_id: _uuid.UUID, body: dict, db: AsyncSession = Depends(get_db),
 ):
-    """Correct a question before the paper is imported.
+    """Correct a question before the paper is imported, and keep the ruling.
 
-    Cheaper than importing and fixing afterwards, and it keeps a known-wrong
-    answer from ever being attempted. Addressed by 問題 and item number rather
-    than by index, so it survives a re-extraction reordering things.
+    This is where judgement belongs: the findings are still on the table and
+    the page is one click away. So the edit is kept as a ruling as well as
+    written into the draft — a draft is thrown away and read again every time
+    the extractor improves, and an edit that lived only here went with it.
+
+    Addressed by section, 問題 and item number. 問題1 exists in both 言語知識
+    and 聴解, so a 問題 name alone addresses two questions at once and an
+    edit meant for one quietly changed the other as well.
     """
+    from app.services.exam_rulings import RULED_FIELDS, record, with_ruling
+
     draft = await db.get(ExamDraft, draft_id)
     if draft is None or not draft.canonical:
         raise HTTPException(status_code=404, detail="Draft not found or not read yet")
 
+    section_name = body.get("section")
     problem_name = body.get("problem")
     seq = body.get("seq")
-    changes = {
-        k: v for k, v in body.items()
-        if k in {"stem", "options", "correct_answer", "answer_order", "transcript"}
-    }
+    note = body.get("note")
+    changes = {k: v for k, v in body.items() if k in RULED_FIELDS}
     if not problem_name or seq is None or not changes:
         raise HTTPException(status_code=400, detail="Need problem, seq and at least one field")
 
     canonical = deepcopy(draft.canonical)
-    found = False
+    hits = []
     for section in canonical.get("sections", []):
+        if section_name and section.get("name") != section_name:
+            continue
         for problem in section.get("problems", []):
             if problem.get("name") != problem_name:
                 continue
             for item in problem.get("items", []):
                 if item.get("seq") == seq:
-                    item.update(changes)
-                    found = True
-    if not found:
+                    hits.append((section, problem, item))
+    if not hits:
         raise HTTPException(status_code=404, detail="Item not found in draft")
+    if len(hits) > 1:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{problem_name} 第{seq}题在多个部分里都有，请指明 section",
+        )
+
+    section, problem, item = hits[0]
+    item.update(changes)
+    for field, value in changes.items():
+        item["votes"] = with_ruling(item.get("votes"), field, value)
+        await record(db, level=canonical.get("level"), sitting=canonical.get("source"),
+                     section=section.get("name"), problem_name=problem_name,
+                     num=item.get("num"), field=field, value=value,
+                     reason=note or "入库前人工修改")
 
     # The report is about the paper as it was read; it no longer describes this.
     report = deepcopy(draft.report or {})
     report.setdefault("notes", []).append(
-        f"{problem_name} 第{seq}题已人工修改：{'、'.join(changes)}"
+        f"{problem_name} 第{seq}题已人工判定：{'、'.join(changes)}"
     )
 
     draft.canonical = canonical
@@ -598,6 +619,8 @@ async def import_answers(
 # ── Media Upload ──────────────────────────────────────────────────────────────
 
 async def _apply_adjudications(db: AsyncSession, paper) -> int:
+    from app.services.exam_rulings import RULED_FIELDS, decode, with_ruling
+
     """Lay what a person decided back over a freshly imported paper.
 
     Decisions are kept by sitting rather than by paper, so this runs on every
@@ -628,11 +651,12 @@ async def _apply_adjudications(db: AsyncSession, paper) -> int:
                 select(ExamItem).where(ExamItem.problem_id == problem.id)
             )).scalars().all()
             for item in items:
-                for field in ("correct_answer", "answer_order", "stem", "transcript"):
+                for field in RULED_FIELDS:
                     row = by_where.get((section.name, problem.name, item.num, field))
                     if row is None:
                         continue
-                    setattr(item, field, row.value)
+                    setattr(item, field, decode(field, row.value))
+                    item.answer_votes = with_ruling(item.answer_votes, field, decode(field, row.value))
                     db.add(ExamItemRevision(
                         item_id=item.id, field=field,
                         new_value=row.value, source="user",

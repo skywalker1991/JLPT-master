@@ -12,14 +12,24 @@ import { sourcePageUrl } from '../../services/api'
  * where the judgement had already been made.
  */
 
-/** How far to trust an answer, from the evidence rather than from a score. */
+/** The vote a person casts — spelled as the backend spells it. */
+export const RULED = '人工判定'
+
+/**
+ * How far to trust an answer, from the evidence rather than from a score.
+ *
+ * A ruling is one of the votes, not their absence: reading "no votes" as
+ * "checked" labelled sixty-eight answers nobody had looked at as 已核对.
+ */
 export function confidenceOf(
   answer: string | null | undefined,
   votes: Record<string, string> | null | undefined,
 ): string {
+  const said = votes ?? {}
+  if (RULED in said) return '已核对'
   if (!answer) return '无答案'
-  const files = new Set(Object.keys(votes ?? {}).map(k => k.split('·')[0]))
-  if (files.size === 0) return '已核对'
+  const files = new Set(Object.keys(said).map(k => k.split('·')[0]))
+  if (files.size === 0) return '来源未记录'
   return files.size > 1 ? '多源一致' : '单源'
 }
 
@@ -28,6 +38,7 @@ const TONE: Record<string, string> = {
   多源一致: 'bg-accent-light text-accent-fg',
   单源: 'bg-orange-100 text-orange-700',
   无答案: 'bg-danger-light text-danger-fg',
+  来源未记录: 'bg-border/50 text-fg-muted',
 }
 
 export function Confidence({

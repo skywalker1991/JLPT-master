@@ -453,7 +453,7 @@ export async function deleteDraft(draftId: string): Promise<void> {
 
 export async function editDraftItem(
   draftId: string,
-  body: { problem: string; seq: number } & Record<string, unknown>,
+  body: { section?: string; problem: string; seq: number; note?: string } & Record<string, unknown>,
 ): Promise<DraftDetail> {
   return request(`/api/admin/drafts/${draftId}/items`, {
     method: 'PATCH', body: JSON.stringify(body),

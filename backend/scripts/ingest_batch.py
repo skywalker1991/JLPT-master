@@ -93,22 +93,12 @@ async def rulings(level: str | None, sitting: str | None) -> dict:
     its files; the decisions are the one thing about a sitting that does not
     come out of them.
     """
-    from app.models.db import ExamAdjudication
-    from sqlalchemy import select
+    from app.services.exam_rulings import load
 
     if not (level and sitting):
         return {}
     async with async_session_factory() as db:
-        rows = (await db.execute(
-            select(ExamAdjudication).where(
-                ExamAdjudication.level == level,
-                ExamAdjudication.sitting == sitting,
-            )
-        )).scalars().all()
-    return {
-        (r.section, r.problem_name, r.num, r.field): (r.value, r.reason)
-        for r in rows
-    }
+        return await load(db, level, sitting)
 
 
 async def confirm(draft_id: str) -> None:

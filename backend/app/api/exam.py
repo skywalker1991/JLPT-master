@@ -24,6 +24,7 @@ from app.schemas.exam import (
 from app.services.llm.factory import get_llm_client
 from app.services import exam_edit
 from app.services.exam_listening import dialogue_for
+from app.services.exam_rulings import RULED, RULED_FIELDS, record, with_ruling
 from app.services.tts import TTSUnavailable, speak
 
 logger = logging.getLogger(__name__)
@@ -829,23 +830,28 @@ def confidence_of(item) -> str:
     """How far the answer is to be trusted, read off the evidence.
 
     Not a score. A score would invent precision the evidence does not have;
-    what there is to say is how many separate files said it and whether a
-    person has ruled on it, and that is four cases.
+    what there is to say is whether a person has ruled on it, and otherwise
+    how many separate files said it.
 
-    Counted by file, because that is what independence means here. The front
+    A ruling is one of the votes, not the absence of them. Reading "no votes
+    recorded" as "checked by a person" is how sixty-eight 並べ替え answers
+    worked out from the ordering and the ★ came to be labelled 已核対 when
+    nobody had looked at them, while the three questions a person had
+    settled showed as single-source because they had votes too.
+
+    Counted by file, because that is what independence means here: the front
     answer table and the per-item 正解 lines are usually printed in the same
     booklet, and a booklet agreeing with itself says only that it is
-    consistent — which is how one paper came to be reported as having three
-    sources when it had one.
+    consistent.
     """
+    votes = item.answer_votes or {}
+    if RULED in votes:
+        return "已核对"
     if item.correct_answer is None:
         return "无答案"
-    votes = item.answer_votes or {}
-    if not votes:
-        # Filled from somewhere that keeps no vote: a person, or a 並べ替え
-        # answer worked out from the ordering and the ★.
-        return "已核对"
     files = {str(k).split("·")[0] for k in votes}
+    if not files:
+        return "来源未记录"
     return "多源一致" if len(files) > 1 else "单源"
 
 
@@ -1687,11 +1693,6 @@ async def get_attempt_review(attempt_id: UUID, db: AsyncSession = Depends(get_db
 # fixed by deleting its paper and losing the attempts recorded against it.
 # ---------------------------------------------------------------------------
 
-#: Fields where an edit is a judgement about the paper rather than a tidy-up,
-#: and so has to outlive the import it was made on.
-DECIDED_FIELDS = {"correct_answer", "answer_order", "stem", "transcript"}
-
-
 async def _record_decision(db, item, revisions, note) -> None:
     """Keep an edit as a ruling, not only as a change to this paper.
 
@@ -1700,7 +1701,7 @@ async def _record_decision(db, item, revisions, note) -> None:
     person typed looks exactly like what the machine read. It happened twice
     in one afternoon before this existed.
     """
-    fields = [r.field for r in revisions if r.field in DECIDED_FIELDS]
+    fields = [r.field for r in revisions if r.field in RULED_FIELDS]
     if not fields:
         return
 
@@ -1711,17 +1712,12 @@ async def _record_decision(db, item, revisions, note) -> None:
         return
 
     for field in fields:
-        where = dict(level=paper.level, sitting=paper.source, section=section.name,
-                     problem_name=problem.name, num=item.num, field=field)
-        existing = (await db.execute(
-            select(ExamAdjudication).filter_by(**where)
-        )).scalars().first()
-        if existing is None:
-            existing = ExamAdjudication(**where)
-            db.add(existing)
-        existing.value = getattr(item, field)
-        existing.reason = note or "在题库界面上修改"
-        existing.decided_by = "user"
+        value = getattr(item, field)
+        # The badge changes when the edit is made, not at the next import.
+        item.answer_votes = with_ruling(item.answer_votes, field, value)
+        await record(db, level=paper.level, sitting=paper.source,
+                     section=section.name, problem_name=problem.name, num=item.num,
+                     field=field, value=value, reason=note or "在题库界面上修改")
     await db.flush()
 
 

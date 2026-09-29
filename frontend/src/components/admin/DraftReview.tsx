@@ -176,6 +176,7 @@ export default function DraftReview({
                     )}
                     <ItemRow
                       draftId={draft.id}
+                      section={section.name}
                       problem={problem.name}
                       type={problem.type}
                       item={item}
@@ -213,9 +214,12 @@ export default function DraftReview({
 
 
 function ItemRow({
-  draftId, problem, type, item, findings, onUpdated,
+  draftId, section, problem, type, item, findings, onUpdated,
 }: {
   draftId: string
+  /** 問題1 exists in both 言語知識 and 聴解; the 問題 name alone is two
+   *  questions, and an edit meant for one changed the other. */
+  section: string
   problem: string
   type: string
   item: CanonicalItem
@@ -224,19 +228,34 @@ function ItemRow({
 }) {
   const [answer, setAnswer] = useState(item.correct_answer ?? '')
   const [order, setOrder] = useState(item.answer_order ?? '')
+  const [stem, setStem] = useState(item.stem ?? '')
+  const [opts, setOpts] = useState<Record<string, string>>(item.options ?? {})
+  const [editing, setEditing] = useState(false)
+  // Why. A ruling kept without its reason is a ruling nobody can check when
+  // it is looked at again — and it will be, on every re-import.
+  const [reason, setReason] = useState('')
   const [saving, setSaving] = useState(false)
 
   const flagged = findings.length > 0 || !item.correct_answer
-  const dirty = answer !== (item.correct_answer ?? '') || order !== (item.answer_order ?? '')
+  const textChanged = stem !== (item.stem ?? '')
+    || JSON.stringify(opts) !== JSON.stringify(item.options ?? {})
+  const dirty = answer !== (item.correct_answer ?? '')
+    || order !== (item.answer_order ?? '')
+    || textChanged
 
   const save = async () => {
     setSaving(true)
     try {
       onUpdated(await editDraftItem(draftId, {
-        problem, seq: item.seq,
+        section, problem, seq: item.seq,
         ...(answer !== (item.correct_answer ?? '') ? { correct_answer: answer || null } : {}),
         ...(order !== (item.answer_order ?? '') ? { answer_order: order || null } : {}),
+        ...(stem !== (item.stem ?? '') ? { stem } : {}),
+        ...(JSON.stringify(opts) !== JSON.stringify(item.options ?? {}) ? { options: opts } : {}),
+        ...(reason.trim() ? { note: reason.trim() } : {}),
       }))
+      setEditing(false)
+      setReason('')
     } catch (e) {
       alert(`保存失败：${(e as Error).message}`)
     } finally {
@@ -297,10 +316,38 @@ function ItemRow({
         {Object.keys(item.options).length === 0 && (
           <span className="text-xs text-fg-subtle italic">（音声のみ）</span>
         )}
-        <span className="ml-auto">
+        <span className="ml-auto flex items-center gap-3">
+          <button onClick={() => setEditing(!editing)}
+                  className="text-xs text-fg-subtle hover:text-accent transition-colors">
+            {editing ? '收起' : '改文字'}
+          </button>
           <SourcePage file={item.provenance?.source} page={item.provenance?.page} />
         </span>
       </div>
+
+      {/* The text as the paper prints it. The page is one click away to
+          check against; the verbatim check is what flagged it in the first
+          place, so this is where a misread character gets put right. */}
+      {editing && (
+        <div className="pl-5 space-y-1.5">
+          <textarea
+            value={stem}
+            onChange={e => setStem(e.target.value)}
+            rows={Math.max(1, Math.ceil(stem.length / 40))}
+            className="w-full bg-bg border border-border rounded px-2 py-1 text-sm font-jp text-fg"
+          />
+          {OPTS.filter(k => k in opts).map(k => (
+            <label key={k} className="flex items-center gap-2 text-xs text-fg-muted">
+              <span className="font-bold w-3">{k}</span>
+              <input
+                value={opts[k]}
+                onChange={e => setOpts({ ...opts, [k]: e.target.value })}
+                className="flex-1 bg-bg border border-border rounded px-2 py-0.5 text-xs font-jp text-fg"
+              />
+            </label>
+          ))}
+        </div>
+      )}
 
       {(flagged || dirty || type === 'sentence_order') && (
         <div className="flex items-center gap-3 pl-5 pt-0.5">
@@ -327,11 +374,19 @@ function ItemRow({
             </label>
           )}
           {dirty && (
-            <button onClick={save} disabled={saving}
-                    className="text-xs text-accent hover:underline flex items-center gap-1">
-              {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
-              保存
-            </button>
+            <>
+              <input
+                value={reason}
+                onChange={e => setReason(e.target.value)}
+                placeholder={answer ? '依据（例：答案页 20-25=432131）' : '依据（例：材料本身没印这一题的答案）'}
+                className="flex-1 min-w-40 bg-bg border border-border rounded px-2 py-0.5 text-xs text-fg"
+              />
+              <button onClick={save} disabled={saving}
+                      className="text-xs text-accent hover:underline flex items-center gap-1">
+                {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                判定
+              </button>
+            </>
           )}
         </div>
       )}

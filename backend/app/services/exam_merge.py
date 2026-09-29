@@ -13,6 +13,7 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass
 
+from app.services.exam_rulings import RULED  # noqa: F401  (re-exported)
 from app.services.exam_answers import AnswerKey, resolve_order_answer
 from app.services.exam_canonical import CanonicalPaper
 
@@ -59,11 +60,14 @@ def merge_answers(
     ]
 
     orders: dict[int, str] = {}
+    #: What each file said the ordering was. A 並べ替え answer is read off the
+    #: ordering and the ★, and the ★ is geometry — so the evidence behind the
+    #: answer is exactly the evidence behind the ordering.
+    order_votes: dict[int, dict[str, str]] = {}
     for num in {n for _, key in sources for n in key.orders}:
-        chosen = _settle(
-            {name: key.orders[num] for name, key in sources if num in key.orders},
-            f"第{num}题语序", report,
-        )
+        said = {_who(name, key): key.orders[num] for name, key in sources if num in key.orders}
+        order_votes[num] = said
+        chosen = _settle(said, f"第{num}题语序", report)
         if chosen:
             orders[num] = chosen
 
@@ -73,9 +77,12 @@ def merge_answers(
             slot = (group, item.seq)
             votes = ({_who(name, key): key.listening[slot]
                       for name, key in sources if slot in key.listening} if group else {})
-            item.votes = votes
+            # Added to rather than replaced: the transcript may already have
+            # stated this answer under its 番, and that is evidence too.
+            item.votes = {**item.votes, **votes}
             answer = _settle(votes, f"{problem.name} 第{item.seq}题", report) if group else None
         elif problem.type == "sentence_order":
+            item.votes = order_votes.get(item.num, {}) if item.num is not None else {}
             answer = _apply_order(item, orders, report)
         elif item.num is None:
             answer = None

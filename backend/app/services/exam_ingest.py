@@ -21,7 +21,8 @@ from app.services.exam_canonical import (
     CanonicalItem, CanonicalPaper, CanonicalSection,
 )
 from app.services.exam_categories import part_of_type, type_by_number
-from app.services.exam_clean import clean_paper
+from app.services.exam_clean import clean, clean_paper
+from app.services.exam_rulings import RULED_FIELDS, with_ruling
 from app.services.exam_extract import (
     extract_block_with_retry, mark_blanks, split_passages,
 )
@@ -249,7 +250,7 @@ def _apply_decided(paper: CanonicalPaper, decided: dict | None, merge) -> list[s
     said: list[str] = []
     settled: set[int | None] = set()
     for section, problem, item in paper.items():
-        for field in ("correct_answer", "answer_order", "stem", "transcript"):
+        for field in RULED_FIELDS:
             key = (section.name, problem.name, item.num, field)
             if key not in decided:
                 continue
@@ -261,6 +262,9 @@ def _apply_decided(paper: CanonicalPaper, decided: dict | None, merge) -> list[s
                 )
             setattr(item, field, value)
             settled.add(item.num)
+            # A ruling is evidence like any other, and the weightiest there
+            # is — including a ruling that there is no answer to be had.
+            item.votes = with_ruling(item.votes, field, value)
     # A dispute somebody has ruled on is no longer a dispute. Left in the
     # findings it asks the same question on every re-import, and the answer
     # has to be given again.
@@ -270,6 +274,42 @@ def _apply_decided(paper: CanonicalPaper, decided: dict | None, merge) -> list[s
             if not any(f"第{num}题" in c for num in settled)
         ]
     return said
+
+
+def _still_invented(paper: CanonicalPaper, flags: list[str]) -> list[str]:
+    """The text-not-in-the-source flags that still describe the paper.
+
+    They are raised the moment the model's answer is read, and a person's
+    ruling is laid over the paper afterwards — so a misread a person has put
+    right stayed reported as a misread, and the paper was held back for the
+    very thing that had been fixed.
+
+    Stale is decided by the flagged text itself: text the model made up is
+    on the question by definition, since the model wrote it there. Once it
+    is nowhere on the paper, someone replaced it. Compared after cleaning,
+    because the flag quotes the text as it was read and the paper holds it
+    as it is kept.
+    """
+    import re
+
+    held = []
+    for _s, _p, item in paper.items():
+        held.append(item.stem or "")
+        held.extend((item.options or {}).values())
+        held.append(item.passage or "")
+    for _s, problem in paper.problems():
+        held.append(problem.passage or "")
+
+    kept = []
+    for flag in flags:
+        quoted = re.search(r"「(.+?)」", flag)
+        if quoted is None:
+            kept.append(flag)                  # not about a piece of text
+            continue
+        text = clean(quoted.group(1))
+        if any(text in h for h in held):
+            kept.append(flag)
+    return kept
 
 
 def _record_page(problem, block, source) -> None:
@@ -426,6 +466,7 @@ def _fill_listening(paper: CanonicalPaper, sources: list[Source], report: Ingest
                 problem.items.append(CanonicalItem(
                     num=seq, seq=seq, stem="", options=dict(slot.options),
                     correct_answer=slot.answer, transcript=slot.transcript,
+                    votes={f"{source.filename}·听力原文": slot.answer} if slot.answer else {},
                 ))
                 added += 1
             continue
@@ -436,6 +477,9 @@ def _fill_listening(paper: CanonicalPaper, sources: list[Source], report: Ingest
                 item.options = dict(slot.options)
             if not item.correct_answer and slot.answer:
                 item.correct_answer = slot.answer
+            if slot.answer:
+                # The 正解 printed under this 番 in the transcript.
+                item.votes = {**item.votes, f"{source.filename}·听力原文": slot.answer}
             filled += 1
 
         # The booklet can simply be missing one: 2018年07月 prints 問題4 as
@@ -583,6 +627,8 @@ async def ingest(
     # same question again and the answer has to be given again.
     for said in _apply_decided(paper, decided, merge):
         report.notes.append(said)
+    if decided:
+        report.invented = _still_invented(paper, report.invented)
     report.answers.update({
         "answered": merge.answered, "unanswered": merge.unanswered,
         "orders": merge.orders_applied,

@@ -71,3 +71,31 @@ def test_the_bank_is_shown_the_answer_because_nobody_can_check_a_blank():
     item = _only_item(paper)
     assert item.correct_answer == "2"
     assert item.answer_order == "4321"
+
+
+# --- how far an answer is to be trusted ----------------------------------------
+
+class _Answered:
+    def __init__(self, answer, votes):
+        self.correct_answer, self.answer_votes = answer, votes
+
+
+def test_a_ruling_is_what_makes_an_answer_checked():
+    """Not the absence of votes. Reading "none recorded" as "checked by a
+    person" labelled sixty-eight 並べ替え answers 已核对 that nobody had looked
+    at, while the three questions a person had settled showed as single-source
+    because they carried votes as well."""
+    from app.api.exam import confidence_of
+    from app.services.exam_merge import RULED
+    ruled = _Answered("2", {"a.pdf·解析": "4", RULED: "2"})
+    assert confidence_of(ruled) == "已核对"
+    unexamined = _Answered("2", {})
+    assert confidence_of(unexamined) == "来源未记录"
+
+
+def test_one_booklet_quoted_twice_is_one_witness():
+    from app.api.exam import confidence_of
+    same = _Answered("4", {"b.pdf·解析": "4", "b.pdf·解析册答案页": "4"})
+    assert confidence_of(same) == "单源"
+    two = _Answered("4", {"b.pdf·解析": "4", "sheet.pdf·答案表": "4"})
+    assert confidence_of(two) == "多源一致"

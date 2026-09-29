@@ -21,6 +21,8 @@ from __future__ import annotations
 
 from collections import Counter
 
+from app.services.exam_rulings import ruled_blank
+
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -149,8 +151,12 @@ def check_hard(paper: dict) -> Report:
                     )
 
                 answer = str(item.get("correct_answer") or "")
+                # Unless a person has looked and ruled there is none to be
+                # had — the material simply does not say. Reported again on
+                # every import otherwise, and answered again every time.
                 if not answer:
-                    report.add("hard", where, "缺正确答案", pname)
+                    if not ruled_blank(item.get("votes")):
+                        report.add("hard", where, "缺正确答案", pname)
                 elif answer not in {"1", "2", "3", "4"}:
                     report.add("hard", where, f"正确答案「{answer}」不在 1-4 内", pname)
 

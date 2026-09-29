@@ -251,3 +251,20 @@ def test_ordinary_prose_is_not_mistaken_for_it():
         "例外的に全人格と全人格とのぶつかりあいである。"
     )
     assert validate(fine).clean
+
+
+# --- a person ruled there is no answer -----------------------------------------
+
+def test_a_question_ruled_to_have_no_answer_is_not_asked_about_again():
+    """2012年12月's 聴解問題3 第6題 is on the paper and in no answer source —
+    the printed answer page gives five digits for six questions. Somebody
+    looked and ruled it blank; asked again on every import, it has to be
+    answered again every time."""
+    from app.services.exam_rulings import RULED
+    blank = item(1)
+    blank["correct_answer"] = None
+    blank["votes"] = {RULED: ""}
+    assert validate(written(blank)).clean
+    unruled = item(1)
+    unruled["correct_answer"] = None
+    assert not validate(written(unruled)).clean
