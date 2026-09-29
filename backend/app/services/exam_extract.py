@@ -199,6 +199,7 @@ def check_missing_items(problem: CanonicalProblem, source: str) -> list[str]:
     ]
 
 
+_RUBY_LINE = re.compile(r"(?m)^[^\S\n]*[ぁ-ゖ]+(?:[^\S\n]+[ぁ-ゖ]+)+[^\S\n]*$")
 _MARGIN_TAB = re.compile(r"(?m)^[^\S\n]*[⽂文字語彙・法読解][^\S\n]*$")
 
 
@@ -238,7 +239,9 @@ def check_verbatim(problem: CanonicalProblem, source: str) -> list[str]:
     # 「文」「法」「読」「解」 — and the reader sets each inside whatever line
     # it sits beside: 「誰に何と ＿＿ ＿＿\n法\n ★」. The model rightly leaves
     # them out, and the copy then reads as invented.
-    haystack = normalise(_MARGIN_TAB.sub("", source))
+    # And a furigana line — 2011年07月 prints 「やま なか き むら」 over 山中・木村
+    # on a line of its own, eleven characters the copy rightly leaves out.
+    haystack = normalise(_RUBY_LINE.sub("", _MARGIN_TAB.sub("", source)))
     missing = []
     for item in problem.items:
         for label, value in [("题干", item.stem), *((f"选项{k}", v) for k, v in item.options.items())]:
@@ -496,7 +499,9 @@ def _where(num: int, stem: str, source: str) -> int | None:
     otherwise lose the question its position.
     """
     opening = re.compile(
-        rf"(?:^|\n)[^\S\n]*{_either(num)}(?![0-9０-９])[^\S\n]*[、.．]?[^\S\n]*(?=\S)"
+        # A margin tab can share the line: 2024年07月 「読 56 筆者の考えに…」.
+        rf"(?:^|\n)[^\S\n]*(?:[⽂文字語彙法読解][^\S\n]+)?{_either(num)}(?![0-9０-９])"
+        rf"[^\S\n]*[、.．]?[^\S\n]*(?=\S)"
     )
     hits = [m.start() for m in opening.finditer(source)]
     if not hits:
