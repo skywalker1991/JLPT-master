@@ -94,6 +94,70 @@ def _split_columns(words) -> list[list]:
     return [left, right]
 
 
+#: A font whose map to Unicode is off by a constant. 2022年12月, 2024年07月
+#: and 2024年12月 set kana in YuKyo_Yoko, and its ToUnicode sends every one
+#: into the 鱼 radical block — 「高校卒業後鱳進路鱰」 is 「高校卒業後の進路を」.
+#: The shift is exact and one run: ー, then ぁ–ん, then ァ–ヶ, and a vertical
+#: small っ. Aligned character for character against 2024年07月's other
+#: version, which has a sound text layer.
+_YUKYO = "YuKyo"
+
+
+def _yukyo_char(ch: str) -> str:
+    point = ord(ch)
+    if point == 0x9C45:
+        return "ー"
+    if 0x9C46 <= point <= 0x9C98:
+        return chr(point - 0x6C05)
+    if 0x9C99 <= point <= 0x9CEE:
+        return chr(point - 0x6BF8)
+    if point == 0x9CF5:
+        return "っ"
+    return ch
+
+
+def _is_katakana(ch: str) -> bool:
+    return "\u30a1" <= ch <= "\u30fc"
+
+
+def decode_yukyo(text: str) -> str:
+    """Text from a YuKyo span, back in the kana it was set in.
+
+    鳥 is the one real kanji inside the shifted run (it lands on ロ), so it is
+    decoded only where the characters beside it are katakana.
+    """
+    out = [_yukyo_char(c) if c != "\u9ce5" else c for c in text]
+    for i, c in enumerate(out):
+        if c == "\u9ce5":
+            before = out[i - 1] if i else ""
+            after = out[i + 1] if i + 1 < len(out) else ""
+            if _is_katakana(before) or _is_katakana(after):
+                out[i] = "ロ"
+    return "".join(out)
+
+
+def _decode_yukyo(page, words):
+    """The page's words, with those set in YuKyo decoded."""
+    try:
+        spans = [
+            span["bbox"]
+            for block in page.get_text("dict")["blocks"]
+            for line in block.get("lines", [])
+            for span in line["spans"]
+            if _YUKYO in span.get("font", "")
+        ]
+    except Exception:
+        return words
+    if not spans:
+        return words
+
+    def inside(word) -> bool:
+        cx, cy = (word[0] + word[2]) / 2, (word[1] + word[3]) / 2
+        return any(x0 - 1 <= cx <= x1 + 1 and y0 - 1 <= cy <= y1 + 1 for x0, y0, x1, y1 in spans)
+
+    return [(*w[:4], decode_yukyo(w[4]), *w[5:]) if inside(w) else w for w in words]
+
+
 def page_text(page, *, mark_underlines: bool = True) -> str:
     """One page, read the way it is printed.
 
@@ -105,6 +169,7 @@ def page_text(page, *, mark_underlines: bool = True) -> str:
     words = page.get_text("words")
     if not words:
         return ""
+    words = _decode_yukyo(page, words)
     text = "\n".join(
         "\n".join(_lines(column)) for column in _split_columns(words)
     )

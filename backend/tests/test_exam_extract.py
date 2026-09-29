@@ -452,3 +452,16 @@ def test_look_alike_punctuation_is_spelled_one_way():
     assert clean("\u2329私\u232a") == "〈私〉"
     assert clean("TEL 03\u22121234、４\u2212７歳") == "TEL 03-1234、４－７歳"
     assert clean("马克\u00b7吐温", japanese=False) == "马克\u00b7吐温"
+
+
+def test_kana_set_in_yukyo_is_read_back_as_kana():
+    """YuKyo_Yoko's ToUnicode shifts every kana into the 鱼 block."""
+    from app.services.exam_text import decode_yukyo
+    hira = lambda c: chr(ord(c) + 0x6C05)
+    kata = lambda c: chr(ord(c) + 0x6BF8)
+    assert decode_yukyo("高校卒業後" + hira("の") + "進路" + hira("を")) == "高校卒業後の進路を"
+    assert decode_yukyo(kata("パ") + kata("ソ") + kata("コ") + kata("ン")) == "パソコン"
+    assert decode_yukyo("\u9cf5") == "っ"
+    # 鳥 is where ロ lands; it is decoded only among katakana.
+    assert decode_yukyo(kata("カ") + "\u9ce5" + kata("リ")) == "カロリ"
+    assert decode_yukyo("小\u9ce5") == "小\u9ce5"
