@@ -246,7 +246,7 @@ def check_verbatim(problem: CanonicalProblem, source: str) -> list[str]:
     for item in problem.items:
         for label, value in [("题干", item.stem), *((f"选项{k}", v) for k, v in item.options.items())]:
             # The model sometimes copies a margin tab too (2022年12月 第65题).
-            needle = normalise(_MARGIN_TAB.sub("", value or ""))
+            needle = normalise(_RUBY_LINE.sub("", _MARGIN_TAB.sub("", value or "")))
             if len(needle) < 2:
                 continue
             if needle not in haystack and not _found_with_insertions(needle, haystack):
