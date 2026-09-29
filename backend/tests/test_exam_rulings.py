@@ -66,3 +66,16 @@ def test_a_ruled_answer_is_a_vote():
     _apply_decided(p, {("読解", "問題10", 59, "correct_answer"): ("3", "答案页")},
                    MergeReport())
     assert p.sections[0].problems[0].items[0].votes[RULED] == "3"
+
+
+def test_a_question_ruled_out_is_not_in_the_paper():
+    """2010年12月's reprint prints 聴解問題3 as six; every key has five."""
+    from app.services.exam_canonical import CanonicalItem, CanonicalPaper, CanonicalProblem, CanonicalSection
+    from app.services.exam_ingest import _drop_ruled_out
+    problem = CanonicalProblem(name="問題3", type="listening", seq=1,
+                               items=[CanonicalItem(num=n, seq=n) for n in range(1, 7)])
+    paper = CanonicalPaper(level="N1", title="t", source="2010年12月",
+                           sections=[CanonicalSection(name="聴解", seq=1, problems=[problem])])
+    said = _drop_ruled_out(paper, {("聴解", "問題3", 6, "removed"): ("1", "答案只有5题")})
+    assert [i.num for i in problem.items] == [1, 2, 3, 4, 5]
+    assert said == ["問題3 第6题：按人工判定删除（答案只有5题）"]

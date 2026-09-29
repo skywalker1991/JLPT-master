@@ -34,6 +34,12 @@ RULED_FIELDS = ("correct_answer", "answer_order", "stem", "transcript", "options
 #: none of them in particular.
 PROBLEM_FIELDS = ("passage", "instruction", "transcript")
 
+#: A ruling that a question is not there at all. 2010年12月's reprinted paper
+#: lists 聴解問題3 as 1番 to 6番 「(2*6)」, while its answer table, its 解析
+#: and a separate scanned key all have five: the sixth is the reprint's,
+#: not the test's, and kept it is a question with no dialogue and no answer.
+REMOVED = "removed"
+
 #: Fields whose ruling is also a statement about the answer, and so goes
 #: among the votes.
 ANSWER_FIELDS = ("correct_answer", "answer_order")

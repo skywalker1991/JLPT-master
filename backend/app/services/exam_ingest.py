@@ -22,7 +22,7 @@ from app.services.exam_canonical import (
 )
 from app.services.exam_categories import part_of_type, type_by_number
 from app.services.exam_clean import clean, clean_paper
-from app.services.exam_rulings import PROBLEM_FIELDS, RULED_FIELDS, with_ruling
+from app.services.exam_rulings import PROBLEM_FIELDS, REMOVED, RULED_FIELDS, with_ruling
 from app.services.exam_extract import (
     extract_block_with_retry, mark_blanks, split_passages,
 )
@@ -236,6 +236,25 @@ def _expand(slots: list) -> list:
                 slot, answer=answer, transcript=slot.transcript if index == 0 else "",
             ))
     return expanded
+
+
+def _drop_ruled_out(paper: CanonicalPaper, decided: dict | None) -> list[str]:
+    """Take out the questions a person has ruled are not on the test."""
+    if not decided:
+        return []
+    said = []
+    for section, problem in paper.problems():
+        kept = []
+        for item in problem.items:
+            ruling = decided.get((section.name, problem.name, item.num, REMOVED))
+            if ruling is None:
+                kept.append(item)
+                continue
+            _value, reason = ruling
+            said.append(f"{problem.name} 第{item.num}题：按人工判定删除"
+                        + (f"（{reason}）" if reason else ""))
+        problem.items = kept
+    return said
 
 
 def _apply_decided(paper: CanonicalPaper, decided: dict | None, merge) -> list[str]:
@@ -587,6 +606,8 @@ async def ingest(
     # off a paper still missing those nineteen send every later answer to the
     # wrong question.
     _fill_listening(paper, sources, report)
+    # Before the counts, which divide the answer sheet between the 問題.
+    report.notes.extend(_drop_ruled_out(paper, decided))
 
     if questions is not None:
         data = files_by_name.get(questions.filename) or b""
