@@ -109,7 +109,9 @@ def normalise(text: str) -> str:
     full/half-width difference the same character is printed in from one
     sitting to the next.
     """
-    text = unicodedata.normalize("NFKC", text or "")
+    # clean() first: NFKC folds the Kangxi radicals but not the supplement
+    # — 2022年12月's page has ⻄田, the copy 西田.
+    text = unicodedata.normalize("NFKC", clean(text or "") or "")
     text = re.sub(r"\[_\d+★?_\]", "", text)
     text = text.replace("__", "")      # the underline marker, added on both sides
     text = re.sub(r"[\s　]+", "", text)
@@ -240,7 +242,8 @@ def check_verbatim(problem: CanonicalProblem, source: str) -> list[str]:
     missing = []
     for item in problem.items:
         for label, value in [("题干", item.stem), *((f"选项{k}", v) for k, v in item.options.items())]:
-            needle = normalise(value)
+            # The model sometimes copies a margin tab too (2022年12月 第65题).
+            needle = normalise(_MARGIN_TAB.sub("", value or ""))
             if len(needle) < 2:
                 continue
             if needle not in haystack and not _found_with_insertions(needle, haystack):
