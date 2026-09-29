@@ -425,3 +425,30 @@ def test_a_dash_the_text_layer_struck_through_is_a_dash_again():
     from app.services.exam_clean import clean
     assert clean("「奇なり」\u0336\u0336\u0336\u0336と言われる") == "「奇なり」――と言われる"
     assert clean("０２４\u0336８８１\u0336６４５６") == "０２４－８８１－６４５６"
+
+
+def test_a_character_the_model_made_up_is_put_back_from_the_page():
+    """The page sets 風 as the radical ⾵; the model copied one of five as
+    U+2D75, which is no character at all."""
+    from app.services.exam_canonical import CanonicalItem, CanonicalProblem
+    from app.services.exam_extract import restore_unreadable
+    from app.services.exam_validation import unreadable_chars
+    page = "でやめたよ。荷\u2fb5があれだけの\nことをやっている。私は荷\n\u2fb5の文章"
+    problem = CanonicalProblem(
+        name="問題7", type="passage_fill", seq=1,
+        passage="でやめたよ。荷\u2d75があれだけのことをやっている。",
+        items=[CanonicalItem(num=42, seq=1, options={"1": "荷\u2d75の文章"})],
+    )
+    restore_unreadable(problem, page)
+    assert problem.passage == "でやめたよ。荷風があれだけのことをやっている。"
+    assert problem.items[0].options["1"] == "荷風の文章"
+    assert not unreadable_chars(problem.passage)
+
+
+def test_look_alike_punctuation_is_spelled_one_way():
+    from app.services.exam_clean import clean
+    assert clean("交易\ufe13ここでは なぜ\ufe16") == "交易：ここでは なぜ？"
+    assert clean("ひこ\u2022田中、マイ\u00b7ディクショナリ") == "ひこ・田中、マイ・ディクショナリ"
+    assert clean("\u2329私\u232a") == "〈私〉"
+    assert clean("TEL 03\u22121234、４\u2212７歳") == "TEL 03-1234、４－７歳"
+    assert clean("马克\u00b7吐温", japanese=False) == "马克\u00b7吐温"

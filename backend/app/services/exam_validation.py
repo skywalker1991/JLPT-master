@@ -229,8 +229,9 @@ def unreadable_chars(text: str) -> list[str]:
     """Characters that cannot be what the page printed.
 
     A code point Unicode has not assigned, or one from a private-use area,
-    is the text layer mapping a glyph to nothing real: 2020年12月's 問題7
-    has 「荷\u2d75があれだけ」 where the page prints 荷風. One character in
+    cannot be a printed glyph: 2020年12月's 問題7 came out of the model as
+    「荷\u2d75があれだけ」 where the page prints 荷風 (the radical ⾵, which
+    restore_unreadable now puts back). What that cannot place ends here. One character in
     the whole bank, and invisible to every other check — it is a character,
     of the right length, in the right place.
     """

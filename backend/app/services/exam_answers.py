@@ -96,6 +96,15 @@ def parse_answer_sheet(text: str, listening_counts: dict[int, int] | None = None
     return key
 
 
+#: A line of answers. A lone digit counts when it continues a run on the same
+#: line: 2020年12月 prints 1-6 as 「21341 4」 and 聴解問題1 as 「32124 2」, and
+#: reading only runs of two or more dropped the last answer of every row and
+#: moved each later one a question up. Standing alone it is not an answer —
+#: 「1-6・1 分/题」 has one. A slash parts the two answers of 問題5's
+#: two-question 番: 2012年12月 ends its sheet 「33 2/1」.
+_ANSWER_RUN = r"[1-4]{2,}(?:(?:[^\S\n]+|[^\S\n]*/[^\S\n]*)[1-4]+)*(?![0-9])"
+
+
 def _allocate_ranges(text: str, key: AnswerKey) -> None:
     """Pair "1-6 7-13 …" with the digits printed under them.
 
@@ -106,11 +115,11 @@ def _allocate_ranges(text: str, key: AnswerKey) -> None:
     concatenated, and the range widths say where to cut.
     """
     tokens: list[tuple[str, object]] = []
-    for match in re.finditer(r"(\d{1,3})\s*[-–—]\s*(\d{1,3})|([1-4]{2,})", text):
+    for match in re.finditer(r"(\d{1,3})\s*[-–—]\s*(\d{1,3})|(" + _ANSWER_RUN + ")", text):
         if match.group(1):
             tokens.append(("range", (int(match.group(1)), int(match.group(2)))))
         else:
-            tokens.append(("digits", match.group(3)))
+            tokens.append(("digits", re.sub(r"[^1-4]", "", match.group(3))))
 
     pending: list[tuple[int, int]] = []
     buffer = ""
@@ -152,11 +161,11 @@ def _parse_listening_groups(text: str, key: AnswerKey, counts: dict[int, int] | 
     listening_at = _LISTENING_GROUP.search(text)
     region = text[listening_at.start():] if listening_at else text
     tokens: list[tuple[str, str]] = []
-    for match in re.finditer(r"[问問]题?\s*([1-5])|([1-4]{2,})", region):
+    for match in re.finditer(r"[问問]题?\s*([1-5])|(" + _ANSWER_RUN + ")", region):
         if match.group(1):
             tokens.append(("heading", match.group(1)))
         else:
-            tokens.append(("digits", match.group(2)))
+            tokens.append(("digits", re.sub(r"[^1-4]", "", match.group(2))))
 
     pending: list[int] = []
     buffer = ""

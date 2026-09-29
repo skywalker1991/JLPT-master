@@ -285,3 +285,26 @@ def test_the_explanations_after_the_table_are_not_read_as_a_grid():
 def test_a_booklet_with_no_table_contributes_nothing():
     """2018年07月's booklet opens straight into 文字解析."""
     assert parse_booklet_table("2018 年7 月日语能力考试N1 文字解析\n1、正解：3\n") is None
+
+
+def test_a_lone_digit_that_ends_a_run_is_still_an_answer():
+    """2020年12月 prints 1-6 as 「21341 4」. Reading only runs of two dropped
+    the 4, and every later answer moved one question up."""
+    from app.services.exam_answers import parse_answer_sheet
+    key = parse_answer_sheet(
+        "1-6・1 分/题 \n7-13・1 分/题 \n21341 4 \n42214 23  \n"
+    )
+    assert "".join(key.written[n] for n in range(1, 14)) == "2134144221423"
+
+
+def test_the_two_answers_of_a_two_question_ban_are_both_read():
+    """2012年12月 ends its sheet 「33 2/1」: 問題5 3番 asks two questions. Read
+    as runs of two it gave 「33」, and the 「12」 of the next page's
+    「2012 年12 月」 filled the last two answers in reverse."""
+    from app.services.exam_answers import parse_answer_sheet
+    key = parse_answer_sheet(
+        "问题4 \n问题5 \n12333 112311 232 \n33 2/1 \n\n30 \n2012 年12 月日语能力考试N1",
+        {4: 14, 5: 4},
+    )
+    assert [key.listening[(5, n)] for n in range(1, 5)] == ["3", "3", "2", "1"]
+    assert key.listening[(4, 14)] == "2"

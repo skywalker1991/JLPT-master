@@ -51,8 +51,14 @@ _PROBLEM = re.compile(
 #: 「1 番」, 「1番：」 — 2020年12月 puts a colon after it. The colon is allowed
 #: but not required, and the particle guard is skipped when one is present,
 #: since 「一番好きな」 never carries one.
+#:
+#: 2020年12月's booklet also runs one question into the next without a
+#: break — 「…なければなりませんか。4 番：会社で」 — and a heading only at a
+#: line start let 3番 swallow 4番 whole. After a sentence end it counts too,
+#: but only with the colon, which 「。3番目の」 in a dialogue never has.
 _BAN = re.compile(
-    r"(?:^|\n)\s*([0-9０-９]{1,2})\s*番(?:\s*[：:]|(?![^\n]{0,2}[はにをがのでと]))"
+    r"(?:(?:^|\n)\s*|(?<=[。？?])[^\S\n]*(?=[0-9０-９]{1,2}\s*番\s*[：:]))"
+    r"([0-9０-９]{1,2})\s*番(?:\s*[：:]|(?![^\n]{0,2}[はにをがのでと]))"
 )
 #: An answer line, printed on a line of its own.
 #:

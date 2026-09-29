@@ -81,16 +81,46 @@ def _dash(match: re.Match) -> str:
     return "――"
 
 
-def clean(text: str | None) -> str | None:
+#: Punctuation the text layer spells with a look-alike from another script.
+#: The page shows the same mark either way; a search, a comparison, or a
+#: reader copying the text does not. 2019年12月 was typeset for vertical
+#: printing and gives its notes as 「交易︓ここでは」; 2012年12月 writes
+#: 「ひこ•田中」 with a bullet; 2013年07月's 〈私〉 is the mathematical pair.
+_LOOKALIKE = str.maketrans({
+    "\ufe10": "，", "\ufe11": "、", "\ufe12": "。", "\ufe13": "：",
+    "\ufe14": "；", "\ufe15": "！", "\ufe16": "？", "\ufe19": "…",
+    "\u2329": "〈", "\u232a": "〉",
+})
+
+#: Japanese separates the parts of a name or a compound with 中黒 「・」.
+#: Not applied to the Chinese translation, where 「·」 is the right mark.
+_NAME_DOT = re.compile(r"[\u2022\u00b7]")
+_MINUS = re.compile(r"\u2212")
+
+
+def _dash_or_wide(match: re.Match) -> str:
+    dash = _dash(match)
+    return "－" if dash == "――" else dash
+
+
+def clean(text: str | None, *, japanese: bool = True) -> str | None:
     """The text written in the characters it is meant to be written in.
 
-    Radical code points as the kanji they draw, and a dash the text layer
-    turned into strike-through marks as the dash it was.
+    Radical code points as the kanji they draw, a dash the text layer
+    turned into strike-through marks as the dash it was, and punctuation in
+    the one spelling the bank uses for it.
     """
     if not text:
         return text
     if "\u0336" in text:
         text = _STROKES.sub(_dash, text)
+    # A minus sign between digits is the hyphen in 「03−1234」, 「4−７歳」.
+    if "\u2212" in text:
+        text = _MINUS.sub(_dash_or_wide, text)
+    if any(ord(c) in _LOOKALIKE for c in text):
+        text = text.translate(_LOOKALIKE)
+    if japanese and _NAME_DOT.search(text):
+        text = _NAME_DOT.sub("・", text)
     if not any(_is_radical(c) for c in text):
         return text
     return "".join(
@@ -103,17 +133,18 @@ def clean_paper(paper) -> int:
     """Clean every piece of text on a paper. Returns how much moved."""
     moved = 0
 
-    def fix(holder, field):
+    def fix(holder, field, japanese=True):
         nonlocal moved
         before = getattr(holder, field, None)
-        after = clean(before)
+        after = clean(before, japanese=japanese)
         if after != before:
             setattr(holder, field, after)
             moved += 1
 
     for _section, problem in paper.problems():
-        for field in ("instruction", "passage", "passage_translation", "transcript"):
+        for field in ("instruction", "passage", "transcript"):
             fix(problem, field)
+        fix(problem, "passage_translation", japanese=False)
         for item in problem.items:
             for field in ("stem", "transcript", "passage"):
                 fix(item, field)

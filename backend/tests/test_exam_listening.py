@@ -88,3 +88,18 @@ def test_the_first_問題_is_found_after_an_ellipsis():
     were attributed to whichever heading came next."""
     folded = _folded("…" * 3 + "\n問題 1\n1 番\n")
     assert _PROBLEM.search(folded) is not None
+
+
+def test_a_ban_run_on_from_the_last_sentence_is_still_a_ban():
+    """2020年12月 prints 「…なければなりませんか。4 番：会社で」 with no break:
+    3番 swallowed 4番, and every later question took its neighbour's
+    dialogue."""
+    from app.services.exam_listening import parse_listening
+    text = (
+        "听力原文\n問題1\n"
+        "3 番：大学で男の人と女の人が話しています。\n男：3番目の人です。\n女：そうですか。\n"
+        "男の人はこれから何をしなければなりませんか。4 番：会社で女の人と男の人が話しています。\n"
+        "女：会議は？\n男：明日です。\n"
+    )
+    bans = [item.ban for item in parse_listening(text)]
+    assert bans == [3, 4]

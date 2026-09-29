@@ -22,6 +22,8 @@ from dataclasses import dataclass, field
 
 from app.services.exam_canonical import CanonicalItem, CanonicalProblem, Provenance
 from app.services import exam_cache
+from app.services.exam_clean import clean
+from app.services.exam_validation import unreadable_chars
 from app.services.exam_split import Block
 from app.services.llm.factory import get_exam_client
 
@@ -248,6 +250,51 @@ def build_problem(block: Block, payload: dict, seq: int, source_name: str | None
     )
 
 
+#: How much of what surrounds an unreadable character has to match the page
+#: before the page's character is trusted in its place.
+_CONTEXT = 4
+
+
+def _restore(text: str | None, page: str) -> str | None:
+    """`text` with each unreadable character replaced by the page's own."""
+    if not text or not unreadable_chars(text):
+        return text
+    bad = set(unreadable_chars(text))
+    out = list(text)
+    solid = [c for c in text if not c.isspace()]
+    positions = [i for i, c in enumerate(text) if not c.isspace()]
+    for k, i in enumerate(positions):
+        if text[i] not in bad:
+            continue
+        before = "".join(solid[max(0, k - _CONTEXT):k])
+        after = "".join(solid[k + 1:k + 1 + _CONTEXT])
+        found = [m for m in re.finditer(re.escape(before) + "(.)" + re.escape(after), page)]
+        if len(found) == 1:
+            out[i] = found[0].group(1)
+    return "".join(out)
+
+
+def restore_unreadable(problem: CanonicalProblem, source: str) -> None:
+    """Put back characters the model copied into ones that do not exist.
+
+    The papers set 風 as the radical ⾵, and a model copying the passage wrote
+    one of five as U+2D75 — 2020年12月's 「荷\u2d75があれだけ」, where the
+    other four came out 風. Whatever it was meant to be, the page has it: the
+    same few characters either side, found once in the block's own text, say
+    which character sat between them. Left alone when they are not found
+    exactly once, for the check to report.
+    """
+    page = "".join(c for c in (clean(source) or "") if not c.isspace())
+    fix = lambda text: _restore(text, page)
+    problem.instruction = fix(problem.instruction)
+    problem.passage = fix(problem.passage)
+    for item in problem.items:
+        item.stem = fix(item.stem) or ""
+        item.passage = fix(item.passage)
+        if item.options:
+            item.options = {k: fix(v) for k, v in item.options.items()}
+
+
 async def extract_block(
     block: Block, seq: int, *, source_name: str | None = None, feedback: str | None = None,
 ) -> BlockResult:
@@ -279,6 +326,7 @@ async def extract_block(
         exam_cache.put(cache_key, payload)
 
     problem = build_problem(block, payload, seq, source_name)
+    restore_unreadable(problem, block.text)
     return BlockResult(problem, invented=(
         check_verbatim(problem, block.text)
         + check_invented_blanks(problem, block.text)
