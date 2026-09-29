@@ -215,3 +215,14 @@ def test_options_printed_before_the_dialogue_are_not_taken_as_trailing():
     body = "質問1\n1 赤山\n2 青山\n3 緑山\n4 白山\nラジオを聞いて夫婦が話しています。\n男：じゃ、行こう。\n女：うん。\n質問1 二人は…\n55\n"
     options, transcript = _options_and_transcript(body)
     assert "女：うん。" in transcript
+
+
+def test_headings_with_no_space_as_utterances_or_circled_past_nine():
+    """2013年12月: 「2会社で…」, a bare utterance over its options, ⑩."""
+    from app.services.exam_listening import _LOOSE_BAN, _digits
+    assert _digits("⑩") == "10"
+    found = [m.group(1) for m in _LOOSE_BAN.finditer(
+        "\n2会社で課長と女の社員が話しています。\n"
+        "\n1 あの、すみません。こちらの椅子を拝借したいんですが。\n1 どうぞ。\n2 はい。\n3 いいえ。\n"
+        "\n１ 電話してきたならいいじゃない。\n")]
+    assert found[:2] == ["2", "1"] and "１" not in found

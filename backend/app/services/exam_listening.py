@@ -107,6 +107,10 @@ def _kana_ratio(text: str) -> float:
 
 
 def _digits(raw: str) -> str:
+    # ⑩–⑳ do not fold to one character, so NFKC leaves them: 2013年12月
+    # numbers 問題4 ①…⑭.
+    if len(raw) == 1 and "⑩" <= raw <= "⑳":
+        return str(ord(raw) - ord("①") + 1)
     return raw.translate(str.maketrans("０１２３４５６７８９", "0123456789"))
 
 
@@ -344,9 +348,13 @@ _PROBLEM_CJK = re.compile(
 #: A number and a space is how an option line looks too — 「1  ペットが…」 —
 #: so that form counts only where the line goes on to set the scene, which
 #: an option never does.
+#: 2013年12月 writes its headings every way at once: 「2会社で…話しています」
+#: with no space, 問題4 as a bare utterance 「1 あの、すみません…」 over its
+#: options (a numbered line followed by option 1 is a heading), and ⑩–⑭.
+#: 「電話して」 is not a scene — an option said 「１ 電話してきたなら…」.
 _LOOSE_BAN = re.compile(
-    r"(?:^|\n)[^\S\n]*([0-9０-９]{1,2})"
-    r"(?:[^\S\n]*(?:[、.．]|(?=\n)|(?=[^\S\n]*(?:正解|答案)))|[^\S\n]+(?=[^\n]*(?:話して|紹介して|ています)))"
+    r"(?:^|\n)[^\S\n]*([0-9０-９]{1,2}|[⑩-⑳])"
+    r"(?:[^\S\n]*(?:[、.．]|(?=\n)|(?=[^\S\n]*(?:正解|答案)))|[^\S\n]*(?=[^\n]*(?:(?<!電)話して|紹介して|ています))|[^\S\n]+(?=[^\n]*\n(?:[^\S\n]*[0-9０-９]{2,3}[^\S\n]*\n)?[^\S\n]*[1１][^\S\n]+\S))"
 )
 
 
