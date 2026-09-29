@@ -276,6 +276,10 @@ def build_problem(block: Block, payload: dict, seq: int, source_name: str | None
             stem=raw.get("stem") or "",
             options={str(k): str(v) for k, v in (raw.get("options") or {}).items()},
             meta=raw.get("meta") or {},
+            # 問題8 prints one text per question, and the model gives each on
+            # its question; read only at the top level, 2012年07月's and
+            # 2023年12月's four texts were dropped.
+            passage=raw.get("passage") or None,
             provenance=Provenance(source=source_name, extractor=EXTRACTOR),
         ))
     return CanonicalProblem(
@@ -488,6 +492,42 @@ def _either(num: int) -> str:
     """
     wide = {str(d): chr(ord("０") + d) for d in range(10)}
     return "".join(f"[{d}{wide[d]}]" for d in str(num))
+
+
+def passages_from_source(problem: CanonicalProblem, source: str) -> None:
+    """Each question's text cut from the page, where the model gave none.
+
+    2012年12月's and 2017年07月's 問題8 came back with no passage anywhere —
+    the prompt asks for one shared text, and four separate ones did not fit
+    it. The page has them: each runs from its 「(1)」 line to the first
+    question under it. Done only when every question is found and at least
+    two different texts come out; otherwise the problem is left as it was.
+    """
+    if problem.passage or any(item.passage for item in problem.items) or len(problem.items) < 2:
+        return
+    separators = [m.start() for m in _SEPARATOR.finditer(source)]
+    if len(separators) < 2:
+        return
+    bounds = separators + [len(source)]
+    starts = []
+    for item in problem.items:
+        at = _where(item.num, item.stem, source)
+        if at is None:
+            return
+        starts.append(at)
+    texts: dict[int, str] = {}
+    for index, at in enumerate(starts):
+        which = max((k for k, b in enumerate(separators) if b <= at), default=None)
+        if which is None:
+            return
+        begin = separators[which]
+        first_question = min(a for a in starts if begin <= a < bounds[which + 1])
+        body = re.sub(r"^\s*(?:[(（][0-9０-９][)）]|[ABＡＢ])[^\S\n]*\n", "", source[begin:first_question])
+        texts[index] = body.strip()
+    if len(set(texts.values())) < 2:
+        return
+    for index, text in texts.items():
+        problem.items[index].passage = text
 
 
 def _where(num: int, stem: str, source: str) -> int | None:

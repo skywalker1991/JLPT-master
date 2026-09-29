@@ -483,3 +483,15 @@ def test_margin_tabs_and_furigana_are_taken_out_of_stored_text():
     from app.services.exam_clean import strip_furniture
     text = "考えていた。 読\n解\n　古代から。\n高名な著者になんとかし\nいっし せんぱくあ\nて批判の一矢を\nわな\n"
     assert strip_furniture(text) == "考えていた。\n　古代から。\n高名な著者になんとかし\nて批判の一矢を\nわな\n"
+
+
+def test_each_short_text_is_cut_from_the_page_when_the_model_gave_none():
+    """2012年12月 / 2017年07月 問題8: four texts, no passage anywhere."""
+    from app.services.exam_canonical import CanonicalItem, CanonicalProblem
+    from app.services.exam_extract import passages_from_source
+    source = ("問題8 次の(1)から(4)の文章を読んで\n(1)\n最初の文章です。\n46 筆者の考えは？\n"
+              "(2)\n二番目の文章です。\n47 どういうことか。\n")
+    problem = CanonicalProblem(name="問題8", type="reading_comp", seq=1, items=[
+        CanonicalItem(num=46, seq=1, stem="筆者の考えは？"), CanonicalItem(num=47, seq=2, stem="どういうことか。")])
+    passages_from_source(problem, source)
+    assert [i.passage for i in problem.items] == ["最初の文章です。", "二番目の文章です。"]

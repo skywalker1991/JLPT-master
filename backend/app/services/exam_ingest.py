@@ -25,7 +25,7 @@ from app.services.exam_categories import part_of_type, type_by_number
 from app.services.exam_clean import clean, clean_paper
 from app.services.exam_rulings import PROBLEM_FIELDS, REMOVED, RULED_FIELDS, with_ruling
 from app.services.exam_extract import (
-    extract_block_with_retry, mark_blanks, split_passages,
+    extract_block_with_retry, mark_blanks, passages_from_source, split_passages,
 )
 from app.services.exam_merge import merge_answers
 from app.services.exam_sources import Role, Source, assess, classify_all, detect_identity
@@ -133,6 +133,7 @@ async def build_paper(
         # splitting them, answering 第46题 means being shown all four.
         if result.problem.type == "reading_comp":
             invented.extend(split_passages(result.problem, block.text))
+            passages_from_source(result.problem, block.text)
 
         # Where it is printed, so a reviewer settling a disputed answer can
         # open the page rather than hunt through forty of them.
