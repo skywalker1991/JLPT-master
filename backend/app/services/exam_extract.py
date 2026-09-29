@@ -197,6 +197,9 @@ def check_missing_items(problem: CanonicalProblem, source: str) -> list[str]:
     ]
 
 
+_MARGIN_TAB = re.compile(r"(?m)^[^\S\n]*[⽂文字語彙・法読解][^\S\n]*$")
+
+
 def check_verbatim(problem: CanonicalProblem, source: str) -> list[str]:
     """Stems and options that do not appear in the source.
 
@@ -204,7 +207,11 @@ def check_verbatim(problem: CanonicalProblem, source: str) -> list[str]:
     pass every structural rule, so this is the only thing standing between a
     fluent invention and the question bank.
     """
-    haystack = normalise(source)
+    # Reprints run a section tab down the margin, one character a line —
+    # 「文」「法」「読」「解」 — and the reader sets each inside whatever line
+    # it sits beside: 「誰に何と ＿＿ ＿＿\n法\n ★」. The model rightly leaves
+    # them out, and the copy then reads as invented.
+    haystack = normalise(_MARGIN_TAB.sub("", source))
     missing = []
     for item in problem.items:
         for label, value in [("题干", item.stem), *((f"选项{k}", v) for k, v in item.options.items())]:

@@ -172,3 +172,22 @@ def test_a_ban_quoted_in_the_instructions_gives_way_to_the_real_one():
     items = parse_listening(text)
     assert [(i.problem, i.ban) for i in items] == [(5, 1), (5, 2)]
     assert "話しています" in items[0].transcript
+
+
+def test_a_skipped_ban_leaves_its_question_empty_rather_than_shifting_the_rest():
+    """2022年12月's booklet has no 「2番」: matched by position, questions 2–4
+    took 3番–5番's dialogue."""
+    from app.services.exam_canonical import CanonicalItem, CanonicalPaper, CanonicalProblem, CanonicalSection
+    from app.services.exam_ingest import IngestReport, _fill_listening
+    from app.services.exam_sources import Role, Source
+    text = "听力文本\n問題1\n" + "\n".join(
+        f"{n} 番 正解:1\n会社で男の人と女の人が話しています。第{n}番\n→M:" + "はい、そうですね。" * 30 + "\n→F:ええ。" for n in (1, 3, 4, 5))
+    problem = CanonicalProblem(name="問題1", type="listening", seq=1,
+                               items=[CanonicalItem(num=n, seq=n) for n in range(1, 6)])
+    paper = CanonicalPaper(level="N1", title="t", source="s",
+                           sections=[CanonicalSection(name="聴解", seq=1, problems=[problem])])
+    source = Source(filename="解析.pdf", text=text, page_count=1, text_pages=1)
+    source.role = Role.EXPLANATIONS
+    _fill_listening(paper, [source], IngestReport())
+    said = {i.num: i.transcript for i in problem.items}
+    assert "第3番" in said[3] and "第5番" in said[5] and not said[2]

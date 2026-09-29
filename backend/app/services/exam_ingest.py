@@ -238,14 +238,20 @@ def _expand(slots: list) -> list:
         # The numbered 「質問１」「質問２」, not the word: 2012年12月's 問題1 4番
         # talks about 質問項目 twice, was split in two, and every later 番
         # took its neighbour's dialogue.
-        if len(set(_ASKED.findall(slot.transcript))) < 2:
+        # Or three answers under one 番: 2022年12月 prints 「2番 正解:3」,
+        # then 「質問1 正解:3」「質問2 正解:1」 — lines taken out as answers,
+        # which leaves the transcript with no 質問 to find.
+        asked = len(set(_ASKED.findall(slot.transcript))) >= 2
+        if not asked and len(slot.answers) < 3:
             expanded.append(slot)
             continue
         # Two questions, two answers — the booklet prints 「質問１正解：１」
-        # and 「質問２正解：４」. Handing both copies the first one puts a
-        # wrong answer in the bank, which is worse than none.
+        # and 「質問２正解：４」, the last two of whatever it printed. Handing
+        # both copies the first one puts a wrong answer in the bank, which is
+        # worse than none.
+        pair = slot.answers[-2:]
         for index in range(2):
-            answer = slot.answers[index] if index < len(slot.answers) else None
+            answer = pair[index] if index < len(pair) else None
             # One conversation, stored once. The second question finds it on
             # the first — see dialogue_for, which is the only place that
             # knows the rule.
@@ -531,7 +537,17 @@ def _fill_listening(paper: CanonicalPaper, sources: list[Source], report: Ingest
                 added += 1
             continue
 
-        for item, slot in zip(problem.items, slots):
+        # By 番 where each is there once: a booklet that skips a heading —
+        # 2022年12月 has no 「2番」 — otherwise hands 3番's dialogue to the
+        # second question and every one after it to its neighbour.
+        bans = [slot.ban for slot in slots]
+        numbers = {item.num for item in problem.items}
+        if bans and len(set(bans)) == len(bans) and set(bans) <= numbers:
+            by_ban = {slot.ban: slot for slot in slots}
+            pairs = [(item, by_ban[item.num]) for item in problem.items if item.num in by_ban]
+        else:
+            pairs = list(zip(problem.items, slots))
+        for item, slot in pairs:
             item.transcript = slot.transcript
             item.script = _where_read(source, slot)
             if not item.options and slot.options:

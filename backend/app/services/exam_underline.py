@@ -136,6 +136,47 @@ BLANK_MIN_WIDTH = 18.0
 BLANK_MAX_WIDTH = 60.0
 
 
+_LINE_END = 60.0
+
+
+def _wrapped(rules, row, star, left: float) -> list:
+    """The four blanks where they break across two lines.
+
+    2023年07月 sets 「インターネットへの＿＿ ★＿＿」 with the other two
+    blanks at the head of the next line, and 2012年12月's 第39题 the other
+    way round; counted on the ★'s line alone there were never four, and the
+    model was left to guess. A line whose blanks start at the margin
+    continues the line above; any other runs on to the line below.
+    """
+    if not row or not any(r.x0 - 2 <= star.x0 and star.x1 <= r.x1 + 2 for r in row):
+        return []
+    need = 4 - len(row)
+
+    def line(direction: int) -> list:
+        ys = sorted({round(r.y, 1) for r in rules
+                     if 6.0 < direction * (r.y - star.y1) < 40.0},
+                    key=lambda y: abs(y - star.y1))
+        if not ys:
+            return []
+        return sorted((r for r in rules if abs(r.y - ys[0]) < 1.0), key=lambda r: r.x0)
+
+    # Only a line that runs to the margin breaks: the instruction's 「次の文の
+    # ★ に入る」 sits over one rule mid-line, with a question's blanks on the
+    # line below, and is not a question.
+    # A line breaks once the next blank no longer fits, so it can stop a
+    # blank's width short of the margin: 47pt on 2023年07月's p.4.
+    right = max(r.x1 for r in rules)
+    if row[0].x0 - left < 30.0:
+        above = line(-1)
+        if len(above) >= need and right - above[-1].x1 < _LINE_END:
+            return above[-need:] + row
+        return []
+    below = line(+1)
+    if len(below) >= need and right - row[-1].x1 < _LINE_END:
+        return row + below[:need]
+    return []
+
+
 def _stars(page) -> list[tuple[float, int | None]]:
     """Every ★ on the page, top to bottom, with the blank it sits in.
 
@@ -149,13 +190,15 @@ def _stars(page) -> list[tuple[float, int | None]]:
              if BLANK_MIN_WIDTH <= r.x1 - r.x0 <= BLANK_MAX_WIDTH]
     found: list[tuple[float, int | None]] = []
 
+    left = min((r.x0 for r in rules), default=0.0)
     for star in page.search_for("★"):
         slot = None
         row = sorted((r for r in rules if abs(r.y - star.y1) < 6.0),
                      key=lambda r: r.x0)
         # The last four rules on the line are the blanks; anything before
         # them is the question number's rule, set far shorter.
-        for index, rule in enumerate(row[-4:], start=1) if len(row) >= 4 else ():
+        run = row[-4:] if len(row) >= 4 else _wrapped(rules, row, star, left)
+        for index, rule in enumerate(run, start=1):
             if rule.x0 - 2 <= star.x0 and star.x1 <= rule.x1 + 2:
                 slot = index
                 break
