@@ -465,3 +465,15 @@ def test_kana_set_in_yukyo_is_read_back_as_kana():
     # 鳥 is where ロ lands; it is decoded only among katakana.
     assert decode_yukyo(kata("カ") + "\u9ce5" + kata("リ")) == "カロリ"
     assert decode_yukyo("小\u9ce5") == "小\u9ce5"
+
+
+def test_a_page_number_or_margin_tab_inside_a_copied_phrase_is_not_an_invention():
+    from app.services.exam_canonical import CanonicalItem, CanonicalProblem
+    from app.services.exam_extract import check_verbatim
+    source = "比較してしまうから読解だと述べている。\n健康度測定 15 ダニエルさんは"
+    ok = CanonicalProblem(name="問題11", type="reading_comp", seq=1, items=[
+        CanonicalItem(num=60, seq=1, stem="比較してしまうからだと述べている", options={"1": "健康度測定ダニエルさんは"})])
+    assert check_verbatim(ok, source) == []
+    made_up = CanonicalProblem(name="問題11", type="reading_comp", seq=1, items=[
+        CanonicalItem(num=60, seq=1, stem="比較してしまうので不安だと言っている")])
+    assert check_verbatim(made_up, source)

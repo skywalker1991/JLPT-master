@@ -200,6 +200,31 @@ def check_missing_items(problem: CanonicalProblem, source: str) -> list[str]:
 _MARGIN_TAB = re.compile(r"(?m)^[^\S\n]*[⽂文字語彙・法読解][^\S\n]*$")
 
 
+#: How many characters the page may carry inside a copied phrase that the copy
+#: rightly left out: a page number mid-table (2023年07月 第65题 「…健康度測定
+#: 15 ダニエルさん…」), a margin tab set into a line (2022年12月 「…してしまう
+#: から読解だと述べ…」). Only insertions: a copy that says anything different
+#: still fails.
+_SLACK = 4
+
+
+def _found_with_insertions(needle: str, haystack: str) -> bool:
+    anchor = needle[:3]
+    start = haystack.find(anchor)
+    while start != -1:
+        i, j, skipped = 0, start, 0
+        while i < len(needle) and j < len(haystack) and skipped <= _SLACK:
+            if needle[i] == haystack[j]:
+                i += 1
+            else:
+                skipped += 1
+            j += 1
+        if i == len(needle) and skipped <= _SLACK:
+            return True
+        start = haystack.find(anchor, start + 1)
+    return False
+
+
 def check_verbatim(problem: CanonicalProblem, source: str) -> list[str]:
     """Stems and options that do not appear in the source.
 
@@ -218,7 +243,7 @@ def check_verbatim(problem: CanonicalProblem, source: str) -> list[str]:
             needle = normalise(value)
             if len(needle) < 2:
                 continue
-            if needle not in haystack:
+            if needle not in haystack and not _found_with_insertions(needle, haystack):
                 missing.append(f"第{item.num}题 {label}：原文中找不到「{(value or '')[:30]}」")
     return missing
 
