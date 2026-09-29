@@ -34,11 +34,13 @@ _ORDER = re.compile(r"(\d{1,3})\s*[→>]\s*([1-4]{4})")
 #: 解析 booklet, written section. The separator after the item number is not
 #: reliable — 2018 wrote "1、正解：2" and 2019 "1 正解：4" — and the heading
 #: itself alternates between 正解 and 答案.
+#: The colon can be missing — 2024年07月 prints 「36 答案3241」.
 _SOLUTION = re.compile(
-    r"(?:^|\n)\s*(\d{1,3})\s*[、.．]?\s*(?:正解|答案)\s*[：:]\s*([1-4])(?![0-9])"
+    r"(?:^|\n)\s*(\d{1,3})\s*[、.．]?\s*(?:正解|答案)\s*[：:]?\s*([1-4])(?![0-9])"
 )
 #: 並べ替え stated as a whole ordering inside the booklet: "36、答案：1423".
-_SOLUTION_ORDER = re.compile(r"(\d{1,3})\s*[、.．]?\s*(?:正解|答案)\s*[：:]\s*([1-4]{4})(?![0-9])")
+_SOLUTION_ORDER = re.compile(r"(\d{1,3})\s*[、.．]?\s*(?:正解|答案)\s*[：:]?\s*([1-4]{4})(?![0-9])")
+_WIDE = str.maketrans("０１２３４５６７８９", "0123456789")
 #: 解析 booklet, listening: "6 番 正解：4" — numbered within its 問題.
 _SOLUTION_BAN = re.compile(r"(\d{1,2})\s*番\s*正解\s*[：:]\s*([1-4])")
 #: "问题3" / "問題3" heading in the listening part of an answer sheet.
@@ -288,6 +290,10 @@ def parse_explanations(text: str) -> AnswerKey:
     boundary = _listening_section(text)
     if boundary:
         text = text[: boundary.start()]
+
+    # 2024年12月 writes 「３６、正解：２３１４」 and 2023年07月 「4、正解：４」:
+    # the answers in full width were not answers at all to the patterns.
+    text = text.translate(_WIDE)
 
     key = AnswerKey()
     # Orderings first: a four-digit answer would otherwise be read as a single

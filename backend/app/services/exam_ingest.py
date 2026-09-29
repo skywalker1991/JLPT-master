@@ -177,6 +177,10 @@ def _covers_the_paper(*keys, expected: int | None = None) -> bool:
     return expected is not None and len(written) >= expected
 
 
+_QUESTION_FILE = re.compile(r"真题|真題|試題|试题")
+_KEY_FILE = re.compile(r"答案|解析|正解")
+
+
 async def _read_scanned_sheet(
     files_by_name: dict[str, bytes],
     sources: list[Source],
@@ -188,6 +192,12 @@ async def _read_scanned_sheet(
 
     for source in sources:
         if source.role is not Role.SCANNED:
+            continue
+        # A scan of the question paper is not a key, and a model shown one
+        # answers the questions instead of reading them: 2019年07月 and
+        # 2023年07月 got 29 and 19 "answer sheet" votes that way, and
+        # 2023年07月's 第4题 among them was wrong.
+        if _QUESTION_FILE.search(source.filename) and not _KEY_FILE.search(source.filename):
             continue
         data = files_by_name.get(source.filename)
         if not data:

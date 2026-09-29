@@ -84,6 +84,23 @@ def merge_answers(
         elif problem.type == "sentence_order":
             item.votes = order_votes.get(item.num, {}) if item.num is not None else {}
             answer = _apply_order(item, orders, report)
+            # Answer tables print the ★ digit itself — 2024年07月 「23214」 —
+            # which answers the question without the ordering, and checks the
+            # ★ position where there is one.
+            starred = {f"{_who(name, key)}·★": key.written[item.num]
+                       for name, key in sources
+                       if item.num is not None and item.num in key.written}
+            if starred:
+                item.votes = {**item.votes, **starred}
+                said = _settle(starred, f"第{item.num}题★", report)
+                if answer is None:
+                    answer = said
+                elif said and said != answer:
+                    report.conflicts.append(
+                        f"第{item.num}题：按语序 {item.answer_order} 和 ★ 位置得 {answer}，"
+                        f"答案表印的 ★ 是 {said}（请对照原页判定 ★ 在第几个空）"
+                    )
+                    answer = None
         elif item.num is None:
             answer = None
         else:

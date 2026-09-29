@@ -310,6 +310,8 @@ async def extract_block(
     model = getattr(get_exam_client(), "_model_name", "?")
     cache_key = exam_cache.key_for(block.text, prompt, model)
     payload = exam_cache.get(cache_key)
+    if payload is not None and not isinstance(payload, dict):
+        payload = None          # cached before the check below existed
 
     if payload is None:
         try:
@@ -320,6 +322,11 @@ async def extract_block(
             if raw.startswith("```"):
                 raw = raw.split("```")[1].removeprefix("json").strip()
             payload = json.loads(raw)
+            # One 問題, one object. A list is the model reading several —
+            # 2011年07月's 問題13 came back as three — and neither the first
+            # nor all of them is this block.
+            if not isinstance(payload, dict):
+                raise ValueError(f"模型返回了 {type(payload).__name__}，不是单个题组")
         except Exception as e:
             logger.warning("Could not read %s: %s", block.name, e)
             return BlockResult(None, error=f"{block.name} 提取失败：{e}")

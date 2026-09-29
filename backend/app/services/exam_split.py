@@ -83,6 +83,9 @@ def _reading_start(text: str, limit: int) -> int:
     return match.start() if match else limit
 
 
+_RUN_ON = 1000
+
+
 def split_problems(text: str) -> list[Block]:
     """The paper as a list of 問題 blocks, in the order they are printed."""
     listening_at = _listening_start(text)
@@ -107,6 +110,15 @@ def split_problems(text: str) -> list[Block]:
     blocks: list[Block] = []
     for index, (start, number) in enumerate(headings):
         end = headings[index + 1][0] if index + 1 < len(headings) else len(text)
+        # A written 問題 does not run on into 聴解. Normally the next heading
+        # is a few characters past where 聴解 starts — 502 at most across
+        # thirty papers, its instructions — but 2011年07月 spaces its first
+        # two headings with furigana, 「問 題 1」, neither is read, and 問題13
+        # ran on through 2,094 characters of 聴解: the model extracted three
+        # problems from it and the import failed. Cut only a run-on that
+        # long, so no other paper's block — and cached reading — changes.
+        if start < listening_at < end and end - listening_at > _RUN_ON:
+            end = listening_at
         if start >= listening_at:
             section = LISTENING
         elif start >= reading_at:
