@@ -29,8 +29,10 @@ def test_the_number_says_which_half_of_the_booklet_too():
     assert type_by_number("N1", "言語知識", "問題13") == "info_search"
     assert type_by_number("N1", "読解", "問題13") == "info_search"
     assert type_by_number("N1", "言語知識", "問題5") == "grammar_fill"
-    #: 読解's other five are one type, so the number says nothing for them.
-    assert type_by_number("N1", "読解", "問題9") is None
+    #: 読解's other five are one type — which the number still has to say:
+    #: the model reads some as 「unknown」 (2021年12月, 2024年).
+    assert type_by_number("N1", "読解", "問題9") == "reading_comp"
+    assert type_by_number("N1", "言語知識", "問題8") == "reading_comp"
 
 
 def test_the_last_読解_問題_is_information_retrieval():
