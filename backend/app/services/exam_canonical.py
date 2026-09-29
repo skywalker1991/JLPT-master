@@ -62,6 +62,10 @@ class CanonicalItem:
     #: each other only if they come from different files, and the front table
     #: and the per-item 正解 lines are usually printed in the same booklet.
     votes: dict[str, str] = field(default_factory=dict)
+    #: A PNG of the page, base64, where the text of this question's passage
+    #: cannot be trusted — a page set in columns, whose text layer comes out
+    #: both in the wrong order and with the wrong characters.
+    page_image: str | None = None
     provenance: Provenance = field(default_factory=Provenance)
 
 
@@ -145,6 +149,7 @@ def from_dict(data: dict) -> CanonicalPaper:
             transcript=raw.get("transcript"), passage=raw.get("passage"),
             meta=raw.get("meta") or {},
             votes=raw.get("votes") or {},
+            page_image=raw.get("page_image"),
             provenance=Provenance(
                 source=prov.get("source"), page=prov.get("page"),
                 extractor=prov.get("extractor"),

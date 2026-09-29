@@ -204,6 +204,9 @@ export interface ItemSchema {
   answer_votes?: Record<string, string> | null
   /** 已核对 | 多源一致 | 单源 | 无答案 */
   confidence?: string | null
+  /** A picture standing in for this question's passage, where the text of
+   *  it could not be read — a page set in columns. Empty otherwise. */
+  media?: ExamMediaItem[]
 }
 
 export interface ProblemDetail {

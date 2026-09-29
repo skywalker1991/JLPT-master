@@ -136,6 +136,12 @@ function ItemRow({ item, type }: { item: ItemSchema; type: string }) {
                    className="px-3 pb-2.5 text-xs text-fg-muted leading-relaxed whitespace-pre-wrap" />
         </details>
       )}
+      {(item.media ?? []).map(m => (
+        <a key={m.id} href={m.url} target="_blank" rel="noreferrer">
+          <img src={m.url} alt={m.caption ?? ''}
+               className="max-h-80 rounded-lg border border-border" />
+        </a>
+      ))}
       <p className="font-jp text-sm text-fg leading-relaxed">
         <span className="font-sans text-xs text-fg-subtle mr-1.5">{item.num ?? item.seq}.</span>
         <QuestionText stem={item.stem} type={type} num={item.num}

@@ -467,6 +467,16 @@ async def confirm_draft(draft_id: _uuid.UUID, db: AsyncSession = Depends(get_db)
                 )
                 db.add(item)
                 await db.flush()
+
+                # Where the passage could not be read, the page stands in
+                # for it — see _picture_the_unreadable.
+                if getattr(item_data, "page_image", None):
+                    db.add(ExamMedia(
+                        item_id=item.id, media_type="image",
+                        data=base64.b64decode(item_data.page_image),
+                        caption="試験用紙のページ", seq=0,
+                    ))
+                    await db.flush()
                 # Where it came from, recorded as the first revision, so a
                 # question that is later corrected shows what it started as.
                 db.add(ExamItemRevision(

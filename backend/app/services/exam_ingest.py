@@ -28,7 +28,7 @@ from app.services.exam_extract import (
 from app.services.exam_merge import merge_answers
 from app.services.exam_sources import Role, Source, assess, classify_all, detect_identity
 from app.services.exam_split import split_problems
-from app.services.exam_text import joined, page_image_for, page_of, page_starts, read_pdf
+from app.services.exam_text import joined, page_image_for, page_of, page_png, page_starts, read_pdf
 from app.services.exam_validation import learn_baseline, validate
 
 logger = logging.getLogger(__name__)
@@ -348,6 +348,44 @@ def _divide(heard: list, paper: CanonicalPaper) -> list:
     return divided
 
 
+def _picture_the_unreadable(paper: CanonicalPaper, data: bytes, report: IngestReport) -> None:
+    """Where a passage's text cannot be trusted, keep the page instead.
+
+    A page set in columns comes out of extraction taking one character from
+    each column in turn — 「の 一 る の の ば 半」 — and its characters are
+    wrong as well as its order: 「去って」 reads 「去ỳて」. Read properly it
+    needs column-wise extraction and the vertical punctuation mapped back,
+    and even then the glyph errors remain.
+
+    The page itself has none of those problems. Kept whole rather than
+    cropped, because cropping means finding the passage on the page and the
+    text to find it by is the text that is wrong.
+    """
+    import base64
+
+    from app.services.exam_validation import looks_vertical
+
+    for _section, problem, item in paper.items():
+        if not looks_vertical(item.passage or ""):
+            continue
+        page = item.provenance.page
+        if not page:
+            report.notes.append(f"第{item.num}题：文章是竖排的，但不知道它在第几页，无法留图")
+            continue
+        try:
+            png = page_png(data, page)
+        except Exception as e:                    # never lose a paper over a picture
+            logger.warning("could not render page %s: %s", page, e)
+            continue
+        if png is None:
+            continue
+        item.page_image = base64.b64encode(png).decode()
+        item.passage = None
+        report.notes.append(
+            f"第{item.num}题：文章是竖排的，文字读出来是乱的，改用第 {page} 页原版面"
+        )
+
+
 def _fill_listening(paper: CanonicalPaper, sources: list[Source], report: IngestReport) -> None:
     """Put the listening questions and dialogue onto the paper."""
     from app.services.exam_listening import parse_listening, pick_transcript_source
@@ -481,7 +519,9 @@ async def ingest(
     _fill_listening(paper, sources, report)
 
     if questions is not None:
-        _keep_the_page(paper, files_by_name.get(questions.filename) or b"", report)
+        data = files_by_name.get(questions.filename) or b""
+        _keep_the_page(paper, data, report)
+        _picture_the_unreadable(paper, data, report)
 
     counts = paper.listening_counts()
     written_expected = sum(

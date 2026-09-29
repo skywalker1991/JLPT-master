@@ -522,6 +522,12 @@ export default function ExamSession({
         <div className="space-y-6">
           {unit.items.map((it, index) => (
             <div key={it.id} className="space-y-2">
+              {/* A page standing in for this question's passage, where the
+                  text of it could not be read. */}
+              {(it.media ?? []).map(m => (
+                <img key={m.id} src={m.url} alt={m.caption ?? ''}
+                     className="w-full rounded-lg border border-border" />
+              ))}
               <ItemDisplay
                 item={it}
                 showAudio={index === 0}

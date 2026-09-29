@@ -876,6 +876,16 @@ async def build_paper_detail(
             media = (await db.execute(
                 select(ExamMedia).where(ExamMedia.problem_id == prob.id).order_by(ExamMedia.seq)
             )).scalars().all()
+            # Pictures belonging to one question rather than to the 問題 —
+            # a page standing in for a passage that could not be read.
+            per_item: dict = {}
+            for shot in (await db.execute(
+                select(ExamMedia).where(
+                    ExamMedia.item_id.in_([i.id for i in items] or [None]),
+                    ExamMedia.media_type == "image",
+                ).order_by(ExamMedia.seq)
+            )).scalars().all():
+                per_item.setdefault(shot.item_id, []).append(shot)
             problem_details.append(ProblemDetail(
                 id=prob.id, seq=prob.seq, name=prob.name, type=prob.type,
                 instruction=prob.instruction, passage=prob.passage, transcript=prob.transcript,
@@ -897,6 +907,9 @@ async def build_paper_detail(
                     source_page=i.source_page if with_answers else None,
                     answer_votes=i.answer_votes if with_answers else None,
                     confidence=confidence_of(i) if with_answers else None,
+                    media=[ExamMediaItem(id=m.id, url=m.url or f"/api/media/{m.id}",
+                                         caption=m.caption, seq=m.seq)
+                           for m in per_item.get(i.id, [])],
                 ) for i in items],
             ))
 
@@ -1618,6 +1631,16 @@ async def get_attempt_review(attempt_id: UUID, db: AsyncSession = Depends(get_db
             media = (await db.execute(
                 select(ExamMedia).where(ExamMedia.problem_id == prob.id).order_by(ExamMedia.seq)
             )).scalars().all()
+            # Pictures belonging to one question rather than to the 問題 —
+            # a page standing in for a passage that could not be read.
+            per_item: dict = {}
+            for shot in (await db.execute(
+                select(ExamMedia).where(
+                    ExamMedia.item_id.in_([i.id for i in items] or [None]),
+                    ExamMedia.media_type == "image",
+                ).order_by(ExamMedia.seq)
+            )).scalars().all():
+                per_item.setdefault(shot.item_id, []).append(shot)
 
             reveal = sec.id in submitted_section_ids
             review_items = [

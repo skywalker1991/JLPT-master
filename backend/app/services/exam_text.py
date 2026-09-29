@@ -259,3 +259,22 @@ def _passage_box(page, head: str, tail: str):
         page.rect.x0, max(page.rect.y0, top - CROP_PAD_TOP),
         page.rect.x1, min(page.rect.y1, bottom + CROP_PAD),
     )
+
+
+def page_png(data: bytes, page: int, *, dpi: int = 150) -> bytes | None:
+    """One page of a PDF, by number.
+
+    For a passage whose text cannot be trusted, where searching for it to
+    crop by is not possible — the text is in the wrong order, which is the
+    whole reason the picture is wanted.
+    """
+    import fitz
+
+    fitz.TOOLS.mupdf_display_errors(False)
+    document = fitz.open(stream=data, filetype="pdf")
+    try:
+        if not 1 <= page <= len(document):
+            return None
+        return document[page - 1].get_pixmap(dpi=dpi).tobytes("png")
+    finally:
+        document.close()

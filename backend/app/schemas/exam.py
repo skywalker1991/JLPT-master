@@ -35,6 +35,9 @@ class ItemSchema(BaseModel):
     passage: str | None = None
     options: dict
     meta: dict | None
+    #: A picture standing in for this question's passage, where the text of
+    #: it could not be read — a page set in columns. Empty otherwise.
+    media: list[ExamMediaItem] = []
     #: Left out of the answering view on purpose — sending the answer to the
     #: page that asks the question defeats the question. Only the bank's own
     #: endpoints fill these in, so a leak has to be written deliberately
