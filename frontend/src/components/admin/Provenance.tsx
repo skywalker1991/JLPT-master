@@ -60,8 +60,17 @@ export function Confidence({
   )
 }
 
-/** The page this question is printed on, fetched only when asked for. */
-export function SourcePage({ file, page }: { file?: string | null; page?: number | null }) {
+/** Which of a sitting's files this is, in the words a reviewer uses. */
+function kindOf(file: string): string {
+  if (/解析|答案|原文/.test(file)) return '解析'
+  if (/真题|試題|试题/.test(file)) return '试题'
+  return '原件'
+}
+
+/** A page of one of the sitting's files, fetched only when asked for. */
+export function SourcePage({
+  file, page, label,
+}: { file?: string | null; page?: number | null; label?: string }) {
   const [open, setOpen] = useState(false)
   if (!file || !page) return null
   return (
@@ -71,7 +80,7 @@ export function SourcePage({ file, page }: { file?: string | null; page?: number
         title={file}
         className="shrink-0 flex items-center gap-1 text-xs text-fg-subtle hover:text-accent transition-colors"
       >
-        <BookOpen className="w-3 h-3" />第 {page} 页
+        <BookOpen className="w-3 h-3" />{label ?? kindOf(file)} 第 {page} 页
       </button>
       {open && (
         <img
@@ -81,5 +90,30 @@ export function SourcePage({ file, page }: { file?: string | null; page?: number
         />
       )}
     </>
+  )
+}
+
+/**
+ * Every page a question was read from.
+ *
+ * Usually one. A listening question can have two: the question paper prints
+ * 問題1's options, the 解析 booklet prints what is said and the answer — and
+ * for 問題3 and 4, which the paper prints nothing of, both are the booklet,
+ * and one link is enough.
+ */
+export function SourcePages({
+  file, page, scriptFile, scriptPage,
+}: {
+  file?: string | null
+  page?: number | null
+  scriptFile?: string | null
+  scriptPage?: number | null
+}) {
+  const same = file === scriptFile && page === scriptPage
+  return (
+    <span className="flex items-center gap-3">
+      <SourcePage file={file} page={page} />
+      {!same && <SourcePage file={scriptFile} page={scriptPage} label="原文" />}
+    </span>
   )
 }

@@ -275,6 +275,16 @@ export async function reportExamItem(
   })
 }
 
+/** Correct what a 問題 prints once — its passage, its instruction. */
+export async function editExamProblem(
+  problemId: string,
+  body: Record<string, unknown>,
+): Promise<{ id: string }> {
+  return request(`/api/exam/problems/${problemId}`, {
+    method: 'PATCH', body: JSON.stringify(body),
+  })
+}
+
 export async function editExamItem(
   itemId: string,
   body: Record<string, unknown>,

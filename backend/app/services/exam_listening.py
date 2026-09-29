@@ -111,6 +111,11 @@ class ListeningItem:
     #: One per question this 番 asks. Usually one; 問題5's 統合理解 asks two
     #: about a single conversation, and they have different answers.
     answers: list[str] = field(default_factory=list)
+    #: Where the 番 begins in the whole text it was read from, so the page it
+    #: sits on can be named. The dialogue, its answer and — for the 問題 the
+    #: paper prints nothing for — its options all come from here, not from
+    #: the question paper.
+    at: int = 0
 
 
 def _folded(text: str) -> str:
@@ -358,6 +363,10 @@ def parse_listening(text: str) -> list[ListeningItem]:
     section, _translation = listening_section(text)
     if not section:
         return []
+    # listening_section cuts from the heading on; offsets inside it are
+    # offsets from there.
+    heading = _SECTION.search(_folded(text))
+    offset = heading.start() if heading else 0
 
     # 問題 boundaries first, so a 番 is attributed to the right one — numbering
     # restarts at 一番 in every 問題.
@@ -411,6 +420,7 @@ def parse_listening(text: str) -> list[ListeningItem]:
             options=options,
             transcript=_clean(transcript),
             answers=answers,
+            at=offset + match.start(),
         ))
 
     return items

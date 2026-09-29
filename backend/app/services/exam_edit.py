@@ -24,7 +24,7 @@ from app.models.db import (
 
 #: Fields on an item that may be corrected, and how their value is stored in
 #: the revision log (which is text, so options are recorded as they read).
-ITEM_FIELDS = {"stem", "options", "correct_answer", "answer_order", "transcript", "meta"}
+ITEM_FIELDS = {"stem", "options", "correct_answer", "answer_order", "transcript", "passage", "meta"}
 PROBLEM_FIELDS = {"passage", "passage_translation", "instruction", "transcript"}
 
 REPORT_KINDS = {"wrong_answer", "typo", "missing", "other"}

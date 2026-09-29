@@ -18,7 +18,7 @@ from dataclasses import asdict, dataclass, field
 from app.services.exam_answer_reader import read_answer_sheet
 from app.services.exam_answers import parse_booklet_table, parse_explanations
 from app.services.exam_canonical import (
-    CanonicalItem, CanonicalPaper, CanonicalSection,
+    CanonicalItem, CanonicalPaper, CanonicalSection, Provenance,
 )
 from app.services.exam_categories import part_of_type, type_by_number
 from app.services.exam_clean import clean, clean_paper
@@ -437,6 +437,12 @@ def _picture_the_unreadable(paper: CanonicalPaper, data: bytes, report: IngestRe
         )
 
 
+def _where_read(source, slot):
+    """The file and page a 番 was read from."""
+    return Provenance(source=source.filename,
+                      page=page_of(source.page_starts, slot.at))
+
+
 def _fill_listening(paper: CanonicalPaper, sources: list[Source], report: IngestReport) -> None:
     """Put the listening questions and dialogue onto the paper."""
     from app.services.exam_listening import parse_listening, pick_transcript_source
@@ -474,18 +480,27 @@ def _fill_listening(paper: CanonicalPaper, sources: list[Source], report: Ingest
         # A 問題 the paper printed nothing for has no items at all yet.
         if not problem.items:
             for seq, slot in enumerate(slots, 1):
+                here = _where_read(source, slot)
                 problem.items.append(CanonicalItem(
                     num=seq, seq=seq, stem="", options=dict(slot.options),
                     correct_answer=slot.answer, transcript=slot.transcript,
                     votes={f"{source.filename}·听力原文": slot.answer} if slot.answer else {},
+                    # Nothing of it is on the question paper, so the booklet
+                    # is where the question itself was read, too.
+                    provenance=here, script=_where_read(source, slot),
                 ))
                 added += 1
             continue
 
         for item, slot in zip(problem.items, slots):
             item.transcript = slot.transcript
+            item.script = _where_read(source, slot)
             if not item.options and slot.options:
                 item.options = dict(slot.options)
+                # The paper printed no options for this one — 問題3 and 4
+                # print only 「1番 2番…」 — so its page shows nothing of the
+                # question, and the booklet is where it was read.
+                item.provenance = _where_read(source, slot)
             if not item.correct_answer and slot.answer:
                 item.correct_answer = slot.answer
             if slot.answer:

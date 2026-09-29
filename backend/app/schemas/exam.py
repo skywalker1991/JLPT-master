@@ -48,6 +48,9 @@ class ItemSchema(BaseModel):
     #: hunt through forty of them.
     source_file: str | None = None
     source_page: int | None = None
+    #: 聴解 only: where the dialogue and its answer were read.
+    script_file: str | None = None
+    script_page: int | None = None
     #: What each source said, keyed by the file it came from — the evidence
     #: behind the answer.
     answer_votes: dict | None = None

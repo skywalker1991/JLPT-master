@@ -200,6 +200,9 @@ export interface ItemSchema {
   /** Where it was read from, so the page can be opened rather than hunted. */
   source_file?: string | null
   source_page?: number | null
+  /** 聴解 only: where the dialogue and its answer were read. */
+  script_file?: string | null
+  script_page?: number | null
   /** What each source said, keyed by the file it came from. */
   answer_votes?: Record<string, string> | null
   /** 已核对 | 多源一致 | 单源 | 无答案 */
@@ -438,6 +441,8 @@ export interface CanonicalItem {
   votes?: Record<string, string> | null
   /** Which file and page it was read from. */
   provenance?: { source?: string | null; page?: number | null } | null
+  /** 聴解 only: where the dialogue and its answer were read. */
+  script?: { source?: string | null; page?: number | null } | null
 }
 
 export interface CanonicalProblem {

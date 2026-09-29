@@ -67,6 +67,11 @@ class CanonicalItem:
     #: both in the wrong order and with the wrong characters.
     page_image: str | None = None
     provenance: Provenance = field(default_factory=Provenance)
+    #: 聴解 only: where the dialogue and its answer were read, which is the
+    #: 解析 booklet and not the question paper. Kept apart from `provenance`
+    #: because a listening question can come from both — the paper prints
+    #: 問題1's options, the booklet prints what is said.
+    script: Provenance = field(default_factory=Provenance)
 
 
 @dataclass
@@ -153,6 +158,10 @@ def from_dict(data: dict) -> CanonicalPaper:
             provenance=Provenance(
                 source=prov.get("source"), page=prov.get("page"),
                 extractor=prov.get("extractor"),
+            ),
+            script=Provenance(
+                source=(raw.get("script") or {}).get("source"),
+                page=(raw.get("script") or {}).get("page"),
             ),
         )
 

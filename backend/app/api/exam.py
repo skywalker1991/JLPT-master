@@ -24,7 +24,7 @@ from app.schemas.exam import (
 from app.services.llm.factory import get_llm_client
 from app.services import exam_edit
 from app.services.exam_listening import dialogue_for
-from app.services.exam_rulings import RULED, RULED_FIELDS, record, with_ruling
+from app.services.exam_rulings import PROBLEM_FIELDS, RULED, RULED_FIELDS, record, with_ruling
 from app.services.tts import TTSUnavailable, speak
 
 logger = logging.getLogger(__name__)
@@ -911,6 +911,8 @@ async def build_paper_detail(
                     # far it is to be trusted; answering is told none of it.
                     source_file=i.source_file if with_answers else None,
                     source_page=i.source_page if with_answers else None,
+                    script_file=i.script_file if with_answers else None,
+                    script_page=i.script_page if with_answers else None,
                     answer_votes=i.answer_votes if with_answers else None,
                     confidence=confidence_of(i) if with_answers else None,
                     media=[ExamMediaItem(id=m.id, url=m.url or f"/api/media/{m.id}",
@@ -1726,8 +1728,27 @@ async def edit_item(item_id: UUID, body: dict, db: AsyncSession = Depends(get_db
     """Correct one question. Scoped to the item so the paper is not rebuilt
     and attempt history keeps pointing at the same rows."""
     note = body.pop("note", None)
+
+    # A passage printed once for several questions is one passage however
+    # many of them hold a copy: put right on one, put right on all, or the
+    # next question shows the misread that was just fixed.
+    siblings = []
+    if "passage" in body:
+        current = await db.get(ExamItem, item_id)
+        if current is not None and current.passage:
+            siblings = (await db.execute(
+                select(ExamItem).where(
+                    ExamItem.problem_id == current.problem_id,
+                    ExamItem.id != current.id,
+                    ExamItem.passage == current.passage,
+                )
+            )).scalars().all()
+
     item, revisions = await exam_edit.apply_item_edit(db, item_id, body, note=note)
     await _record_decision(db, item, revisions, note)
+    for other in siblings:
+        _, more = await exam_edit.apply_item_edit(db, other.id, {"passage": body["passage"]}, note=note)
+        await _record_decision(db, other, more, note)
     await db.commit()
     return {
         "id": str(item.id),
@@ -1741,7 +1762,19 @@ async def edit_item(item_id: UUID, body: dict, db: AsyncSession = Depends(get_db
 
 @router.patch("/exam/problems/{problem_id}")
 async def edit_problem(problem_id: UUID, body: dict, db: AsyncSession = Depends(get_db)):
+    """Correct what a 問題 prints once — its passage, its instruction — and
+    keep it as a ruling with no question number, so it outlives the paper."""
+    note = body.pop("note", None)
     problem = await exam_edit.apply_problem_edit(db, problem_id, body)
+    section = await db.get(ExamSection, problem.section_id)
+    paper = await db.get(ExamPaper, section.paper_id) if section else None
+    if section and paper and paper.source:
+        for field in body:
+            if field in PROBLEM_FIELDS:
+                await record(db, level=paper.level, sitting=paper.source,
+                             section=section.name, problem_name=problem.name, num=None,
+                             field=field, value=getattr(problem, field),
+                             reason=note or "在题库界面上修改")
     await db.commit()
     return {
         "id": str(problem.id),

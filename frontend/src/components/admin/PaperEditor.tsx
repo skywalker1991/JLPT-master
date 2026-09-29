@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Check, Loader2 } from 'lucide-react'
-import { editExamItem, getBankPaper } from '../../services/api'
-import { Confidence, SourcePage } from './Provenance'
-import Passage from '../exam/Passage'
+import { editExamItem, editExamProblem, getBankPaper } from '../../services/api'
+import { Confidence, SourcePages } from './Provenance'
+import RuledText from './RuledText'
 import QuestionText from '../exam/QuestionText'
 import type { ExamPaperDetail, ItemSchema } from '../../types'
 
@@ -30,6 +30,11 @@ export default function PaperEditor({ paperId }: { paperId: string }) {
       .catch(() => setPaper(null))
       .finally(() => setLoading(false))
   }, [paperId])
+
+  // After a ruling, without the spinner: a correction to a shared passage
+  // lands on every question holding it, and the page has to show that
+  // without losing the reader's place.
+  const reload = async () => setPaper(await getBankPaper(paperId))
 
   if (loading) {
     return (
@@ -73,11 +78,16 @@ export default function PaperEditor({ paperId }: { paperId: string }) {
                       text beside it is the same notice flattened, and the
                       arrangement is what the question is about. */}
                   {problem.passage && problem.media.length === 0 && (
-                    <details className="rounded-lg border border-border">
-                      <summary className="px-3 py-1.5 text-xs text-fg-muted cursor-pointer">文章</summary>
-                      <Passage text={problem.passage}
-                               className="px-3 pb-2.5 text-xs text-fg-muted leading-relaxed whitespace-pre-wrap" />
-                    </details>
+                    <RuledText
+                      label="文章"
+                      text={problem.passage}
+                      onSave={async (next, reason) => {
+                        await editExamProblem(problem.id, {
+                          passage: next, ...(reason ? { note: reason } : {}),
+                        })
+                        await reload()
+                      }}
+                    />
                   )}
                   {/* 情報検索 keeps the printed page: the arrangement is
                       what the question asks about, so it is the thing to
@@ -92,8 +102,26 @@ export default function PaperEditor({ paperId }: { paperId: string }) {
                       ))}
                     </div>
                   )}
-                  {problem.items.map(item => (
-                    <ItemRow key={item.id} item={item} type={problem.type} />
+                  {problem.items.map((item, i) => (
+                    <div key={item.id} className="space-y-2">
+                      {/* 問題8 prints four unrelated passages under one heading
+                          and 問題9 three, so a text belongs to its questions
+                          rather than to the 問題 — shown once for the run of
+                          questions that share it. */}
+                      {item.passage && item.passage !== problem.items[i - 1]?.passage && (
+                        <RuledText
+                          label={`文章（第 ${item.num} 题起）`}
+                          text={item.passage}
+                          onSave={async (next, reason) => {
+                            await editExamItem(item.id, {
+                              passage: next, ...(reason ? { note: reason } : {}),
+                            })
+                            await reload()
+                          }}
+                        />
+                      )}
+                      <ItemRow item={item} type={problem.type} onSaved={reload} />
+                    </div>
                   ))}
                 </div>
               ))}
@@ -105,18 +133,33 @@ export default function PaperEditor({ paperId }: { paperId: string }) {
   )
 }
 
-function ItemRow({ item, type }: { item: ItemSchema; type: string }) {
+function ItemRow({
+  item, type, onSaved,
+}: { item: ItemSchema; type: string; onSaved: () => Promise<void> }) {
   const [answer, setAnswer] = useState(item.correct_answer ?? '')
+  const [stem, setStem] = useState(item.stem ?? '')
+  const [opts, setOpts] = useState<Record<string, string>>(item.options ?? {})
+  const [transcript, setTranscript] = useState(item.transcript ?? '')
+  const [editing, setEditing] = useState(false)
+  // Why. A ruling kept without its reason cannot be checked when it is met
+  // again — and every ruling here is met again at every re-import.
+  const [reason, setReason] = useState('')
   const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
 
-  async function save(next: string) {
-    setAnswer(next)
+  const changes: Record<string, unknown> = {}
+  if (answer !== (item.correct_answer ?? '')) changes.correct_answer = answer || null
+  if (stem !== (item.stem ?? '')) changes.stem = stem
+  if (JSON.stringify(opts) !== JSON.stringify(item.options ?? {})) changes.options = opts
+  if (transcript !== (item.transcript ?? '')) changes.transcript = transcript
+  const dirty = Object.keys(changes).length > 0
+
+  async function save() {
     setSaving(true)
-    setSaved(false)
     try {
-      await editExamItem(item.id, { correct_answer: next })
-      setSaved(true)
+      await editExamItem(item.id, { ...changes, ...(reason.trim() ? { note: reason.trim() } : {}) })
+      setEditing(false)
+      setReason('')
+      await onSaved()
     } catch (e) {
       alert(`保存失败：${(e as Error).message}`)
     } finally {
@@ -125,17 +168,8 @@ function ItemRow({ item, type }: { item: ItemSchema; type: string }) {
   }
 
   return (
-    <div className="rounded-lg px-3 py-2 space-y-1.5 border-l-2 border-transparent hover:bg-bg">
-      {/* 問題8 prints four unrelated passages under one heading and 問題9
-          three, so the text belongs to the question rather than the 問題.
-          Without it the stem asks about something nobody can see. */}
-      {item.passage && (
-        <details className="rounded-lg border border-border">
-          <summary className="px-3 py-1.5 text-xs text-fg-muted cursor-pointer">文章</summary>
-          <Passage text={item.passage}
-                   className="px-3 pb-2.5 text-xs text-fg-muted leading-relaxed whitespace-pre-wrap" />
-        </details>
-      )}
+    <div className={`rounded-lg px-3 py-2 space-y-1.5 border-l-2 ${
+      dirty ? 'border-accent bg-accent-light/20' : 'border-transparent hover:bg-bg'}`}>
       {(item.media ?? []).map(m => (
         <a key={m.id} href={m.url} target="_blank" rel="noreferrer">
           <img src={m.url} alt={m.caption ?? ''}
@@ -152,7 +186,7 @@ function ItemRow({ item, type }: { item: ItemSchema; type: string }) {
         {OPTS.filter(k => k in item.options).map(k => (
           <button
             key={k}
-            onClick={() => save(k)}
+            onClick={() => setAnswer(k === answer ? '' : k)}
             className={`font-jp text-xs text-left transition-colors ${
               k === answer ? 'text-success font-semibold' : 'text-fg-muted hover:text-fg'
             }`}
@@ -160,25 +194,92 @@ function ItemRow({ item, type }: { item: ItemSchema; type: string }) {
             <span className="font-sans font-bold mr-1">{k}</span>{item.options[k]}
           </button>
         ))}
-
         {/* 並べ替え is scored on one blank but only makes sense as the whole
             sentence — without the ordering there is no way to see whether the
             marked answer is the right one. */}
         {type === 'sentence_order' && item.answer_order && (
           <span className="font-sans text-xs text-fg-subtle">语序 {item.answer_order}</span>
         )}
-        {saving && <Loader2 className="w-3 h-3 animate-spin text-fg-muted" />}
-        {saved && !saving && (
-          <span className="flex items-center gap-1 text-xs text-success">
-            <Check className="w-3 h-3" />已保存
-          </span>
-        )}
-        <span className="ml-auto"><SourcePage file={item.source_file} page={item.source_page} /></span>
+        <span className="ml-auto flex items-center gap-3">
+          <button onClick={() => setEditing(!editing)}
+                  className="text-xs text-fg-subtle hover:text-accent transition-colors">
+            {editing ? '收起' : '改文字'}
+          </button>
+          <SourcePages file={item.source_file} page={item.source_page}
+                       scriptFile={item.script_file} scriptPage={item.script_page} />
+        </span>
       </div>
+
+      {/* The text as the paper prints it, with the page one click away to
+          check against. Every slot a question can have is offered, not only
+          the ones that were read: an option the text layer lost has nowhere
+          to be typed otherwise. */}
+      {editing && (
+        <div className="pl-5 space-y-1.5">
+          <textarea
+            value={stem}
+            onChange={e => setStem(e.target.value)}
+            rows={Math.max(1, Math.ceil(stem.length / 40))}
+            placeholder="题干"
+            className="w-full bg-bg border border-border rounded px-2 py-1 text-sm font-jp text-fg"
+          />
+          {OPTS.map(k => (
+            <label key={k} className="flex items-center gap-2 text-xs text-fg-muted">
+              <span className="font-bold w-3">{k}</span>
+              <input
+                value={opts[k] ?? ''}
+                placeholder={k in opts ? undefined : '（未读出）'}
+                onChange={e => {
+                  const next = { ...opts, [k]: e.target.value }
+                  if (!e.target.value) delete next[k]
+                  setOpts(next)
+                }}
+                className="flex-1 bg-bg border border-border rounded px-2 py-0.5 text-xs font-jp text-fg"
+              />
+            </label>
+          ))}
+          {item.transcript != null && item.transcript !== '' && (
+            <label className="block text-xs text-fg-muted space-y-1">
+              <span>聴解原文</span>
+              <textarea
+                value={transcript}
+                onChange={e => setTranscript(e.target.value)}
+                rows={Math.min(20, Math.max(4, transcript.split('\n').length + 1))}
+                className="w-full bg-bg border border-border rounded px-2 py-1 text-xs font-jp
+                           text-fg leading-relaxed"
+              />
+            </label>
+          )}
+        </div>
+      )}
+
+      {dirty && (
+        <div className="flex items-center gap-2 pl-5">
+          <input
+            value={reason}
+            onChange={e => setReason(e.target.value)}
+            placeholder={'answer' in changes || 'correct_answer' in changes
+              ? '依据（例：答案页 20-25=432131）' : '依据（例：解析第 25 页原文是「…」）'}
+            className="flex-1 bg-bg border border-border rounded px-2 py-0.5 text-xs text-fg"
+          />
+          <button onClick={() => {
+                    setAnswer(item.correct_answer ?? ''); setStem(item.stem ?? '')
+                    setOpts(item.options ?? {}); setTranscript(item.transcript ?? '')
+                    setReason('')
+                  }}
+                  className="text-xs text-fg-subtle hover:text-fg">撤销</button>
+          <button onClick={save} disabled={saving}
+                  className="text-xs text-accent hover:underline flex items-center gap-1">
+            {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+            判定
+          </button>
+        </div>
+      )}
+
       {/* For 聴解 the dialogue IS the question — the paper prints nothing, and
           the text is filled in from the 解析 booklet. A character count says
           something landed; only the text says it landed on the right 番. */}
-      {item.transcript && (
+      {item.transcript && !editing && (
         <details className="ml-5 rounded-lg border border-border">
           <summary className="px-2.5 py-1 text-xs text-fg-subtle cursor-pointer">
             聴解原文（{item.transcript.length} 字）

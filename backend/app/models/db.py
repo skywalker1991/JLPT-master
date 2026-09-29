@@ -294,6 +294,10 @@ class ExamItem(Base):
     #: opens that file rather than a second copy of it.
     source_file = Column(Text, nullable=True)
     source_page = Column(Integer, nullable=True)
+    #: 聴解 only: where the dialogue and its answer were read — the 解析
+    #: booklet, which is not where the paper printed the question.
+    script_file = Column(Text, nullable=True)
+    script_page = Column(Integer, nullable=True)
     #: What each source said about this answer, keyed by the file it came
     #: from. The evidence, so how far to trust the answer can be read off.
     answer_votes = Column(JSONB, nullable=True)
