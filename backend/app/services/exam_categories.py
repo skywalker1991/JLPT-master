@@ -36,8 +36,11 @@ BY_NUMBER: dict[str, dict[int, str]] = {
 #: arrangement rather than to understand a text. It is the one reading type
 #: that needs the page kept as printed, which is why it is worth telling
 #: apart when the other five are not.
+#: 問題8–12 too: the model reads 2021年12月's and 2024年's as 「unknown」 or
+#: 「reading」, and left so they were filed under a bare 「言語知識」.
 READING_BY_NUMBER: dict[str, dict[int, str]] = {
-    "N1": {13: "info_search"},
+    "N1": {8: "reading_comp", 9: "reading_comp", 10: "reading_comp", 11: "reading_comp",
+           12: "reading_comp", 13: "info_search"},
 }
 
 

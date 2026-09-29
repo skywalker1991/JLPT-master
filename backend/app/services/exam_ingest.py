@@ -162,18 +162,15 @@ async def build_paper(
 def _covers_the_paper(*keys, expected: int | None = None) -> bool:
     """Whether the text sources already answer the written half.
 
-    Orderings count: 並べ替え is the one thing a 解析 booklet often omits, and
-    a paper missing only those is still worth looking at a scan for.
+    Orderings are not required: an answer table prints the ★ digit for each
+    並べ替え, which answers it (see merge). Requiring them sent 2023年12月 to
+    a model looking at a scan of Chinese explanations for an answer sheet,
+    with a complete key already in hand.
     """
     written: set[int] = set()
-    orders: set[int] = set()
     for key in keys:
-        if key is None:
-            continue
-        written |= set(key.written)
-        orders |= set(key.orders)
-    if not orders:
-        return False
+        if key is not None:
+            written |= set(key.written)
     return expected is not None and len(written) >= expected
 
 
@@ -667,15 +664,22 @@ async def ingest(
     if explanations is not None:
         explanation_key = parse_explanations(explanations.text)
         explanation_key.origin = explanations.filename
-        grid_key = parse_booklet_table(explanations.text, counts)
+        # From whichever booklet has one, not only the one picked for its
+        # 正解: 2023年12月's table is in 版本1, and 版本3 won the pick.
+        tables = [
+            (key, source) for source in sources if source.role is Role.EXPLANATIONS
+            for key in [parse_booklet_table(source.text, counts)] if key is not None
+        ]
+        grid_key, grid_source = max(tables, key=lambda t: len(t[0].written), default=(None, None))
         if grid_key is not None:
-            grid_key.origin = explanations.filename
+            grid_key.origin = grid_source.filename
             # The same booklet, read twice. Said plainly, because reported as
             # a third source it reads as corroboration and it is not: a file
             # agreeing with itself says only that it is consistent.
-            report.notes.append(
-                f"{explanations.filename} 开头也有答案表；与逐题正解同属一个文件，不算独立来源"
-            )
+            if grid_source is explanations:
+                report.notes.append(
+                    f"{explanations.filename} 开头也有答案表；与逐题正解同属一个文件，不算独立来源"
+                )
 
     sheet_key = None
     sheet = _pick(sources, Role.ANSWER_SHEET)
