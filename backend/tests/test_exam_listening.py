@@ -243,3 +243,10 @@ def test_options_are_read_however_the_booklet_lays_them_out():
     unnumbered = "男：…\n女の人は何について話していますか。\n新しい店\n古い店\n近い店\n遠い店"
     assert _options_and_transcript(unnumbered) == ({"1": "新しい店", "2": "古い店", "3": "近い店", "4": "遠い店"},
                                                    "男：…\n女の人は何について話していますか。")
+
+
+def test_an_answer_printed_in_the_transcript_is_taken_out_but_dialogue_is_not():
+    from app.services.exam_listening import _clean
+    text = ("男：でも、今はこの会社に入って正解だったって思ってるよ。\n正解３\n、正解：3\n質問 1 正解 2\n"
+            "正解 質問1：3 質問2：2\n答え：『ネオ銀行の再生』\nF：「正解!」と言いたいとこだけど")
+    assert _clean(text) == "男：でも、今はこの会社に入って正解だったって思ってるよ。\nF：「正解!」と言いたいとこだけど"

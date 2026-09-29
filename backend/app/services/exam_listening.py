@@ -406,7 +406,7 @@ def _options_and_transcript(body: str) -> tuple[dict[str, str], str]:
     概要理解, where the options are only given afterwards, so they follow the
     transcript. Assuming one order empties the transcript of every 問題3.
     """
-    lines = split_option_lines([l for l in body.split("\n") if l.strip()])
+    lines = split_option_lines([l.replace("__", "") for l in body.split("\n") if l.strip()])
 
     leading, taken = _take_options(lines)
     if len(leading) >= MIN_OPTIONS:
@@ -442,8 +442,24 @@ def _take_answers(body: str) -> tuple[list[str], str]:
     return answers, "\n".join(kept)
 
 
+#: An answer the booklet printed that the answer-line pattern did not take:
+#: 「正解３」「、正解：3」「質問 1 正解 2」「正解 質問1：3 質問2：2」
+#: 「答え：『ネオ銀行の再生』」. Left in, the transcript tells the learner the
+#: answer. Only a whole line that is the label — dialogue saying 「入って正解
+#: だった」 or 「『正解!』と言いたい」 is not one.
+_LEAKED_ANSWER = re.compile(
+    r"^[^\S\n]*[、,]?[^\S\n]*(?:[0-9０-９]+[^\S\n]*番[^\S\n]*)?"
+    r"(?:[質质][問问][^\S\n]*[0-9０-９一二][^\S\n]*[：:]?[^\S\n]*)?"
+    r"(?:正解|答え|答案)(?:[^\S\n]*[：:]|[^\S\n]+|(?=[0-9０-９]))"
+)
+
+
 def _clean(transcript: str) -> str:
-    return "\n".join(l for l in transcript.split("\n") if not _is_page_number(l))
+    # The underline marker is for 読み and 言い換え stems; 2022年12月's 解析
+    # underlines the grammar point in each 問題4 line, which is no part of
+    # what is heard.
+    return "\n".join(l.replace("__", "") for l in transcript.split("\n")
+                     if not _is_page_number(l) and not _LEAKED_ANSWER.match(l))
 
 
 #: How a 問題 heading is written where the booklet does not use digits:
