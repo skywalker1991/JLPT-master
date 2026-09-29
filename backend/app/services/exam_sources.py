@@ -56,9 +56,11 @@ _EXPLANATION_MARKERS = (
     re.compile(r"解析\s*[：:]"),
 )
 #: The grid: ranges with their digits printed underneath.
+#: Or a row of bracketed numbers over a row of digits — 2023年07月's key.
 _SHEET_MARKERS = (
     re.compile(r"\d+\s*-\s*\d+"),
     re.compile(r"^[\s|｜]*[1-4]{4,}[\s|｜]*$", re.M),
+    re.compile(r"^(?:\s*[（(]\s*\d{1,2}\s*[)）]){5,}\s*$", re.M),
 )
 
 

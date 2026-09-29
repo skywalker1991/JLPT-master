@@ -77,6 +77,9 @@ def parse_answer_sheet(text: str, listening_counts: dict[int, int] | None = None
     answers are simply printed as "32312 32131 321" — so without them the
     digits cannot be split reliably.
     """
+    if len(_LABEL_ROW.findall(text)) >= 4:
+        return _parse_label_rows(text, listening_counts)
+
     key = AnswerKey()
 
     # 排序題 answers ("36→1423") are digits too, and belong to a different
@@ -105,6 +108,52 @@ def parse_answer_sheet(text: str, listening_counts: dict[int, int] | None = None
 #: 「1-6・1 分/题」 has one. A slash parts the two answers of 問題5's
 #: two-question 番: 2012年12月 ends its sheet 「33 2/1」.
 _ANSWER_RUN = r"[1-4]{2,}(?:(?:[^\S\n]+|[^\S\n]*/[^\S\n]*)[1-4]+)*(?![0-9])"
+
+
+#: 2023年07月's key: a row of 「(1) (2) …」, a row naming the 問題, a row of
+#: single digits under them. Written numbers run straight through; 聴解's
+#: start again at (1) in every 問題.
+_LABEL = re.compile(r"[（(]\s*(\d{1,2})\s*[)）]")
+_LABEL_ROW = re.compile(r"^(?:\s*[（(]\s*\d{1,2}\s*[)）])+\s*$", re.M)
+_DIGIT_ROW = re.compile(r"^\s*[1-4](?:\s+[1-4])*\s*$")
+_LISTENING_PART = re.compile(r"[听聴][解力]")
+
+
+def _parse_label_rows(text: str, counts: dict[int, int] | None) -> AnswerKey:
+    key = AnswerKey()
+    labels: list[int] = []
+    problems: list[int] = []
+    listening = False
+    for line in text.split("\n"):
+        if _LISTENING_PART.search(line) and not _LABEL.search(line):
+            listening = True
+        if _LABEL_ROW.match(line):
+            labels = [int(n) for n in _LABEL.findall(line)]
+            problems = []
+        elif _LISTENING_GROUP.search(line) and not _DIGIT_ROW.match(line):
+            problems += [int(n) for n in _LISTENING_GROUP.findall(line)]
+        elif _DIGIT_ROW.match(line) and labels:
+            digits = line.split()
+            if not listening:
+                for num, digit in zip(labels, digits):
+                    key.written[num] = digit
+            else:
+                # Runs of labels, each starting again at (1), one per 問題
+                # named above them. The paper's count wins over the labels:
+                # 問題5's last 番 asks two questions under one label.
+                runs: list[list[int]] = []
+                for num in labels:
+                    if num == 1 or not runs:
+                        runs.append([])
+                    runs[-1].append(num)
+                position = 0
+                for group, run in zip(problems, runs):
+                    width = (counts or {}).get(group, len(run))
+                    for index, digit in enumerate(digits[position:position + width], start=1):
+                        key.listening[(group, index)] = digit
+                    position += width
+            labels, problems = [], []
+    return key
 
 
 def _allocate_ranges(text: str, key: AnswerKey) -> None:

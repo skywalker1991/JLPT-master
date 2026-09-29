@@ -308,3 +308,19 @@ def test_the_two_answers_of_a_two_question_ban_are_both_read():
     )
     assert [key.listening[(5, n)] for n in range(1, 5)] == ["3", "3", "2", "1"]
     assert key.listening[(4, 14)] == "2"
+
+
+def test_a_key_printed_as_bracketed_labels_over_digits():
+    """2023年07月: 「(1) (2) …」 over the 問題 names over the digits; 聴解
+    restarts at (1), and 問題5's last label asks two questions."""
+    from app.services.exam_answers import parse_answer_sheet
+    text = (
+        "2023年7月日语能力考试N1真题答案\n词汇.语法\n"
+        "（1） （2） （3）\n问题1\n4 1 3\n"
+        "(4) (5)\n问题2\n4 2\n"
+        "(6) (7) (8) (9) (10)\n问题3\n1 1 2 3 4\n"
+        "听解\n(1) (2) (1) (2)\n问题4 问题5\n2 1 1 3 4\n"
+    )
+    key = parse_answer_sheet(text, {4: 2, 5: 3})
+    assert "".join(key.written[n] for n in range(1, 11)) == "4134211234"
+    assert [key.listening[(5, n)] for n in (1, 2, 3)] == ["1", "3", "4"]
