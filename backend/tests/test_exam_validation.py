@@ -197,33 +197,36 @@ def test_baseline_key_names_the_booklet():
     assert baseline_key({"name": "問題1", "type": "kanji_reading"}) == "筆記/問題1"
 
 
-# --- the shape the 公式問題集 prints -------------------------------------------
+# --- the numbering ---------------------------------------------------------
 
-def test_a_written_問題_is_held_to_the_official_count():
-    """問題1 of N1 holds six questions on the real paper. The reprints are
-    retyped by hand, so a count learned from thirty of them learns their
-    mistakes; this is read off the 公式問題集."""
+def test_a_gap_in_the_numbering_is_a_question_that_did_not_make_it():
     short = paper(section("言語知識",
-                          problem("問題1", "kanji_reading", [item(i) for i in range(1, 6)])))
+                          problem("問題1", "kanji_reading",
+                                  [item(1), item(2), item(4)])))
     assert not validate(short).clean
-    full = paper(section("言語知識",
-                         problem("問題1", "kanji_reading", [item(i) for i in range(1, 7)])))
-    assert validate(full).clean
 
 
-def test_聴解_is_allowed_the_番_a_sitting_actually_printed():
-    """問題2 runs six or seven from one sitting to the next, so only a real
-    gap is worth a word."""
-    six = paper(section("聴解", problem("問題2", "listening",
-                                       [item(i, options=4) for i in range(1, 7)])))
-    assert validate(six).clean
-    three = paper(section("聴解", problem("問題2", "listening",
-                                         [item(i, options=4) for i in range(1, 4)])))
-    assert not validate(three).clean
+def test_a_repeat_is_a_question_read_twice():
+    twice = paper(section("言語知識",
+                          problem("問題1", "kanji_reading",
+                                  [item(1), item(2), item(2)])))
+    assert not validate(twice).clean
 
 
-def test_a_level_with_no_official_paper_is_not_second_guessed():
-    other = paper(section("言語知識",
-                          problem("問題1", "kanji_reading", [item(1), item(2)])))
-    other["level"] = "N3"
-    assert validate(other).clean
+def test_an_unbroken_run_passes_whatever_length_it_is():
+    """N1's written half is not a constant — 70 questions up to 2018, 69 and
+    68 either side of 2020, 66 from 2022. Held to one era's shape, every
+    sitting after it reads as missing questions."""
+    for length in (5, 66, 70):
+        run = paper(section("言語知識",
+                            problem("問題1", "kanji_reading",
+                                    [item(i) for i in range(1, length + 1)])))
+        assert validate(run).clean, length
+
+
+def test_聴解_numbering_is_not_held_to_it():
+    """It starts over inside every 問題, so it is full of repeats by design."""
+    listening = paper(section("聴解",
+                              problem("問題1", "listening", [item(1), item(2)]),
+                              problem("問題2", "listening", [item(1), item(2)])))
+    assert validate(listening).clean
