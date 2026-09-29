@@ -81,7 +81,9 @@ _BAN = re.compile(
 #: break — 「正解：3 会社で男の⼈と…」 — so what follows the digits is kept
 #: rather than the whole line being dropped.
 _ANSWER_LINE = re.compile(
-    r"^[^\S\n]*(?:[質质][問问間间]\s*[0-9０-９]\s*[：:]?\s*)?"
+    # A comma may lead: 2024年07月 prints 「6 番、正解：3」, and the heading
+    # takes 「6 番」, leaving 「、正解：3」.
+    r"^[^\S\n]*[、,]?[^\S\n]*(?:[質质][問问間间]\s*[0-9０-９]\s*[：:]?\s*)?"
     r"(?:正解|答案|答え)\s*[：:]\s*([0-9０-９])"
     r"(?:\s*[、,，]\s*([0-9０-９]))?(?=[^\S\n]|$)"
 )
