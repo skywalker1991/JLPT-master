@@ -35,8 +35,10 @@ _SECTION = re.compile(r"[听聴]力\s*(?:原文|文本|解析|原稿)")
 #: 问题 and nothing else, those two headings went unseen and their 番 were
 #: counted under the 問題 before them — thirteen questions in one, none in
 #: the other. A colon may follow the number too, as 2015年12月 writes it.
+#: A short title may follow on the same line — 2010年07月 heads 「問題4
+#: 応答問題」, and missing it put fourteen 番 of 問題4 under 問題3.
 _PROBLEM = re.compile(
-    r"(?:^|\n)\s*[問问][題题]\s*([1-5１-５])\s*(?=[\n。、.：:]|$)"
+    r"(?:^|\n)\s*[問问][題题]\s*([1-5１-５])\s*(?=[\n。、.：:]|$|[^\n]{0,8}問題[^\S\n]*\n)"
 )
 
 #: "1 番" begins a question. The answer may follow on the same line, on the
@@ -50,7 +52,8 @@ _PROBLEM = re.compile(
 #: question whole.
 #: 「1 番」, 「1番：」 — 2020年12月 puts a colon after it. The colon is allowed
 #: but not required, and the particle guard is skipped when one is present,
-#: since 「一番好きな」 never carries one.
+#: since 「一番好きな」 never carries one. Likewise a space: 2010年07月 writes
+#: 「1 番 女の人が…」, which the guard read as 番の and refused.
 #:
 #: 2020年12月's booklet also runs one question into the next without a
 #: break — 「…なければなりませんか。4 番：会社で」 — and a heading only at a
@@ -58,7 +61,7 @@ _PROBLEM = re.compile(
 #: but only with the colon, which 「。3番目の」 in a dialogue never has.
 _BAN = re.compile(
     r"(?:(?:^|\n)\s*|(?<=[。？?])[^\S\n]*(?=[0-9０-９]{1,2}\s*番\s*[：:]))"
-    r"([0-9０-９]{1,2})\s*番(?:\s*[：:]|(?![^\n]{0,2}[はにをがのでと]))"
+    r"([0-9０-９]{1,2})\s*番(?:\s*[：:]|(?=[^\S\n])|(?![^\n]{0,2}[はにをがのでと]))"
 )
 #: An answer line, printed on a line of its own.
 #:
@@ -398,7 +401,10 @@ def parse_listening(text: str) -> list[ListeningItem]:
     def problem_at(position: int) -> int:
         if not problems:
             return 0
-        current = problems[0][1]
+        # Before the first heading is the 問題 before it: 2012年07月 opens
+        # its transcript straight on 「1 番」 and heads only 問題2 onwards,
+        # and counting those six under 問題2 made it thirteen.
+        current = max(problems[0][1] - 1, 1)
         for start, number in problems:
             if start > position:
                 break
@@ -447,6 +453,43 @@ def parse_listening(text: str) -> list[ListeningItem]:
             at=offset + match.start(),
         ))
 
+    return _restart_problems(_drop_quoted_headings(items))
+
+
+def _drop_quoted_headings(items: list[ListeningItem]) -> list[ListeningItem]:
+    """The same 番 twice in a row is a heading quoted in the instructions.
+
+    2018年12月's 問題5 explains itself as 「1 番、2 番 問題用紙に何も…」, and
+    the real 1番 is the one with a dialogue under it.
+    """
+    kept: list[ListeningItem] = []
+    for item in items:
+        if kept and (kept[-1].problem, kept[-1].ban) == (item.problem, item.ban):
+            if len(item.transcript) > len(kept[-1].transcript):
+                kept[-1] = item
+            continue
+        kept.append(item)
+    return kept
+
+
+def _restart_problems(items: list[ListeningItem]) -> list[ListeningItem]:
+    """A 番 numbering that starts again is the next 問題.
+
+    A heading can go unread — 2010年07月 heads 問題3 and then 問題5, and
+    fourteen 番 of 問題4 were counted under 問題3, leaving 問題4 with no
+    dialogue at all. Numbering restarts at 1番 in every 問題, so where it
+    restarts without a heading, one was there.
+    """
+    heading = current = last_ban = None
+    for item in items:
+        if not item.problem:
+            continue
+        if item.problem != heading:           # a heading that was read
+            heading = current = item.problem
+        elif item.ban <= last_ban:            # one that was not
+            current += 1
+        item.problem = current
+        last_ban = item.ban
     return items
 
 

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from dataclasses import asdict, dataclass, field
 
 from app.services.exam_answer_reader import read_answer_sheet
@@ -209,6 +210,9 @@ async def _read_scanned_sheet(
     return None
 
 
+_ASKED = re.compile(r"[質质][問问][\s\x01]*([1-2１２一二])")
+
+
 def _expand(slots: list) -> list:
     """One entry per printed question, rather than per piece of audio.
 
@@ -221,7 +225,10 @@ def _expand(slots: list) -> list:
 
     expanded = []
     for slot in slots:
-        if slot.transcript.count("質問") < 2:
+        # The numbered 「質問１」「質問２」, not the word: 2012年12月's 問題1 4番
+        # talks about 質問項目 twice, was split in two, and every later 番
+        # took its neighbour's dialogue.
+        if len(set(_ASKED.findall(slot.transcript))) < 2:
             expanded.append(slot)
             continue
         # Two questions, two answers — the booklet prints 「質問１正解：１」
@@ -492,7 +499,10 @@ def _fill_listening(paper: CanonicalPaper, sources: list[Source], report: Ingest
         if number is None:
             continue
 
-        slots = _expand([h for h in sorted(heard, key=lambda h: h.ban) if h.problem == number])
+        # In the booklet's order. Sorted by 番, two 問題 read as one interleave
+        # — 3の1番, 4の1番, 3の2番 — and every question takes a stranger's
+        # dialogue.
+        slots = _expand([h for h in heard if h.problem == number])
         if not slots:
             continue
 

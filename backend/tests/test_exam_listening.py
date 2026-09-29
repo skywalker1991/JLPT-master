@@ -128,3 +128,47 @@ def test_a_bare_number_setting_a_scene_heads_a_question_but_an_option_does_not()
               "1、2回ぐらいのものがいいですね。", "32 市役所で男の人と係の人が話しています。", "→M:はい。"]
     bans = [item.ban for item in parse_listening("\n".join(lines))]
     assert bans == list(range(1, 33))
+
+
+def test_a_dialogue_that_says_shitsumon_is_not_two_questions():
+    """2012年12月 問題1 4番 discusses 質問項目 twice; split as a two-question
+    番 it pushed every later dialogue one question down."""
+    from app.services.exam_ingest import _expand
+    from app.services.exam_listening import ListeningItem
+    talk = ListeningItem(problem=1, ban=4, answer="2", options={}, transcript="→M:質問項目を作ります。\\n→F:質問の数は？", answers=[], at=0)
+    pair = ListeningItem(problem=5, ban=3, answer=None, options={}, transcript="→F:…\\n質問１ 女の人は…\\n質問２ 男の人は…", answers=["2", "1"], at=0)
+    assert len(_expand([talk])) == 1
+    assert [s.answer for s in _expand([pair])] == ["2", "1"]
+
+
+def _booklet(*blocks):
+    return "听力文本\n" + "\n".join(blocks)
+
+
+def _ban(n, scene="会社で男の人と女の人が話しています。"):
+    return f"{n} 番 {scene}\n→M:はい。\n→F:ええ。\n答え:1"
+
+
+def test_a_space_after_ban_is_a_heading_even_before_a_particle():
+    """2010年07月: 「1 番 女の人が…」 — the guard read 番の and refused it."""
+    from app.services.exam_listening import parse_listening
+    text = _booklet("問題1", _ban(1, "女の人が電話で話しています。"), _ban(2, "男の人と女の人が話しています。"))
+    assert [i.ban for i in parse_listening(text)] == [1, 2]
+
+
+def test_an_unread_heading_is_found_where_the_numbering_starts_again():
+    """2010年07月's 「問題4 応答問題」 and 2011年07月's missing 問題3 put two
+    問題 under one heading."""
+    from app.services.exam_listening import parse_listening
+    text = _booklet("問題1", _ban(1), _ban(2), "問題4 応答問題", _ban(1), "問題2", _ban(1), _ban(2), _ban(1), _ban(2))
+    assert [(i.problem, i.ban) for i in parse_listening(text)] == [
+        (1, 1), (1, 2), (4, 1), (2, 1), (2, 2), (3, 1), (3, 2)]
+
+
+def test_a_ban_quoted_in_the_instructions_gives_way_to_the_real_one():
+    """2018年12月 問題5: 「1 番、2 番 問題用紙に何も印刷されていません」."""
+    from app.services.exam_listening import parse_listening
+    text = _booklet("問題5", "1 番、2 番\n問題用紙に何も印刷されていません。", _ban(1), _ban(2))
+    items = parse_listening(text)
+    assert [(i.problem, i.ban) for i in items] == [(5, 1), (5, 2)]
+    assert "話しています" in items[0].transcript
