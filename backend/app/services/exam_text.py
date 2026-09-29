@@ -13,6 +13,10 @@ split before that happens rather than read straight across.
 """
 from __future__ import annotations
 
+import hashlib
+import os
+from pathlib import Path
+
 from dataclasses import dataclass
 
 #: Words whose baselines sit within this many points are the same line.
@@ -185,6 +189,38 @@ def page_text(page, *, mark_underlines: bool = True) -> str:
     return text
 
 
+def ocr_dir() -> Path:
+    """Where page transcriptions of scanned PDFs are kept.
+
+    Outside the repository by default in spirit — it holds the papers' own
+    text — so the folder is git-ignored, and EXAM_OCR_DIR can move it.
+    """
+    return Path(os.environ.get("EXAM_OCR_DIR") or Path(__file__).resolve().parents[2] / "data" / "ocr")
+
+
+def pdf_key(data: bytes) -> str:
+    """A scanned file's name in the transcription store: its content, not its
+    filename, which differs between copies of the same scan."""
+    return hashlib.sha256(data).hexdigest()[:16]
+
+
+def transcriptions(data: bytes) -> dict[int, str]:
+    """Pages of a scanned PDF someone has read and typed out, by page number.
+
+    2023年12月 and 2025年07月 exist only as scans. Their pages are read by eye
+    — Claude, looking at each one — and written to `<key>/p007.txt`; from
+    there on a transcribed page is a page with text like any other, and goes
+    through the same splitting, extraction and checks.
+    """
+    folder = ocr_dir() / pdf_key(data)
+    if not folder.is_dir():
+        return {}
+    return {
+        int(path.stem[1:]): path.read_text(encoding="utf-8")
+        for path in folder.glob("p[0-9][0-9][0-9].txt")
+    }
+
+
 def read_pdf(data: bytes) -> list[PageText]:
     """Every page of a PDF, positioned by geometry rather than storage order."""
     import fitz
@@ -195,10 +231,13 @@ def read_pdf(data: bytes) -> list[PageText]:
     fitz.TOOLS.mupdf_display_errors(False)
 
     document = fitz.open(stream=data, filetype="pdf")
+    transcribed = transcriptions(data)
     try:
         pages = []
         for index, page in enumerate(document, start=1):
             text = page_text(page)
+            if not text.strip() and index in transcribed:
+                text = transcribed[index]
             pages.append(PageText(number=index, text=text, has_text_layer=bool(text.strip())))
         return pages
     finally:
