@@ -18,7 +18,6 @@ import json
 import logging
 import re
 import unicodedata
-from collections import Counter
 from dataclasses import dataclass, field
 
 from app.services.exam_canonical import CanonicalItem, CanonicalProblem, Provenance
@@ -312,6 +311,16 @@ BLANK = "【{}】"
 
 _STANDALONE = re.compile(r"(?<![0-9０-９])([0-9０-９]{1,3})(?![0-9０-９])")
 
+#: What follows a number that is a quantity rather than a gap. A gap stands in
+#: for a word or a phrase, so what comes after it is a particle, a verb or
+#: punctuation — never a counter. 2020年12月's 問題7 has 「明治 42 年作」 a
+#: line before its gap 42, and taking the first 42 marked the year and left
+#: the gap unmarked.
+_COUNTER = re.compile(
+    r"[^\S\n]*(?:年|月|日|時|分|秒|歳|才|人|名|回|度|個|円|本|枚|冊|台|件|階|号|世紀"
+    r"|ページ|頁|％|%|キロ|メートル|グラム|センチ|ミリ|万|億|千|百)"
+)
+
 
 def mark_blanks(problem: CanonicalProblem) -> list[str]:
     """Mark the cloze blanks in a passage, and say which ones are not there.
@@ -328,22 +337,33 @@ def mark_blanks(problem: CanonicalProblem) -> list[str]:
         return []
 
     wanted = set(nums)
-    seen: Counter[int] = Counter()
+    digits = str.maketrans("０１２３４５６７８９", "0123456789")
+
+    # Where each gap is: the first occurrence of its number with no counter
+    # after it — a number with one is usually a year, a date, a count. Usually:
+    # 「さて、42時に」 is a gap that happens to sit before 時, so a counter only
+    # rules an occurrence out when the number also appears without one.
+    plain: dict[int, int] = {}
+    counted: dict[int, int] = {}
+    for match in _STANDALONE.finditer(problem.passage):
+        number = int(match.group(1).translate(digits))
+        if number not in wanted:
+            continue
+        pick = counted if _COUNTER.match(problem.passage, match.end()) else plain
+        pick.setdefault(number, match.start())
+    at = {n: plain.get(n, counted.get(n)) for n in wanted if n in plain or n in counted}
+    chosen = set(at.values())
 
     def replace(match: re.Match) -> str:
-        number = int(match.group(1).translate(str.maketrans("０１２３４５６７８９", "0123456789")))
-        if number not in wanted:
+        if match.start() not in chosen:
             return match.group(0)
-        seen[number] += 1
-        # Only the first: a footnote marker or a figure could repeat the
-        # number later, and the gap is the one printed first.
-        return BLANK.format(number) if seen[number] == 1 else match.group(0)
+        return BLANK.format(int(match.group(1).translate(digits)))
 
     problem.passage = _STANDALONE.sub(replace, problem.passage)
 
     return [
         f"第{num}题：文章里找不到对应的空"
-        for num in nums if not seen[num]
+        for num in nums if num not in at
     ]
 
 

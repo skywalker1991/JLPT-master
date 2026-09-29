@@ -388,3 +388,40 @@ def test_text_with_nothing_to_fold_is_returned_unchanged():
     from app.services.exam_clean import clean
     text = "この店のハンバーガーは、値段は多少高めだ。"
     assert clean(text) is text
+
+
+def test_a_number_with_a_counter_after_it_is_not_a_gap():
+    """2020年12月's 問題7 prints 「明治 42 年作」 a line before its gap 42.
+    Taking the first 42 marked the year and left the gap bare."""
+    from app.services.exam_canonical import CanonicalItem, CanonicalProblem
+    from app.services.exam_extract import mark_blanks
+    problem = CanonicalProblem(
+        name="問題7", type="passage_fill", seq=1,
+        passage="「春のおとずれ」（明治 42 年作）を読んだ。\n知人の一人が 42 言った。",
+        items=[CanonicalItem(num=42, seq=1)],
+    )
+    assert mark_blanks(problem) == []
+    assert "明治 42 年作" in problem.passage
+    assert "知人の一人が 【42】 言った" in problem.passage
+
+
+def test_a_gap_that_sits_before_a_counter_is_still_a_gap():
+    """2016年12月's gap 42 reads 「さて、 42 時に」 — 時 after it, and no other
+    42 in the passage. Ruling out every number before a counter lost it."""
+    from app.services.exam_canonical import CanonicalItem, CanonicalProblem
+    from app.services.exam_extract import mark_blanks
+    problem = CanonicalProblem(
+        name="問題7", type="passage_fill", seq=1,
+        passage="こんな具合だった。\nさて、 42 時に、当然のことながら",
+        items=[CanonicalItem(num=42, seq=1)],
+    )
+    assert mark_blanks(problem) == []
+    assert "さて、 【42】 時に" in problem.passage
+
+
+def test_a_dash_the_text_layer_struck_through_is_a_dash_again():
+    """A dash drawn as a line comes out as strike-through marks, which strike
+    through whatever they land on."""
+    from app.services.exam_clean import clean
+    assert clean("「奇なり」\u0336\u0336\u0336\u0336と言われる") == "「奇なり」――と言われる"
+    assert clean("０２４\u0336８８１\u0336６４５６") == "０２４－８８１－６４５６"

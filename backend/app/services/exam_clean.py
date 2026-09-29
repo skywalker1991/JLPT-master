@@ -19,6 +19,7 @@ anything.
 """
 from __future__ import annotations
 
+import re
 import unicodedata
 
 #: Kangxi Radicals, and the CJK Radicals Supplement below it. Both exist to
@@ -58,10 +59,38 @@ def _is_radical(char: str) -> bool:
     return any(low <= point <= high for low, high in RADICALS)
 
 
+#: A run of COMBINING LONG STROKE OVERLAY. It is what the text layer makes of
+#: a dash drawn as a line: 「事実は小説よりも奇なり」————と言われる comes
+#: out as 「…奇なり」̶̶̶̶と — four strike-through marks hanging off the
+#: closing quote, which strike through whatever they land on.
+_STROKES = re.compile(r"\u0336+")
+_WIDE_DIGIT = "０１２３４５６７８９"
+
+
+def _dash(match: re.Match) -> str:
+    """What the stroke stood for, told from what is either side of it.
+
+    Between digits it is the hyphen in a telephone number — 「０２４̶８８１
+    ̶６４５６」 — and anywhere else the long dash Japanese sets as 「――」.
+    """
+    text, start, end = match.string, match.start(), match.end()
+    before = text[start - 1] if start else ""
+    after = text[end] if end < len(text) else ""
+    if before.isdigit() and after.isdigit():
+        return "－" if before in _WIDE_DIGIT else "-"
+    return "――"
+
+
 def clean(text: str | None) -> str | None:
-    """The text with radical code points written as the kanji they draw."""
+    """The text written in the characters it is meant to be written in.
+
+    Radical code points as the kanji they draw, and a dash the text layer
+    turned into strike-through marks as the dash it was.
+    """
     if not text:
         return text
+    if "\u0336" in text:
+        text = _STROKES.sub(_dash, text)
     if not any(_is_radical(c) for c in text):
         return text
     return "".join(

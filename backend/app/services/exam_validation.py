@@ -225,6 +225,45 @@ def check_vertical(paper: dict) -> Report:
     return report
 
 
+def unreadable_chars(text: str) -> list[str]:
+    """Characters that cannot be what the page printed.
+
+    A code point Unicode has not assigned, or one from a private-use area,
+    is the text layer mapping a glyph to nothing real: 2020年12月's 問題7
+    has 「荷\u2d75があれだけ」 where the page prints 荷風. One character in
+    the whole bank, and invisible to every other check — it is a character,
+    of the right length, in the right place.
+    """
+    import unicodedata
+    bad = []
+    for ch in text or "":
+        point = ord(ch)
+        if 0xE000 <= point <= 0xF8FF or unicodedata.category(ch) == "Cn":
+            bad.append(ch)
+    return bad
+
+
+def check_characters(paper: dict) -> Report:
+    """Text holding characters the page cannot have printed."""
+    report = Report()
+    for section in paper.get("sections") or []:
+        for problem in section.get("problems") or []:
+            where = problem.get("name") or "?"
+            for field in ("passage", "instruction"):
+                bad = unreadable_chars(problem.get(field) or "")
+                if bad:
+                    report.add("hard", where,
+                               f"{field} 里有无法识别的字符 {bad[0]!r}（U+{ord(bad[0]):04X}），需对照原页改正")
+            for item in problem.get("items") or []:
+                texts = [item.get("stem"), item.get("passage"), item.get("transcript"),
+                         *((item.get("options") or {}).values())]
+                bad = [c for t in texts for c in unreadable_chars(t or "")]
+                if bad:
+                    report.add("hard", f"{where} / 第{item.get('num')}题",
+                               f"有无法识别的字符 {bad[0]!r}（U+{ord(bad[0]):04X}），需对照原页改正")
+    return report
+
+
 def check_numbering(paper: dict) -> Report:
     """Whether the written questions run 1, 2, 3 … without a break.
 
@@ -318,6 +357,7 @@ def validate(paper: dict, baseline: dict[str, dict] | None = None) -> Report:
     report = check_hard(paper)
     report.findings.extend(check_numbering(paper).findings)
     report.findings.extend(check_vertical(paper).findings)
+    report.findings.extend(check_characters(paper).findings)
     report.findings.extend(check_soft(paper, baseline).findings)
     return report
 
