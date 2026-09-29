@@ -723,7 +723,8 @@ async def _apply_adjudications(db: AsyncSession, paper) -> int:
                     if row is None:
                         continue
                     setattr(item, field, decode(field, row.value))
-                    item.answer_votes = with_ruling(item.answer_votes, field, decode(field, row.value))
+                    item.answer_votes = with_ruling(item.answer_votes, field, decode(field, row.value),
+                                                    row.decided_by)
                     db.add(ExamItemRevision(
                         item_id=item.id, field=field,
                         new_value=row.value, source="user",

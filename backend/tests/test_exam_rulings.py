@@ -79,3 +79,17 @@ def test_a_question_ruled_out_is_not_in_the_paper():
     said = _drop_ruled_out(paper, {("聴解", "問題3", 6, "removed"): ("1", "答案只有5题")})
     assert [i.num for i in problem.items] == [1, 2, 3, 4, 5]
     assert said == ["問題3 第6题：按人工判定删除（答案只有5题）"]
+
+
+def test_claudes_answer_is_its_own_vote_and_gives_way_to_a_persons():
+    from app.services.exam_rulings import AI, RULED, with_ruling
+    votes = with_ruling({}, "correct_answer", "3", "claude")
+    assert votes == {AI: "3"}
+    assert with_ruling(votes, "correct_answer", "2") == {RULED: "2"}
+
+
+def test_claudes_answer_shows_as_its_own_confidence():
+    from types import SimpleNamespace
+    from app.api.exam import confidence_of
+    item = SimpleNamespace(answer_votes={"AI作答": "3"}, correct_answer="3")
+    assert confidence_of(item) == "AI作答"

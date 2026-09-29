@@ -273,7 +273,7 @@ def _drop_ruled_out(paper: CanonicalPaper, decided: dict | None) -> list[str]:
             if ruling is None:
                 kept.append(item)
                 continue
-            _value, reason = ruling
+            _value, reason, *_ = ruling
             said.append(f"{problem.name} 第{item.num}题：按人工判定删除"
                         + (f"（{reason}）" if reason else ""))
         problem.items = kept
@@ -297,7 +297,7 @@ def _apply_decided(paper: CanonicalPaper, decided: dict | None, merge) -> list[s
             key = (section.name, problem.name, None, field)
             if key not in decided:
                 continue
-            value, reason = decided[key]
+            value, reason, *_ = decided[key]
             if getattr(problem, field) != value:
                 said.append(f"{problem.name} {field}：按人工判定修改"
                             + (f"（{reason}）" if reason else ""))
@@ -307,7 +307,8 @@ def _apply_decided(paper: CanonicalPaper, decided: dict | None, merge) -> list[s
             key = (section.name, problem.name, item.num, field)
             if key not in decided:
                 continue
-            value, reason = decided[key]
+            value, reason, *rest = decided[key]
+            by = rest[0] if rest else "user"
             if getattr(item, field) != value:
                 said.append(
                     f"{problem.name} 第{item.num}题 {field}：按人工判定改为 {value}"
@@ -317,7 +318,7 @@ def _apply_decided(paper: CanonicalPaper, decided: dict | None, merge) -> list[s
             settled.add(item.num)
             # A ruling is evidence like any other, and the weightiest there
             # is — including a ruling that there is no answer to be had.
-            item.votes = with_ruling(item.votes, field, value)
+            item.votes = with_ruling(item.votes, field, value, by)
     # A dispute somebody has ruled on is no longer a dispute. Left in the
     # findings it asks the same question on every re-import, and the answer
     # has to be given again.

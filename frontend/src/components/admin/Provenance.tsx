@@ -15,6 +15,9 @@ import { sourcePageUrl } from '../../services/api'
 /** The vote a person casts — spelled as the backend spells it. */
 export const RULED = '人工判定'
 
+/** Claude's answer where no file gives one: unchecked, and said so. */
+export const AI = 'AI作答'
+
 /**
  * How far to trust an answer, from the evidence rather than from a score.
  *
@@ -27,6 +30,7 @@ export function confidenceOf(
 ): string {
   const said = votes ?? {}
   if (RULED in said) return '已核对'
+  if (AI in said) return 'AI作答'
   if (!answer) return '无答案'
   const files = new Set(Object.keys(said).map(k => k.split('·')[0]))
   if (files.size === 0) return '来源未记录'
@@ -35,6 +39,7 @@ export function confidenceOf(
 
 const TONE: Record<string, string> = {
   已核对: 'bg-success-light text-success-fg',
+  AI作答: 'bg-purple-100 text-purple-700',
   多源一致: 'bg-accent-light text-accent-fg',
   单源: 'bg-orange-100 text-orange-700',
   无答案: 'bg-danger-light text-danger-fg',

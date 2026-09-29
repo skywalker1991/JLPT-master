@@ -24,7 +24,7 @@ from app.schemas.exam import (
 from app.services.llm.factory import get_llm_client
 from app.services import exam_edit
 from app.services.exam_listening import dialogue_for
-from app.services.exam_rulings import PROBLEM_FIELDS, RULED, RULED_FIELDS, record, with_ruling
+from app.services.exam_rulings import AI, PROBLEM_FIELDS, RULED, RULED_FIELDS, record, with_ruling
 from app.services.tts import TTSUnavailable, speak
 
 logger = logging.getLogger(__name__)
@@ -847,6 +847,8 @@ def confidence_of(item) -> str:
     votes = item.answer_votes or {}
     if RULED in votes:
         return "已核对"
+    if AI in votes:
+        return "AI作答"
     if item.correct_answer is None:
         return "无答案"
     files = {str(k).split("·")[0] for k in votes}

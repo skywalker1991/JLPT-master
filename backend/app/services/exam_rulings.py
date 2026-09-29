@@ -24,6 +24,12 @@ from app.models.db import ExamAdjudication
 #: weightiest of them.
 RULED = "人工判定"
 
+#: The vote cast where no file says the answer and Claude worked it out —
+#: 2019年07月's grammar and reading carry explanations but no 正解. Kept apart
+#: from a person's ruling, so it is never mistaken for one: it is an answer
+#: nobody has checked.
+AI = "AI作答"
+
 #: Where an edit is a judgement about the paper rather than a tidy-up, and so
 #: has to outlive the import it was made on.
 RULED_FIELDS = ("correct_answer", "answer_order", "stem", "transcript", "options", "passage")
@@ -63,7 +69,7 @@ def decode(field: str, text: str | None):
     return text
 
 
-def with_ruling(votes: dict | None, field: str, value) -> dict:
+def with_ruling(votes: dict | None, field: str, value, by: str = "user") -> dict:
     """The votes on a question once a person has ruled on this field.
 
     A ruling of "no answer" counts too — the material simply does not say,
@@ -72,7 +78,10 @@ def with_ruling(votes: dict | None, field: str, value) -> dict:
     """
     votes = dict(votes or {})
     if field in ANSWER_FIELDS:
-        votes[RULED] = "" if value is None else str(value)
+        voter = RULED if by == "user" else AI
+        votes[voter] = "" if value is None else str(value)
+        if voter == RULED:
+            votes.pop(AI, None)     # a person's word replaces Claude's
     return votes
 
 
@@ -82,7 +91,7 @@ def ruled_blank(votes: dict | None) -> bool:
 
 
 async def record(db, *, level: str, sitting: str, section: str, problem_name: str,
-                 num, field: str, value, reason: str | None) -> None:
+                 num, field: str, value, reason: str | None, by: str = "user") -> None:
     """Keep a ruling, replacing any earlier one on the same field."""
     where = dict(level=level, sitting=sitting, section=section,
                  problem_name=problem_name, num=num, field=field)
@@ -92,7 +101,7 @@ async def record(db, *, level: str, sitting: str, section: str, problem_name: st
         db.add(row)
     row.value = encode(field, value)
     row.reason = reason
-    row.decided_by = "user"
+    row.decided_by = by
 
 
 async def load(db, level: str, sitting: str) -> dict:
@@ -104,6 +113,6 @@ async def load(db, level: str, sitting: str) -> dict:
         )
     )).scalars().all()
     return {
-        (r.section, r.problem_name, r.num, r.field): (decode(r.field, r.value), r.reason)
+        (r.section, r.problem_name, r.num, r.field): (decode(r.field, r.value), r.reason, r.decided_by)
         for r in rows
     }
