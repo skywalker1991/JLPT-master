@@ -80,7 +80,10 @@ def merge_answers(
             # Added to rather than replaced: the transcript may already have
             # stated this answer under its 番, and that is evidence too.
             item.votes = {**item.votes, **votes}
-            answer = _settle(votes, f"{problem.name} 第{item.seq}题", report) if group else None
+            # Settled over all of them, the 正解 under the 番 included. Left
+            # out, a transcript saying 2 against a sheet saying 1 was filed as
+            # 1 without a word — nine questions in the bank.
+            answer = _settle(item.votes, f"{problem.name} 第{item.seq}题", report) if group else None
         elif problem.type == "sentence_order":
             item.votes = order_votes.get(item.num, {}) if item.num is not None else {}
             answer = _apply_order(item, orders, report)

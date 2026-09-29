@@ -60,18 +60,35 @@ class Block:
 def _listening_start(text: str) -> int:
     """Where the listening booklet begins, or past the end if there is none.
 
-    Taken from the last marker rather than the first: 聴解 also appears on the
-    cover, listing what the paper contains.
+    The cover lists 聴解 among the paper's parts, so a marker before the first
+    問題 does not count. Nor, if there is no marker after it, is the cover's the
+    one to fall back on: 2025年07月's pages were transcribed without the
+    listening booklet's own cover, the cover's 聴解 was the only one, and
+    every 問題 of the paper was filed under 聴解. The numbering says it
+    instead — 聴解 is where 問題 starts again from 1.
     """
-    matches = list(_LISTENING_MARKER.finditer(text))
-    if not matches:
-        return len(text)
-    # The cover mentions it within the first page or so; the real one follows
-    # the written booklet.
+    first = _HEADING.search(text)
+    floor = first.start() if first else 0
+    matches = [m for m in _LISTENING_MARKER.finditer(text) if m.start() >= floor]
+    # The real one follows the written booklet.
     for match in matches:
         if match.start() > len(text) * 0.5:
             return match.start()
-    return matches[-1].start()
+    restart = _numbering_restart(text)
+    if restart is not None:
+        return restart
+    return matches[-1].start() if matches else len(text)
+
+
+def _numbering_restart(text: str) -> int | None:
+    """The first 問題1 that follows a higher 問題."""
+    highest = 0
+    for match in _HEADING.finditer(text):
+        number = _number(match.group(1))
+        if number == 1 and highest > 1:
+            return match.start()
+        highest = max(highest, number)
+    return None
 
 
 def _reading_start(text: str, limit: int) -> int:
