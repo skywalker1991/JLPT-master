@@ -265,6 +265,29 @@ def check_characters(paper: dict) -> Report:
     return report
 
 
+#: Types whose stem says which word is asked about only by underlining it.
+UNDERLINED_TYPES = ("kanji_reading", "synonym")
+
+
+def check_underlined(paper: dict) -> Report:
+    """A 読み or 言い換え question that does not say which word it asks about.
+
+    The word is marked by a drawn rule, found from the page's geometry; where
+    that fails the stem is a sentence and four readings with nothing tying
+    them together. 34 reached the bank that way before this was checked.
+    """
+    report = Report()
+    for section in paper.get("sections") or []:
+        for problem in section.get("problems") or []:
+            if problem.get("type") not in UNDERLINED_TYPES:
+                continue
+            for item in problem.get("items") or []:
+                if "__" not in (item.get("stem") or ""):
+                    report.add("hard", f"{problem.get('name')} / 第{item.get('num')}题",
+                               "题干没有标出下划线，看不出问的是哪个词；请对照原页用 __词__ 标出")
+    return report
+
+
 def check_numbering(paper: dict) -> Report:
     """Whether the written questions run 1, 2, 3 … without a break.
 
@@ -359,6 +382,7 @@ def validate(paper: dict, baseline: dict[str, dict] | None = None) -> Report:
     report.findings.extend(check_numbering(paper).findings)
     report.findings.extend(check_vertical(paper).findings)
     report.findings.extend(check_characters(paper).findings)
+    report.findings.extend(check_underlined(paper).findings)
     report.findings.extend(check_soft(paper, baseline).findings)
     return report
 

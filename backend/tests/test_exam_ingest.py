@@ -56,7 +56,7 @@ def stub_pipeline(monkeypatch, *, items=2, block_error=None):
         return BlockResult(CanonicalProblem(
             name=block.name, type="kanji_reading", seq=seq,
             items=[
-                CanonicalItem(num=i, seq=i, stem="x",
+                CanonicalItem(num=i, seq=i, stem="__x__",
                               options={str(k): f"選択肢{k}" for k in range(1, 5)})
                 for i in range(1, items + 1)
             ],

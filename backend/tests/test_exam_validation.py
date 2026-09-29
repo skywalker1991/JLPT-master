@@ -14,7 +14,7 @@ from app.services.exam_validation import (
 )
 
 
-def item(num, *, options=4, answer="1", stem="問題文"):
+def item(num, *, options=4, answer="1", stem="__問題__文"):
     return {
         "num": num, "seq": num, "stem": stem,
         "options": {str(i): f"選択肢{i}" for i in range(1, options + 1)},
@@ -268,3 +268,12 @@ def test_a_question_ruled_to_have_no_answer_is_not_asked_about_again():
     unruled = item(1)
     unruled["correct_answer"] = None
     assert not validate(written(unruled)).clean
+
+
+def test_a_reading_question_that_does_not_mark_its_word_is_stopped():
+    """The word asked about is shown only by its underline."""
+    from app.services.exam_validation import check_underlined
+    bare = paper(section("言語知識", problem("問題1", "kanji_reading", [item(1, stem="勇敢に戦う")])))
+    marked = paper(section("言語知識", problem("問題1", "kanji_reading", [item(1, stem="__勇敢__に戦う")])))
+    assert [f.severity for f in check_underlined(bare).findings] == ["hard"]
+    assert check_underlined(marked).findings == []

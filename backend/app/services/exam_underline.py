@@ -13,6 +13,8 @@ matching on "the line is under the glyph" finds nothing.
 """
 from __future__ import annotations
 
+import re
+import unicodedata
 from dataclasses import dataclass
 
 #: A stroke this thin, drawn this flat, is a rule rather than a box edge.
@@ -38,9 +40,10 @@ def _chars(raw):
     for block in raw.get("blocks", []):
         for line in block.get("lines", []):
             for span in line.get("spans", []):
+                shifted = "YuKyo" in span.get("font", "")
                 for char in span.get("chars", []):
                     x0, y0, x1, y1 = char["bbox"]
-                    yield y0, x0, x1, y1, char["c"]
+                    yield y0, x0, x1, y1, char["c"], shifted
 
 MARK = "__"
 
@@ -50,6 +53,8 @@ class Underline:
     x0: float
     x1: float
     y: float
+    #: A rule drawn as a thin rectangle has a top as well as the bottom `y`.
+    top: float | None = None
 
 
 def find_underlines(page) -> list[Underline]:
@@ -64,7 +69,7 @@ def find_underlines(page) -> list[Underline]:
             elif item[0] == "re":
                 rect = item[1]
                 if rect.height < MAX_THICKNESS and rect.width >= MIN_LENGTH:
-                    found.append(Underline(rect.x0, rect.x1, rect.y1))
+                    found.append(Underline(rect.x0, rect.x1, rect.y1, rect.y0))
     return found
 
 
@@ -73,9 +78,32 @@ def underlined_spans(page) -> list[tuple[float, float, float, str]]:
     rules = find_underlines(page)
     if not rules:
         return []
-
-    spans: list[tuple[float, float, float, str]] = []
     raw = page.get_text("rawdict")
+    spans = _spans(rules, raw, touching=False)
+    # 2016年12月 draws its rules as thin rectangles just below the glyphs —
+    # 0.47pt under every box — so none passes through one. Let a rule that
+    # all but touches count, but only where nothing else was found and the
+    # page is one of the underlined-word 問題 (「の言葉」): anywhere else a
+    # rule that close is a table border or a 番 box, 874 times across the set.
+    if not spans and _ASKS_ABOUT_A_WORD.search(_page_words(page)):
+        spans = _spans(rules, raw, touching=True)
+    return spans
+
+
+_ASKS_ABOUT_A_WORD = re.compile(r"の[言⾔]葉")
+
+
+def _page_words(page) -> str:
+    try:
+        text = page.get_text("text")
+    except Exception:
+        return ""
+    return text if isinstance(text, str) else ""
+
+
+def _spans(rules, raw, *, touching: bool) -> list[tuple[float, float, float, str]]:
+    spans: list[tuple[float, float, float, str]] = []
+    chars_all = list(_chars(raw))
     for rule in rules:
         # Characters the stroke actually passes through, keeping only the
         # closest text line: a generous vertical window pulls in the line above
@@ -84,21 +112,32 @@ def underlined_spans(page) -> list[tuple[float, float, float, str]]:
         # belongs to is the one whose boxes contain it. Choosing by distance
         # instead picks the row below whenever the leading is tight — 2018年07月
         # sets 15.6pt, and its rules sit only 2.8pt above the next line.
+        def on_rule(top: float, bottom: float) -> bool:
+            if top <= rule.y <= bottom:
+                return True
+            return touching and rule.top is not None and rule.top - 1.0 <= bottom <= rule.y
         over = [
-            (top, x0, char)
-            for top, x0, x1, bottom, char in _chars(raw)
-            if rule.x0 - 1 <= (x0 + x1) / 2 <= rule.x1 + 1
-            and top <= rule.y <= bottom
+            (top, x0, char, shifted)
+            for top, x0, x1, bottom, char, shifted in chars_all
+            if rule.x0 - 1 <= (x0 + x1) / 2 <= rule.x1 + 1 and on_rule(top, bottom)
         ]
         if not over:
             continue
         row = min(over, key=lambda c: abs(c[0] - rule.y))[0]
-        chars = [(x, c) for top, x, c in over if abs(top - row) < SAME_LINE]
+        chars = [(x, c, sh) for top, x, c, sh in over if abs(top - row) < SAME_LINE]
 
-        text = "".join(c for _, c in sorted(chars)).strip()
+        text = "".join(c for _, c, _ in sorted(chars)).strip()
+        # The page's text is YuKyo-decoded; the phrase has to be too, or
+        # 「透鱖鱫」 is looked for in text that says 透かし (2022年12月, 2024年).
+        if any(sh for _, _, sh in chars):
+            from app.services.exam_text import decode_yukyo
+            text = decode_yukyo(text)
         # Table rules and the boxes around 並べ替え blanks are horizontal too;
-        # what sits over them is a number or nothing, never a word.
-        if not text or text.isdigit() or not any(ch.isalpha() for ch in text):
+        # what sits over them is a number or nothing, never a word. Judged on
+        # the folded form: 2015年12月 writes 糸口 as the radicals 「⽷⼝」,
+        # which are symbols, not letters.
+        folded = unicodedata.normalize("NFKC", text)
+        if not text or folded.isdigit() or not any(ch.isalpha() for ch in folded):
             continue
         spans.append((rule.x0, rule.x1, rule.y, text))
     return spans
@@ -118,7 +157,12 @@ def mark_underlines(page, text: str) -> str:
             continue
         # Only the first occurrence: a word repeated in one stem is underlined
         # where it is being asked about, and that is the one printed first.
-        marked = marked.replace(phrase, f"{MARK}{phrase}{MARK}", 1)
+        at = marked.find(phrase)
+        # Already inside a marked word — 2016年12月 p3 underlines 察して and
+        # 察し — marking it again nests the markers.
+        if at == -1 or marked.count(MARK, 0, at) % 2:
+            continue
+        marked = f"{marked[:at]}{MARK}{phrase}{MARK}{marked[at + len(phrase):]}"
     return marked
 
 
