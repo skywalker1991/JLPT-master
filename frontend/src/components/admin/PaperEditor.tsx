@@ -69,7 +69,10 @@ export default function PaperEditor({ paperId }: { paperId: string }) {
                   </div>
                   {/* Where the questions carry their own texts the 問題 has
                       none — see split_passages. */}
-                  {problem.passage && (
+                  {/* The picture is the passage where there is one — the
+                      text beside it is the same notice flattened, and the
+                      arrangement is what the question is about. */}
+                  {problem.passage && problem.media.length === 0 && (
                     <details className="rounded-lg border border-border">
                       <summary className="px-3 py-1.5 text-xs text-fg-muted cursor-pointer">文章</summary>
                       <Passage text={problem.passage}

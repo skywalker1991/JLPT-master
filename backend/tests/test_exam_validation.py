@@ -230,3 +230,24 @@ def test_聴解_numbering_is_not_held_to_it():
                               problem("問題1", "listening", [item(1), item(2)]),
                               problem("問題2", "listening", [item(1), item(2)])))
     assert validate(listening).clean
+
+
+# --- a page set in columns, read across ----------------------------------------
+
+def test_a_vertical_passage_read_across_is_caught():
+    """2020年12月's 第47題 came out 「の 一 る の の ば 半」 — real characters
+    in an order nobody wrote. Nothing else notices: it is well-formed text of
+    a plausible length, and the question is simply unanswerable."""
+    scrambled = "の 一 る の の ば 半\nは つ の わ ﹁ ﹁ 世 わ\nあ き も し ﹁ 国 ﹂ で"
+    bad = paper(section("読解", problem("問題8", "reading_comp", [item(1)])))
+    bad["sections"][0]["problems"][0]["passage"] = scrambled
+    assert not validate(bad).clean
+
+
+def test_ordinary_prose_is_not_mistaken_for_it():
+    fine = paper(section("読解", problem("問題8", "reading_comp", [item(1)])))
+    fine["sections"][0]["problems"][0]["passage"] = (
+        "現代、恋愛は、通常は部分でしか他者とかかわり合いをもたない個人にとって、"
+        "例外的に全人格と全人格とのぶつかりあいである。"
+    )
+    assert validate(fine).clean

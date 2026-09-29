@@ -496,7 +496,11 @@ export default function ExamSession({
 
         {/* The text these questions are about. 短文填空 asks inside it, so the
             blank being answered is marked; 読解 asks after it. */}
-        {unit.passage && (
+        {/* 情報検索 keeps the printed page, and the flattened text beside it
+            is the same notice with its arrangement lost — which is the half
+            the question asks about. Where the picture is there, it is the
+            passage. */}
+        {unit.passage && !prob.media.some(m => m.caption === '試験用紙のページ') && (
           <Passage
             text={unit.passage}
             active={prob.type === 'passage_fill' ? unit.items[0]?.num : null}

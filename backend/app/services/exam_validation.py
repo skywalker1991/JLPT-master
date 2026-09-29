@@ -177,6 +177,48 @@ def check_hard(paper: dict) -> Report:
     return report
 
 
+#: Punctuation that only exists for vertical setting. Its presence in a
+#: passage means the page was set 縦書き and read across.
+VERTICAL_MARKS = set("﹁﹂﹃﹄︑︒︱︵︶")
+
+
+def looks_vertical(text: str) -> bool:
+    """Whether this text was set in columns and read as though in rows.
+
+    Reading a vertical page row-wise takes one character from each column in
+    turn, so the result is real characters in an order nobody wrote: 「の 一
+    る の の ば 半」. Nothing downstream notices — it is well-formed text of
+    a plausible length, and the question it belongs to is simply
+    unanswerable.
+
+    Two marks of it, and both are needed. The quotes 「」 have their own code
+    points when set vertically, which no horizontal page uses; and a row
+    read across a column layout comes out as single characters separated by
+    spaces, almost all the way through.
+    """
+    if not text:
+        return False
+    marks = sum(1 for c in text if c in VERTICAL_MARKS)
+    import re
+    isolated = len(re.findall(r"(?<=\s)\S(?=\s)", text))
+    return marks > 2 and isolated > len(text) * 0.2
+
+
+def check_vertical(paper: dict) -> Report:
+    """Passages that came out of a vertically set page unreadable."""
+    report = Report()
+    for section in paper.get("sections") or []:
+        for problem in section.get("problems") or []:
+            where = problem.get("name") or "?"
+            if looks_vertical(problem.get("passage") or ""):
+                report.add("hard", where, "文章是竖排的，按横排读成了乱序，无法作答")
+            for item in problem.get("items") or []:
+                if looks_vertical(item.get("passage") or ""):
+                    report.add("hard", f"{where} / 第{item.get('num')}题",
+                               "文章是竖排的，按横排读成了乱序，无法作答")
+    return report
+
+
 def check_numbering(paper: dict) -> Report:
     """Whether the written questions run 1, 2, 3 … without a break.
 
@@ -269,6 +311,7 @@ def check_soft(paper: dict, baseline: dict[str, dict] | None) -> Report:
 def validate(paper: dict, baseline: dict[str, dict] | None = None) -> Report:
     report = check_hard(paper)
     report.findings.extend(check_numbering(paper).findings)
+    report.findings.extend(check_vertical(paper).findings)
     report.findings.extend(check_soft(paper, baseline).findings)
     return report
 
