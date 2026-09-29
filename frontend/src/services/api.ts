@@ -460,6 +460,16 @@ export async function editDraftItem(
   })
 }
 
+/** Correct what a 問題 prints once — its passage, its instruction. */
+export async function editDraftProblem(
+  draftId: string,
+  body: { section: string; problem: string; note?: string } & Record<string, unknown>,
+): Promise<DraftDetail> {
+  return request(`/api/admin/drafts/${draftId}/problems`, {
+    method: 'PATCH', body: JSON.stringify(body),
+  })
+}
+
 export async function confirmDraft(draftId: string): Promise<DraftDetail> {
   return request<DraftDetail>(`/api/admin/drafts/${draftId}/confirm`, { method: 'POST' })
 }

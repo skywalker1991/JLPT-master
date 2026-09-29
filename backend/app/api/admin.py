@@ -385,13 +385,24 @@ async def edit_draft_item(
         )
 
     section, problem, item = hits[0]
-    item.update(changes)
-    for field, value in changes.items():
-        item["votes"] = with_ruling(item.get("votes"), field, value)
-        await record(db, level=canonical.get("level"), sitting=canonical.get("source"),
-                     section=section.get("name"), problem_name=problem_name,
-                     num=item.get("num"), field=field, value=value,
-                     reason=note or "入库前人工修改")
+
+    # A passage printed once for several questions — 問題9's three texts carry
+    # three questions each — is one passage however many questions hold a copy.
+    # Put right on one, it is put right on all of them, or the next question
+    # shows the misread the reviewer has just fixed.
+    targets = [item]
+    if "passage" in changes and item.get("passage"):
+        targets = [other for other in problem.get("items", [])
+                   if other.get("passage") == item.get("passage")]
+
+    for target in targets:
+        target.update(changes)
+        for field, value in changes.items():
+            target["votes"] = with_ruling(target.get("votes"), field, value)
+            await record(db, level=canonical.get("level"), sitting=canonical.get("source"),
+                         section=section.get("name"), problem_name=problem_name,
+                         num=target.get("num"), field=field, value=value,
+                         reason=note or "入库前人工修改")
 
     # The report is about the paper as it was read; it no longer describes this.
     report = deepcopy(draft.report or {})
@@ -399,6 +410,55 @@ async def edit_draft_item(
         f"{problem_name} 第{seq}题已人工判定：{'、'.join(changes)}"
     )
 
+    draft.canonical = canonical
+    draft.report = report
+    await db.commit()
+    await db.refresh(draft)
+    return await _draft_detail(db, draft)
+
+
+@router.patch("/drafts/{draft_id}/problems", response_model=DraftDetail)
+async def edit_draft_problem(
+    draft_id: _uuid.UUID, body: dict, db: AsyncSession = Depends(get_db),
+):
+    """Correct what a 問題 prints once for all its questions, and keep it.
+
+    The passage of 問題7 or 問題10, an instruction, a dialogue stated once:
+    none of them is any one question's, so the ruling is kept with no
+    question number and laid back over the 問題 on every re-import.
+    """
+    from app.services.exam_rulings import PROBLEM_FIELDS, record
+
+    draft = await db.get(ExamDraft, draft_id)
+    if draft is None or not draft.canonical:
+        raise HTTPException(status_code=404, detail="Draft not found or not read yet")
+
+    section_name = body.get("section")
+    problem_name = body.get("problem")
+    note = body.get("note")
+    changes = {k: v for k, v in body.items() if k in PROBLEM_FIELDS}
+    if not (section_name and problem_name and changes):
+        raise HTTPException(status_code=400, detail="Need section, problem and a field")
+
+    canonical = deepcopy(draft.canonical)
+    target = next(
+        (pr for sec in canonical.get("sections", []) if sec.get("name") == section_name
+         for pr in sec.get("problems", []) if pr.get("name") == problem_name),
+        None,
+    )
+    if target is None:
+        raise HTTPException(status_code=404, detail="Problem not found in draft")
+
+    target.update(changes)
+    for field, value in changes.items():
+        await record(db, level=canonical.get("level"), sitting=canonical.get("source"),
+                     section=section_name, problem_name=problem_name, num=None,
+                     field=field, value=value, reason=note or "入库前人工修改")
+
+    report = deepcopy(draft.report or {})
+    report.setdefault("notes", []).append(
+        f"{problem_name} 已人工判定：{'、'.join(changes)}"
+    )
     draft.canonical = canonical
     draft.report = report
     await db.commit()
@@ -619,7 +679,7 @@ async def import_answers(
 # ── Media Upload ──────────────────────────────────────────────────────────────
 
 async def _apply_adjudications(db: AsyncSession, paper) -> int:
-    from app.services.exam_rulings import RULED_FIELDS, decode, with_ruling
+    from app.services.exam_rulings import PROBLEM_FIELDS, RULED_FIELDS, decode, with_ruling
 
     """Lay what a person decided back over a freshly imported paper.
 
@@ -647,6 +707,11 @@ async def _apply_adjudications(db: AsyncSession, paper) -> int:
             select(ExamProblem).where(ExamProblem.section_id == section.id)
         )).scalars().all()
         for problem in problems:
+            for field in PROBLEM_FIELDS:
+                row = by_where.get((section.name, problem.name, None, field))
+                if row is not None:
+                    setattr(problem, field, decode(field, row.value))
+                    done += 1
             items = (await db.execute(
                 select(ExamItem).where(ExamItem.problem_id == problem.id)
             )).scalars().all()

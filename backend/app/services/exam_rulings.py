@@ -26,7 +26,13 @@ RULED = "人工判定"
 
 #: Where an edit is a judgement about the paper rather than a tidy-up, and so
 #: has to outlive the import it was made on.
-RULED_FIELDS = ("correct_answer", "answer_order", "stem", "transcript", "options")
+RULED_FIELDS = ("correct_answer", "answer_order", "stem", "transcript", "options", "passage")
+
+#: The same, for what belongs to a 問題 rather than to one of its questions —
+#: the passage a 問題 prints once for all its questions, its instruction, a
+#: dialogue it states once. Kept with no question number, since it is about
+#: none of them in particular.
+PROBLEM_FIELDS = ("passage", "instruction", "transcript")
 
 #: Fields whose ruling is also a statement about the answer, and so goes
 #: among the votes.

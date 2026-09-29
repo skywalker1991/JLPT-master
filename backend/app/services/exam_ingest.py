@@ -22,7 +22,7 @@ from app.services.exam_canonical import (
 )
 from app.services.exam_categories import part_of_type, type_by_number
 from app.services.exam_clean import clean, clean_paper
-from app.services.exam_rulings import RULED_FIELDS, with_ruling
+from app.services.exam_rulings import PROBLEM_FIELDS, RULED_FIELDS, with_ruling
 from app.services.exam_extract import (
     extract_block_with_retry, mark_blanks, split_passages,
 )
@@ -249,6 +249,17 @@ def _apply_decided(paper: CanonicalPaper, decided: dict | None, merge) -> list[s
         return []
     said: list[str] = []
     settled: set[int | None] = set()
+    # What belongs to the 問題 itself — its passage, its instruction.
+    for section, problem in paper.problems():
+        for field in PROBLEM_FIELDS:
+            key = (section.name, problem.name, None, field)
+            if key not in decided:
+                continue
+            value, reason = decided[key]
+            if getattr(problem, field) != value:
+                said.append(f"{problem.name} {field}：按人工判定修改"
+                            + (f"（{reason}）" if reason else ""))
+            setattr(problem, field, value)
     for section, problem, item in paper.items():
         for field in RULED_FIELDS:
             key = (section.name, problem.name, item.num, field)

@@ -1,7 +1,7 @@
 import { Fragment, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, Check, ChevronDown, Loader2 } from 'lucide-react'
 import clsx from 'clsx'
-import { editDraftItem } from '../../services/api'
+import { editDraftItem, editDraftProblem } from '../../services/api'
 import type { CanonicalItem, DraftDetail } from '../../types'
 import Passage from '../exam/Passage'
 import QuestionText from '../exam/QuestionText'
@@ -143,14 +143,15 @@ export default function DraftReview({
                   {problem.passage && !problem.items.some(i => i.passage) && (
                     // 短文填空's passage IS the questions, so it is open; a
                     // 読解 passage is context and stays folded away.
-                    <details className="rounded-lg border border-border"
-                             open={problem.type === 'passage_fill'}>
-                      <summary className="px-3 py-1.5 text-xs text-fg-muted cursor-pointer">文章</summary>
-                      <Passage
-                        text={problem.passage}
-                        className="px-3 pb-2.5 text-xs text-fg-muted leading-relaxed whitespace-pre-wrap"
-                      />
-                    </details>
+                    <RuledText
+                      label="文章"
+                      text={problem.passage}
+                      open={problem.type === 'passage_fill'}
+                      onSave={async (next, reason) => onUpdated(await editDraftProblem(draft.id, {
+                        section: section.name, problem: problem.name, passage: next,
+                        ...(reason ? { note: reason } : {}),
+                      }))}
+                    />
                   )}
                   {problem.items.length === 0 && (
                     <p data-flagged="1"
@@ -164,15 +165,15 @@ export default function DraftReview({
                         questions. Showing which one a question is about is the
                         only way to see the split went where it should. */}
                     {item.passage && item.passage !== problem.items[i - 1]?.passage && (
-                      <details className="rounded-lg border border-border" open>
-                        <summary className="px-3 py-1.5 text-xs text-fg-muted cursor-pointer">
-                          文章（第 {item.num} 题起）
-                        </summary>
-                        <Passage
-                          text={item.passage}
-                          className="px-3 pb-2.5 text-xs text-fg-muted leading-relaxed whitespace-pre-wrap"
-                        />
-                      </details>
+                      <RuledText
+                        label={`文章（第 ${item.num} 题起）`}
+                        text={item.passage}
+                        open
+                        onSave={async (next, reason) => onUpdated(await editDraftItem(draft.id, {
+                          section: section.name, problem: problem.name, seq: item.seq,
+                          passage: next, ...(reason ? { note: reason } : {}),
+                        }))}
+                      />
                     )}
                     <ItemRow
                       draftId={draft.id}
@@ -213,6 +214,90 @@ export default function DraftReview({
 }
 
 
+/**
+ * A text the paper prints, shown folded, and correctable in place.
+ *
+ * The passage is where extraction goes wrong most quietly — a page read out
+ * of order, a character misread, an option left stranded at the end of a
+ * dialogue — and it is only ever checked by someone reading it against the
+ * page. So it can be put right where it is read, and what is put right is
+ * kept as a ruling with its reason, since the draft it is typed into is
+ * thrown away at the next re-import.
+ */
+function RuledText({
+  label, text, open, onSave,
+}: {
+  label: string
+  text: string
+  open?: boolean
+  onSave: (next: string, reason: string) => Promise<void>
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(text)
+  const [reason, setReason] = useState('')
+  const [saving, setSaving] = useState(false)
+  const changed = draft !== text
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      await onSave(draft, reason.trim())
+      setEditing(false)
+      setReason('')
+    } catch (e) {
+      alert(`保存失败：${(e as Error).message}`)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <details className="rounded-lg border border-border" open={open || editing}>
+      <summary className="px-3 py-1.5 text-xs text-fg-muted cursor-pointer flex items-center gap-2">
+        <span>{label}</span>
+        <button
+          onClick={e => { e.preventDefault(); setDraft(text); setEditing(!editing) }}
+          className="ml-auto text-fg-subtle hover:text-accent transition-colors"
+        >
+          {editing ? '收起' : '改文字'}
+        </button>
+      </summary>
+      {editing ? (
+        <div className="px-3 pb-2.5 space-y-1.5">
+          <textarea
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            rows={Math.min(24, Math.max(4, draft.split('\n').length + 1))}
+            className="w-full bg-bg border border-border rounded px-2 py-1 text-xs font-jp
+                       text-fg leading-relaxed"
+          />
+          {changed && (
+            <div className="flex items-center gap-2">
+              <input
+                value={reason}
+                onChange={e => setReason(e.target.value)}
+                placeholder="依据（例：第 12 页原文是「…」，抽取读错了）"
+                className="flex-1 bg-bg border border-border rounded px-2 py-0.5 text-xs text-fg"
+              />
+              <button onClick={save} disabled={saving}
+                      className="text-xs text-accent hover:underline flex items-center gap-1">
+                {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                判定
+              </button>
+            </div>
+          )}
+        </div>
+      ) : (
+        <Passage
+          text={text}
+          className="px-3 pb-2.5 text-xs text-fg-muted leading-relaxed whitespace-pre-wrap"
+        />
+      )}
+    </details>
+  )
+}
+
+
 function ItemRow({
   draftId, section, problem, type, item, findings, onUpdated,
 }: {
@@ -230,6 +315,7 @@ function ItemRow({
   const [order, setOrder] = useState(item.answer_order ?? '')
   const [stem, setStem] = useState(item.stem ?? '')
   const [opts, setOpts] = useState<Record<string, string>>(item.options ?? {})
+  const [transcript, setTranscript] = useState(item.transcript ?? '')
   const [editing, setEditing] = useState(false)
   // Why. A ruling kept without its reason is a ruling nobody can check when
   // it is looked at again — and it will be, on every re-import.
@@ -239,6 +325,7 @@ function ItemRow({
   const flagged = findings.length > 0 || !item.correct_answer
   const textChanged = stem !== (item.stem ?? '')
     || JSON.stringify(opts) !== JSON.stringify(item.options ?? {})
+    || transcript !== (item.transcript ?? '')
   const dirty = answer !== (item.correct_answer ?? '')
     || order !== (item.answer_order ?? '')
     || textChanged
@@ -252,6 +339,7 @@ function ItemRow({
         ...(order !== (item.answer_order ?? '') ? { answer_order: order || null } : {}),
         ...(stem !== (item.stem ?? '') ? { stem } : {}),
         ...(JSON.stringify(opts) !== JSON.stringify(item.options ?? {}) ? { options: opts } : {}),
+        ...(transcript !== (item.transcript ?? '') ? { transcript } : {}),
         ...(reason.trim() ? { note: reason.trim() } : {}),
       }))
       setEditing(false)
@@ -336,16 +424,36 @@ function ItemRow({
             rows={Math.max(1, Math.ceil(stem.length / 40))}
             className="w-full bg-bg border border-border rounded px-2 py-1 text-sm font-jp text-fg"
           />
-          {OPTS.filter(k => k in opts).map(k => (
+          {/* Every slot the question could have, not only the ones that were
+              read — an option the text layer lost has no field to type into
+              otherwise. Left blank, a slot is not sent. */}
+          {OPTS.filter(k => k in opts || Object.keys(opts).length > 0).map(k => (
             <label key={k} className="flex items-center gap-2 text-xs text-fg-muted">
               <span className="font-bold w-3">{k}</span>
               <input
-                value={opts[k]}
-                onChange={e => setOpts({ ...opts, [k]: e.target.value })}
+                value={opts[k] ?? ''}
+                placeholder={k in opts ? undefined : '（未读出）'}
+                onChange={e => {
+                  const next = { ...opts, [k]: e.target.value }
+                  if (!e.target.value) delete next[k]
+                  setOpts(next)
+                }}
                 className="flex-1 bg-bg border border-border rounded px-2 py-0.5 text-xs font-jp text-fg"
               />
             </label>
           ))}
+          {item.transcript != null && item.transcript !== '' && (
+            <label className="block text-xs text-fg-muted space-y-1">
+              <span>聴解原文</span>
+              <textarea
+                value={transcript}
+                onChange={e => setTranscript(e.target.value)}
+                rows={Math.min(20, Math.max(4, transcript.split('\n').length + 1))}
+                className="w-full bg-bg border border-border rounded px-2 py-1 text-xs font-jp
+                           text-fg leading-relaxed"
+              />
+            </label>
+          )}
         </div>
       )}
 
