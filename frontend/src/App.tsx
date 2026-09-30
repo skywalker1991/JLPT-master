@@ -8,7 +8,6 @@ export default function App() {
     <Routes>
       <Route element={<Layout />}>
         <Route index element={null} />
-        <Route path="video" element={null} />
         <Route path="kb" element={null} />
         <Route path="kb/:id" element={<AtomDetailPage />} />
         <Route path="jlpt" element={null} />

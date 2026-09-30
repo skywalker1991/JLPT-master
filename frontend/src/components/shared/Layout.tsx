@@ -2,7 +2,6 @@ import { Outlet, useLocation } from 'react-router-dom'
 import TopNav from './TopNav'
 import BottomNav from './BottomNav'
 import AnalysisPage from '../../pages/AnalysisPage'
-import VideoPage from '../../pages/VideoPage'
 import KnowledgeBasePage from '../../pages/KnowledgeBasePage'
 import JlptPage from '../../pages/JlptPage'
 import InternalizePage from '../../pages/InternalizePage'
@@ -25,7 +24,6 @@ export default function Layout() {
       <TopNav />
       <main className="flex-1 flex flex-col min-h-0 overflow-hidden">
         <Keep active={pathname === '/'}><AnalysisPage /></Keep>
-        <Keep active={pathname === '/video'}><VideoPage /></Keep>
         <Keep active={pathname.startsWith('/kb') && !isKbDetail}><KnowledgeBasePage /></Keep>
         <Keep active={pathname === '/jlpt'}><JlptPage /></Keep>
         <Keep active={pathname === '/internalize'}><InternalizePage /></Keep>

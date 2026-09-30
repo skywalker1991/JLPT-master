@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { FileText, BookMarked, Video, BookOpen, Brain, Settings } from 'lucide-react'
+import { FileText, BookMarked, BookOpen, Brain, Settings } from 'lucide-react'
 import clsx from 'clsx'
 import { useSettings } from '../../context/SettingsContext'
 import ThemeToggle from './ThemeToggle'
@@ -24,7 +24,9 @@ const MODELS = [
 export const NAV = [
   { to: '/',            end: true,  icon: FileText,   label: '语料分析', mobile: true },
   { to: '/jlpt',        end: false, icon: BookMarked, label: 'JLPT专题', mobile: true },
-  { to: '/video',       end: false, icon: Video,      label: '实时视频', mobile: true },
+  // 实时视频 is hidden until subtitles can be fetched reliably and a video
+  // plays without them — pages/VideoPage and api/video.py are kept as they are.
+  // To restore: this entry (icon: Video), its <Keep> in Layout, its route in App.
   { to: '/kb',          end: false, icon: BookOpen,   label: '知识库',   mobile: true },
   { to: '/internalize', end: false, icon: Brain,      label: '内化学习', mobile: true },
   { to: '/admin/ingest', end: false, icon: Settings,  label: '管理',     mobile: false },  // desktop only
