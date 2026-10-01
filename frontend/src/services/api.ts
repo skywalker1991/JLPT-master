@@ -730,3 +730,15 @@ export async function askItem(itemId: string, body: { question: string; targets:
 export async function getItemReading(itemId: string): Promise<{ kind: 'passage' | 'script' | 'sentence'; sentences: SentenceAnalysis[] }> {
   return request(`/api/jlpt/items/${itemId}/reading`)
 }
+
+export interface MistakeGroup {
+  id: string
+  label: string
+  part: string
+  items: { item_id: string; paper: string; num: number | null; stem: string; misses: number }[]
+}
+
+/** Questions last answered wrong, by question type. */
+export async function getJlptMistakes(): Promise<MistakeGroup[]> {
+  return request<MistakeGroup[]>('/api/jlpt/mistakes')
+}

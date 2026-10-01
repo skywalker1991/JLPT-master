@@ -438,10 +438,20 @@ async def review_item(
         for x in (await db.execute(select(AttemptAnswer).where(AttemptAnswer.attempt_id == a.id))).scalars():
             chosen[x.item_id] = (x.user_answer, x.is_correct)
     else:
-        for x in (await db.execute(
-            select(PracticeAnswer).where(PracticeAnswer.user_id == user.id).order_by(PracticeAnswer.created_at)
-        )).scalars():
-            chosen[x.item_id] = (x.user_answer, x.is_correct)
+        # The most recent answer, from a mock exam or from practice
+        latest: dict[UUID, tuple] = {}
+        rows = (await db.execute(
+            select(AttemptAnswer.item_id, AttemptAnswer.user_answer, AttemptAnswer.is_correct, ExamAttempt.started_at)
+            .join(ExamAttempt, ExamAttempt.id == AttemptAnswer.attempt_id)
+            .where(ExamAttempt.user_id == user.id)
+        )).all() + (await db.execute(
+            select(PracticeAnswer.item_id, PracticeAnswer.user_answer, PracticeAnswer.is_correct, PracticeAnswer.created_at)
+            .where(PracticeAnswer.user_id == user.id)
+        )).all()
+        for iid, ans, ok, when in rows:
+            if iid not in latest or when >= latest[iid][2]:
+                latest[iid] = (ans, ok, when)
+        chosen = {k: (v[0], v[1]) for k, v in latest.items()}
 
     detail = await problem_detail(db, prob, with_answers=True)
     cat = jp.category_of(sec.name, prob.name)
@@ -624,3 +634,32 @@ async def item_reading(item_id: UUID, db: AsyncSession = Depends(get_db)):
     if not text.strip():
         raise HTTPException(status_code=404, detail="这道题没有可以读的文本")
     return {"kind": kind, "sentences": await analyse_text(db, text)}
+
+
+
+@router.get("/jlpt/mistakes")
+async def mistakes(db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
+    """Questions whose most recent answer was wrong — from mock exams and
+    practice — grouped by question type, most often missed first."""
+    answers = await _answers(db, user.id)
+    latest = _latest(answers)
+    misses: dict[UUID, int] = defaultdict(int)
+    for item_id, ok, _ in answers:
+        if not ok:
+            misses[item_id] += 1
+    wrong = {i for i, ok in latest.items() if not ok}
+    groups: dict[str, dict] = {}
+    for item, prob, sec, paper in await _bank(db):
+        if item.id not in wrong:
+            continue
+        cat = jp.category_of(sec.name, prob.name)
+        if cat is None:
+            continue
+        g = groups.setdefault(cat.id, {"id": cat.id, "label": cat.label, "part": cat.part, "items": []})
+        g["items"].append({"item_id": str(item.id), "paper": jp.paper_label(paper.source, paper.title),
+                           "num": item.num, "stem": (item.stem or "").replace("__", "")[:60],
+                           "misses": misses[item.id]})
+    out = [groups[c.id] for c in jp.N1 if c.id in groups]
+    for g in out:
+        g["items"].sort(key=lambda x: -x["misses"])
+    return out

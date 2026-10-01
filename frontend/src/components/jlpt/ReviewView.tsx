@@ -11,6 +11,7 @@ import SentenceOrderStem from '../exam/SentenceOrderStem'
 import QuestionBlock from './QuestionBlock'
 import DiffBox, { useItemAnalysis } from './DiffBox'
 import KnowledgeList from './KnowledgeList'
+import ReportItemButton from '../exam/ReportItemButton'
 import ReadingReview from './ReadingReview'
 import SavePair from '../shared/SavePair'
 import { NewItemChip } from '../analysis/AskPanel'
@@ -25,15 +26,16 @@ const READING_TYPES = new Set(['reading_comp', 'passage_fill', 'listening', 'sen
  * right answer and 差在哪, the question's words and grammar to keep, and a
  * box to ask about it.
  */
-export default function ReviewView({ itemIds, attemptId, backLabel, onBack }: {
+export default function ReviewView({ itemIds, attemptId, backLabel, onBack, startAt = 0 }: {
   itemIds: string[]
   attemptId?: string | null
   backLabel: string
   onBack: () => void
+  startAt?: number
 }) {
   const { toast } = useToast()
-  const [at, setAt] = useState(0)
-  const [current, setCurrent] = useState(itemIds[0])
+  const [at, setAt] = useState(startAt)
+  const [current, setCurrent] = useState(itemIds[startAt])
   const [data, setData] = useState<ItemReview | null>(null)
 
   useEffect(() => {
@@ -80,15 +82,16 @@ export default function ReviewView({ itemIds, attemptId, backLabel, onBack }: {
         <Body key={item.id} data={data} itemId={item.id} chosen={ans?.chosen ?? null} correct={correct} skipped={!!attemptId && !ans} />
       )}
 
-      {itemIds.length > 1 && (
-        <footer className="shrink-0 h-14 flex items-center gap-3 px-4 md:px-6 border-t border-border">
+      <footer className="shrink-0 h-14 flex items-center gap-3 px-4 md:px-6 border-t border-border">
+        <ReportItemButton itemId={item.id} attemptId={attemptId} />
+        {itemIds.length > 1 && <>
           <span className="text-xs text-fg-subtle tabular-nums">错题 {at + 1} / {itemIds.length}</span>
           <button type="button" disabled={at === 0} onClick={() => goList(at - 1)}
                   className="ml-auto btn h-10 border border-border text-fg disabled:opacity-30"><ChevronLeft className="w-4 h-4" /></button>
           <button type="button" disabled={at >= itemIds.length - 1} onClick={() => goList(at + 1)}
                   className="btn-primary h-10 px-5 disabled:opacity-40">下一错题<ChevronRight className="w-4 h-4" /></button>
-        </footer>
-      )}
+        </>}
+      </footer>
     </div>
   )
 }

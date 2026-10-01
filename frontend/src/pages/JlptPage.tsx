@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
-import { ChevronLeft, Loader2 } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import JlptHome from '../components/jlpt/JlptHome'
 import PracticeSession from '../components/jlpt/PracticeSession'
 import MockExam from '../components/jlpt/MockExam'
 import MockResultView from '../components/jlpt/MockResultView'
 import ReviewView from '../components/jlpt/ReviewView'
-import MistakeList from '../components/exam/MistakeList'
+import MistakesView from '../components/jlpt/MistakesView'
 import { getJlptOverview, startMock } from '../services/api'
 import type { JlptCategory, JlptOverview } from '../types'
 
@@ -17,7 +17,7 @@ type View =
   | { kind: 'practice'; category: JlptCategory }
   | { kind: 'mock'; attemptId: string }
   | { kind: 'result'; attemptId: string }
-  | { kind: 'review'; itemIds: string[]; attemptId: string | null; back: View; backLabel: string }
+  | { kind: 'review'; itemIds: string[]; attemptId: string | null; back: View; backLabel: string; startAt?: number }
   | { kind: 'mistakes' }
 
 export default function JlptPage() {
@@ -62,21 +62,13 @@ export default function JlptPage() {
   }
 
   if (view.kind === 'review') {
-    return <ReviewView itemIds={view.itemIds} attemptId={view.attemptId} backLabel={view.backLabel} onBack={() => setView(view.back)} />
+    return <ReviewView key={view.itemIds.join()} itemIds={view.itemIds} attemptId={view.attemptId} backLabel={view.backLabel}
+                       startAt={view.startAt} onBack={() => setView(view.back)} />
   }
 
   if (view.kind === 'mistakes') {
-    return (
-      <div className="flex-1 min-h-0 flex flex-col">
-        <div className="shrink-0 flex items-center gap-2 px-4 h-12 border-b border-border">
-          <button type="button" onClick={home} className="flex items-center gap-1 text-sm text-fg-muted hover:text-fg">
-            <ChevronLeft className="w-4 h-4" />JLPT
-          </button>
-          <span className="text-sm font-semibold text-fg">错题</span>
-        </div>
-        <MistakeList />
-      </div>
-    )
+    return <MistakesView onBack={home}
+                         onOpen={(ids, startAt) => setView({ kind: 'review', itemIds: ids, attemptId: null, back: view, backLabel: '错题', startAt })} />
   }
 
   if (error) return <div className="flex-1 flex items-center justify-center text-danger text-sm">{error}</div>
