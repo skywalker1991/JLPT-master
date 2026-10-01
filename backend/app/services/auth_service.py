@@ -165,31 +165,38 @@ _OWNED_TABLES = ("atoms", "analyses", "exam_attempts")
 
 
 async def ensure_admin(db: AsyncSession) -> User | None:
-    """Create the first admin from ADMIN_EMAIL/ADMIN_PASSWORD if there is no
-    admin yet, and hand it everything made before accounts existed."""
-    settings = get_settings()
-    admin = (await db.execute(
-        select(User).where(User.role == "admin").order_by(User.created_at).limit(1)
-    )).scalar_one_or_none()
+    """Make sure the account in ADMIN_EMAIL exists and is an admin, and hand
+    it everything made before accounts existed.
 
+    A new account gets ADMIN_PASSWORD; an existing one keeps its own password
+    (changing the env never resets it). Other admins are left as they are.
+    Without ADMIN_EMAIL, the earliest admin receives the unowned data.
+    """
+    settings = get_settings()
+    email = normalize_email(settings.ADMIN_EMAIL)
+    admin = None
+    if email:
+        admin = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
+        if admin is None:
+            problem = password_problem(settings.ADMIN_PASSWORD or "")
+            if problem:
+                logger.error("ADMIN_PASSWORD refused: %s", problem)
+            else:
+                admin = User(email=email, password_hash=hash_password(settings.ADMIN_PASSWORD), role="admin")
+                db.add(admin)
+                await db.flush()
+                logger.info("Admin account created: %s", email)
+        elif admin.role != "admin" or not admin.is_active:
+            admin.role, admin.is_active = "admin", True
+            await db.flush()
+            logger.info("Account made admin: %s", email)
     if admin is None:
-        email = normalize_email(settings.ADMIN_EMAIL)
-        if not email or not settings.ADMIN_PASSWORD:
-            logger.warning("No admin account and ADMIN_EMAIL/ADMIN_PASSWORD not set — nobody can sign in yet.")
-            return None
-        problem = password_problem(settings.ADMIN_PASSWORD)
-        if problem:
-            logger.error("ADMIN_PASSWORD refused: %s", problem)
-            return None
-        existing = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
-        if existing is not None:
-            existing.role = "admin"
-            admin = existing
-        else:
-            admin = User(email=email, password_hash=hash_password(settings.ADMIN_PASSWORD), role="admin")
-            db.add(admin)
-        await db.flush()
-        logger.info("Admin account ready: %s", email)
+        admin = (await db.execute(
+            select(User).where(User.role == "admin").order_by(User.created_at).limit(1)
+        )).scalar_one_or_none()
+    if admin is None:
+        logger.warning("No admin account and ADMIN_EMAIL/ADMIN_PASSWORD not set — nobody can sign in yet.")
+        return None
 
     for table in _OWNED_TABLES:
         has_column = (await db.execute(text(
