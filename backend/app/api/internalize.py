@@ -1,198 +1,192 @@
-# backend/app/api/internalize.py
+"""内化学习: today's cards and their reviews.
+
+GET  /review/today     what is due today plus today's new cards, ready to show
+POST /review/{atom_id} one 会 / 不会
+GET/PATCH /review/settings  new cards a day, target recall
+"""
 from datetime import datetime, timezone
 from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, func, case, text
+from pydantic import BaseModel, Field
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import current_user
-from app.models.db import Atom, AtomProperty, AtomTag, AtomSrsState, Trace, User, get_db
-from app.services import atom_service
-from app.services.internalize_service import (
-    extract_jlpt_level,
-    next_review_after_know,
-    next_review_after_unknown,
+from app.models.db import (
+    Atom, AtomOccurrence, AtomProperty, AtomSrsState, AtomTag, User, get_db,
 )
+from app.services import atom_service, review_service
 
 router = APIRouter(tags=["internalize"])
 
+_LEVELS = {"N1", "N2", "N3", "N4", "N5"}
 
-@router.get("/internalize/queue")
-async def get_queue(
-    limit: int = Query(default=20, ge=1, le=200),
-    prompt: Literal['meaning', 'reading'] = Query(default="meaning"),
-    levels: list[str] = Query(default=[]),
+
+async def _cards(db: AsyncSession, atoms: list[Atom], states: dict[UUID, AtomSrsState]) -> list[dict]:
+    """Everything a card shows, front and back, for these atoms."""
+    if not atoms:
+        return []
+    ids = [a.id for a in atoms]
+    props: dict[UUID, list[AtomProperty]] = {}
+    for p in (await db.execute(
+        select(AtomProperty).where(AtomProperty.atom_id.in_(ids)).order_by(AtomProperty.created_at)
+    )).scalars():
+        props.setdefault(p.atom_id, []).append(p)
+    occs: dict[UUID, list[AtomOccurrence]] = {}
+    for o in (await db.execute(
+        select(AtomOccurrence).where(AtomOccurrence.atom_id.in_(ids)).order_by(AtomOccurrence.created_at)
+    )).scalars():
+        occs.setdefault(o.atom_id, []).append(o)
+    tags: dict[UUID, list[str]] = {}
+    for t in (await db.execute(select(AtomTag).where(AtomTag.atom_id.in_(ids)))).scalars():
+        tags.setdefault(t.atom_id, []).append(t.tag)
+
+    out = []
+    for atom in atoms:
+        p = props.get(atom.id, [])
+        srs = states.get(atom.id)
+        sentences = occs.get(atom.id, [])
+        meanings = list(dict.fromkeys(x.value for x in p if x.kind == "meaning"))
+        level = next((x.value for x in p if x.kind == "jlpt_level" and x.value in _LEVELS), None) \
+            or next((t for t in tags.get(atom.id, []) if t in _LEVELS), None)
+        reading = atom.reading or next((x.value for x in p if x.kind == "reading"), None)
+        at = review_service.pick_sentence(len(sentences), srs.reps if srs else 0)
+        shown = sentences[at] if at >= 0 else None
+        relations = (await atom_service.get_relations(db, atom.id))[:3]
+        out.append({
+            "atom_id": str(atom.id),
+            "type": atom.type,
+            "key": atom.key,
+            "reading": reading,
+            "level": level,
+            "meaning": "；".join(meanings[:2]) if meanings else None,
+            "connection": next((x.value for x in p if x.kind == "connection"), None),
+            "is_new": srs is None,
+            "familiar": bool(srs and (srs.stability or 0) >= review_service.FAMILIAR_DAYS),
+            "mode": review_service.front_mode(atom.type, srs.stability if srs else None, shown is not None),
+            "sentence": {
+                "text": shown.sentence_text,
+                "translation": shown.sentence_translation,
+                "surface": shown.surface,
+                "meaning_here": shown.surface_meaning,
+                "met_at": shown.created_at.isoformat(),
+                "source": "语料分析" if shown.analysis_id else "JLPT",
+            } if shown else None,
+            "sentences": [
+                {"text": o.sentence_text, "surface": o.surface, "met_at": o.created_at.isoformat(),
+                 "source": "语料分析" if o.analysis_id else "JLPT", "current": o is shown}
+                for o in sentences
+            ],
+            "relations": [
+                {"key": r["target"]["key"], "type": r["type"]} for r in relations if r.get("target")
+            ],
+        })
+    return out
+
+
+@router.get("/review/today")
+async def today(
+    tz: int = Query(default=0, description="Browser getTimezoneOffset(), minutes"),
+    extra: int = Query(default=0, ge=0, le=100, description="More new cards than the daily limit"),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(current_user),
 ):
-    """
-    Returns atoms ordered by SRS due-date.
-    New atoms (no SRS state) appear first (coalesced to epoch), then
-    overdue atoms, then future atoms.
-    """
-    from sqlalchemy import and_, exists as sa_exists
+    """Today's set: everything due by the end of the person's day, then new
+    cards up to the daily limit (already-introduced ones counted). New cards
+    are words added before today — a word added today first shows tomorrow."""
+    day = review_service.today(tz)
 
-    order_expr = func.coalesce(
-        AtomSrsState.next_review,
-        text("'1970-01-01 00:00:00+00'::timestamptz"),
-    ).asc()
+    due_rows = (await db.execute(
+        select(Atom, AtomSrsState)
+        .join(AtomSrsState, AtomSrsState.atom_id == Atom.id)
+        .where(Atom.user_id == user.id, AtomSrsState.next_review < day.end)
+        .order_by(AtomSrsState.next_review)
+    )).all()
 
-    query = (
+    introduced_today = (await db.execute(
+        select(func.count()).select_from(AtomSrsState).join(Atom, Atom.id == AtomSrsState.atom_id)
+        .where(Atom.user_id == user.id, AtomSrsState.introduced_at >= day.start)
+    )).scalar_one()
+    done_today = (await db.execute(
+        select(func.count()).select_from(AtomSrsState).join(Atom, Atom.id == AtomSrsState.atom_id)
+        .where(Atom.user_id == user.id, AtomSrsState.last_review >= day.start)
+    )).scalar_one()
+
+    new_room = max(0, user.new_cards_per_day + extra - introduced_today)
+    new_atoms = (await db.execute(
         select(Atom)
         .outerjoin(AtomSrsState, AtomSrsState.atom_id == Atom.id)
-        .where(Atom.user_id == user.id)
-        .order_by(order_expr)
-        .limit(limit)
-    )
+        .where(Atom.user_id == user.id, AtomSrsState.atom_id.is_(None), Atom.created_at < day.start)
+        .order_by(Atom.created_at)
+        .limit(new_room)
+    )).scalars().all() if new_room else []
+    waiting_new = (await db.execute(
+        select(func.count()).select_from(Atom)
+        .outerjoin(AtomSrsState, AtomSrsState.atom_id == Atom.id)
+        .where(Atom.user_id == user.id, AtomSrsState.atom_id.is_(None))
+    )).scalar_one()
 
-    if levels:
-        query = query.where(
-            sa_exists(
-                select(AtomTag.atom_id).where(
-                    and_(AtomTag.atom_id == Atom.id, AtomTag.tag.in_(levels))
-                )
-            )
-        )
+    states = {srs.atom_id: srs for _, srs in due_rows}
+    cards = await _cards(db, [a for a, _ in due_rows] + list(new_atoms), states)
+    library = (await db.execute(select(func.count()).select_from(Atom).where(Atom.user_id == user.id))).scalar_one()
 
-    result = await db.execute(query)
-    atoms = result.scalars().all()
-
-    if not atoms:
-        return {"cards": []}
-
-    atom_ids = [a.id for a in atoms]
-    atoms_map = {a.id: a for a in atoms}
-
-    props_result = await db.execute(
-        select(AtomProperty)
-        .where(AtomProperty.atom_id.in_(atom_ids))
-        .order_by(AtomProperty.atom_id, AtomProperty.created_at)
-    )
-    props_by_atom: dict[UUID, list[AtomProperty]] = {}
-    for p in props_result.scalars().all():
-        props_by_atom.setdefault(p.atom_id, []).append(p)
-
-    tags_result = await db.execute(
-        select(AtomTag).where(AtomTag.atom_id.in_(atom_ids))
-    )
-    tags_by_atom: dict[UUID, list[str]] = {}
-    for t in tags_result.scalars().all():
-        tags_by_atom.setdefault(t.atom_id, []).append(t.tag)
-
-    cards = []
-    for atom_id in atom_ids:
-        atom = atoms_map[atom_id]
-        props = props_by_atom.get(atom_id, [])
-        tags = tags_by_atom.get(atom_id, [])
-        jlpt_level = extract_jlpt_level(tags)
-        prompt_value = next((p.value for p in props if p.kind == prompt), None)
-
-        cards.append({
-            "id": str(atom_id),
-            "type": atom.type,
-            "key": atom.key,
-            "jlpt_level": jlpt_level,
-            "prompt_value": prompt_value,
-            "properties": [{"kind": p.kind, "value": p.value} for p in props],
-        })
-
-    return {"cards": cards}
+    return {
+        "due": len(due_rows),
+        "new": len(new_atoms),
+        "new_limit": user.new_cards_per_day,
+        "new_introduced_today": introduced_today,
+        "new_waiting": waiting_new - len(new_atoms),
+        "done_today": done_today,
+        "library": library,
+        "cards": cards,
+    }
 
 
-@router.post("/internalize/trace", status_code=201)
-async def record_trace(body: dict, db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
-    """Records a card swipe result and updates the atom's SRS state."""
-    atom_id_str = body.get("atom_id")
-    result = body.get("result")
-    prompt_type = body.get("prompt_type", "meaning")
+class ReviewBody(BaseModel):
+    result: Literal["know", "unknown"]
 
-    if result not in ("know", "unknown"):
-        raise HTTPException(status_code=422, detail="result must be 'know' or 'unknown'")
 
-    try:
-        atom_id = UUID(atom_id_str)
-    except (ValueError, TypeError):
-        raise HTTPException(status_code=422, detail="invalid atom_id")
-
+@router.post("/review/{atom_id}")
+async def review(
+    atom_id: UUID, body: ReviewBody,
+    db: AsyncSession = Depends(get_db), user: User = Depends(current_user),
+):
     atom = await atom_service.get_atom_by_id(db, atom_id, user_id=user.id)
     if atom is None:
         raise HTTPException(status_code=404, detail="Atom not found")
-
-    # Record trace
-    await atom_service.add_trace(
-        db, atom_id, "review", {"result": result, "prompt_type": prompt_type}
-    )
-
-    # Update SRS state
-    srs_result = await db.execute(
-        select(AtomSrsState).where(AtomSrsState.atom_id == atom_id)
-    )
-    srs = srs_result.scalar_one_or_none()
-    current_box = srs.box_level if srs else 0
-
-    if result == "know":
-        new_box, next_review = next_review_after_know(current_box)
-    else:
-        new_box, next_review = next_review_after_unknown(current_box)
-
+    srs = (await db.execute(select(AtomSrsState).where(AtomSrsState.atom_id == atom_id))).scalar_one_or_none()
     if srs is None:
-        db.add(AtomSrsState(atom_id=atom_id, box_level=new_box, next_review=next_review))
-    else:
-        srs.box_level = new_box
-        srs.next_review = next_review
-        srs.updated_at = datetime.now(timezone.utc)
-
-    return {"ok": True}
-
-
-@router.get("/internalize/stats")
-async def get_stats(db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
-    """Returns today's and all-time review stats plus box-level distribution."""
-    today_start = datetime.now(timezone.utc).replace(
-        hour=0, minute=0, second=0, microsecond=0
-    )
-
-    today_row = (await db.execute(
-        select(
-            func.sum(case((Trace.detail["result"].astext == "know", 1), else_=0)).label("know"),
-            func.sum(case((Trace.detail["result"].astext == "unknown", 1), else_=0)).label("unknown"),
-        )
-        .join(Atom, Atom.id == Trace.atom_id)
-        .where(Atom.user_id == user.id, Trace.action == "review", Trace.created_at >= today_start)
-    )).one()
-
-    total_row = (await db.execute(
-        select(
-            func.sum(case((Trace.detail["result"].astext == "know", 1), else_=0)).label("know"),
-            func.sum(case((Trace.detail["result"].astext == "unknown", 1), else_=0)).label("unknown"),
-        )
-        .join(Atom, Atom.id == Trace.atom_id)
-        .where(Atom.user_id == user.id, Trace.action == "review")
-    )).one()
-
-    dist_rows = (await db.execute(
-        select(AtomSrsState.box_level, func.count().label("cnt"))
-        .join(Atom, Atom.id == AtomSrsState.atom_id)
-        .where(Atom.user_id == user.id)
-        .group_by(AtomSrsState.box_level)
-    )).all()
-
-    distribution = {f"box{row.box_level}": row.cnt for row in dist_rows}
-    total_in_state = sum(distribution.values())
-    mastery_pct = round(distribution.get("box5", 0) / max(total_in_state, 1) * 100)
-
+        srs = AtomSrsState(atom_id=atom_id, reps=0, lapses=0)
+        db.add(srs)
+    knew = body.result == "know"
+    review_service.review(srs, knew, user.desired_retention)
+    await atom_service.add_trace(db, atom_id, "review", {"result": body.result})
+    await db.commit()
     return {
-        "today": {
-            "know": today_row.know or 0,
-            "unknown": today_row.unknown or 0,
-            "total": (today_row.know or 0) + (today_row.unknown or 0),
-        },
-        "total": {
-            "know": total_row.know or 0,
-            "unknown": total_row.unknown or 0,
-            "mastery_pct": mastery_pct,
-        },
-        "distribution": {f"box{i}": distribution.get(f"box{i}", 0) for i in range(6)},
+        "due": srs.next_review.isoformat(),
+        "stability": round(srs.stability or 0, 2),
+        "familiar": (srs.stability or 0) >= review_service.FAMILIAR_DAYS,
     }
+
+
+class ReviewSettings(BaseModel):
+    new_cards_per_day: int | None = Field(default=None, ge=0, le=200)
+    desired_retention: float | None = Field(default=None, ge=0.7, le=0.97)
+
+
+@router.get("/review/settings")
+async def get_settings_(user: User = Depends(current_user)):
+    return {"new_cards_per_day": user.new_cards_per_day, "desired_retention": round(user.desired_retention, 2)}
+
+
+@router.patch("/review/settings")
+async def update_settings(body: ReviewSettings, db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
+    me = await db.get(User, user.id)
+    if body.new_cards_per_day is not None:
+        me.new_cards_per_day = body.new_cards_per_day
+    if body.desired_retention is not None:
+        me.desired_retention = round(body.desired_retention, 2)
+    await db.commit()
+    return {"new_cards_per_day": me.new_cards_per_day, "desired_retention": round(me.desired_retention, 2)}

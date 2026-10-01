@@ -1,135 +1,180 @@
-// frontend/src/pages/InternalizePage.tsx
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import { Link, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Settings, Keyboard, Languages, Volume2, GitCompare, FileText } from 'lucide-react'
-import InfiniteCardDeck from '../components/internalize/InfiniteCardDeck'
-import StatsBar from '../components/internalize/StatsBar'
-import ConfigSheet from '../components/internalize/ConfigSheet'
-import type { InfiniteConfig, SwipeResult } from '../types'
+import { Loader2 } from 'lucide-react'
+import type { ReviewSettings, ReviewToday } from '../types'
+import { getReviewSettings, getReviewToday, updateReviewSettings } from '../services/api'
+import { useToast } from '../context/ToastContext'
+import ReviewSession from '../components/review/ReviewSession'
+import Logo from '../components/shared/Logo'
 
-type PagePhase = 'home' | 'playing'
+const SECONDS_PER_CARD = 10
 
-function CardStackIcon() {
-  return (
-    <div className="relative w-20 h-28">
-      {[2, 1, 0].map((i) => (
-        <div
-          key={i}
-          className="absolute inset-0 rounded-xl border border-border bg-surface shadow-card"
-          style={{ transform: `translateY(${i * 5}px) scale(${1 - i * 0.04})`, zIndex: 3 - i }}
-        />
-      ))}
-      <div className="absolute inset-0 z-10 rounded-xl border border-border bg-gradient-to-br from-blue-50 to-violet-50 flex flex-col items-center justify-center gap-1 shadow-card">
-        <span className="text-2xl font-bold text-fg">あ</span>
-        <div className="w-8 h-0.5 rounded-full bg-border" />
-        <span className="text-xs text-fg-subtle">意味</span>
-      </div>
-    </div>
-  )
-}
-
-function CardModeIcon({ onClick }: { onClick: () => void }) {
-  return (
-    <motion.button
-      onClick={onClick}
-      className="flex flex-col items-center gap-3 p-6 rounded-2xl bg-surface border border-border hover:border-accent/50 hover:shadow-lg transition-shadow cursor-pointer w-full sm:w-44"
-      whileHover={{ y: -2 }}
-      whileTap={{ scale: 0.97 }}
-    >
-      <CardStackIcon />
-      <div className="text-center">
-        <p className="text-sm font-semibold text-fg">卡牌记忆</p>
-        <p className="text-xs text-fg-subtle mt-0.5">主动召回练习</p>
-      </div>
-    </motion.button>
-  )
-}
-
-function ComingSoonIcon({ icon, label, desc }: { icon: React.ReactNode; label: string; desc: string }) {
-  return (
-    <div className="flex flex-col items-center gap-3 p-6 rounded-2xl bg-surface/50 border border-dashed border-border w-full sm:w-44 cursor-not-allowed">
-      <div className="w-20 h-28 rounded-xl border border-dashed border-border/60 bg-surface flex items-center justify-center text-fg-subtle/40">
-        {icon}
-      </div>
-      <div className="text-center">
-        <p className="text-sm font-semibold text-fg-subtle">{label}</p>
-        <p className="text-xs text-fg-subtle/60 mt-0.5">{desc}</p>
-        <p className="text-[10px] text-fg-subtle/40 mt-1">即将推出</p>
-      </div>
-    </div>
-  )
-}
-
+/**
+ * 内化学习: today's work, which ends. What is due, plus a few new cards;
+ * when it is done, it is done (with the option of a few more new ones).
+ */
 export default function InternalizePage() {
-  const [phase, setPhase] = useState<PagePhase>('home')
-  const [config, setConfig] = useState<InfiniteConfig>({ promptMode: 'meaning', levels: [] })
-  const [isConfigOpen, setIsConfigOpen] = useState(false)
-  const [todayKnow, setTodayKnow] = useState(0)
-  const [todayUnknown, setTodayUnknown] = useState(0)
+  const { pathname } = useLocation()
+  const active = pathname === '/internalize'
+  const { toast } = useToast()
+  const [today, setToday] = useState<ReviewToday | null>(null)
+  const [settings, setSettings] = useState<ReviewSettings | null>(null)
+  const [playing, setPlaying] = useState(false)
+  const [extra, setExtra] = useState(0)
+  const [justFinished, setJustFinished] = useState(false)
 
-  function handleSwipe(result: SwipeResult) {
-    if (result === 'know') setTodayKnow(n => n + 1)
-    else setTodayUnknown(n => n + 1)
+  const load = useCallback(async (more = extra) => {
+    try {
+      setToday(await getReviewToday(more))
+    } catch {
+      toast('今天的卡片没取到，稍后再试', 'error')
+    }
+  }, [extra, toast])
+
+  useEffect(() => {
+    if (!active || playing) return
+    void load()
+    getReviewSettings().then(setSettings).catch(() => {})
+  }, [active]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const finish = useCallback(() => {
+    setPlaying(false)
+    setJustFinished(true)
+    void load()
+  }, [load])
+
+  const moreNew = async () => {
+    const more = extra + 10
+    setExtra(more)
+    setJustFinished(false)
+    const next = await getReviewToday(more).catch(() => null)
+    if (next) {
+      setToday(next)
+      if (next.cards.length > 0) setPlaying(true)
+    }
   }
 
-  function handleConfigChange(next: InfiniteConfig) {
-    setConfig(next)
+  const save = async (patch: Partial<ReviewSettings>) => {
+    try {
+      setSettings(await updateReviewSettings(patch))
+      void load()
+    } catch {
+      toast('设置没存上，请再试一次', 'error')
+    }
   }
+
+  if (playing && today && today.cards.length > 0) {
+    return <ReviewSession cards={today.cards} onClose={() => { setPlaying(false); void load() }} onFinished={finish} />
+  }
+
+  if (!today) {
+    return <div className="flex-1 flex items-center justify-center"><Loader2 className="w-5 h-5 animate-spin text-fg-subtle" /></div>
+  }
+
+  const left = today.cards.length
+  const total = today.done_today + left
+  const minutes = Math.max(1, Math.round((left * SECONDS_PER_CARD) / 60))
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-      {phase === 'home' && (
-        <div className="flex-1 flex flex-col p-6 gap-6 overflow-y-auto">
-          <div>
-            <h1 className="text-base font-bold text-fg">内化学习</h1>
-            <p className="text-xs text-fg-muted mt-0.5">选择练习模式开始</p>
-          </div>
-          <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-4">
-            <CardModeIcon onClick={() => setPhase('playing')} />
-            <ComingSoonIcon icon={<Volume2 className="w-8 h-8" />}   label="读音练习" desc="汉字→假名" />
-            <ComingSoonIcon icon={<GitCompare className="w-8 h-8" />} label="辨析练习" desc="近义词辨别" />
-            <ComingSoonIcon icon={<FileText className="w-8 h-8" />}   label="情景填空" desc="语境还原" />
-            <ComingSoonIcon icon={<Keyboard className="w-8 h-8" />}   label="打字练习" desc="默写输入" />
-            <ComingSoonIcon icon={<Languages className="w-8 h-8" />}  label="翻译练习" desc="双向翻译" />
-          </div>
-        </div>
-      )}
+    <div className="flex-1 min-h-0 overflow-y-auto">
+      <div className="max-w-xl mx-auto px-4 md:px-0 py-5 md:py-10 flex flex-col gap-4">
+        <header className="flex flex-col gap-1">
+          <h1 className="text-xl font-bold text-fg">内化学习</h1>
+          <p className="text-xs text-fg-muted">{dateLabel()} · 今天要做的，做完就结束</p>
+        </header>
 
-      {phase === 'playing' && (
-        <>
-          {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-            <button
-              onClick={() => setPhase('home')}
-              className="text-sm text-fg-subtle hover:text-fg transition-colors"
-            >
-              ← 返回
+        {today.library === 0 ? (
+          <Empty />
+        ) : left === 0 ? (
+          <section className="rounded-2xl border border-border bg-surface p-6 flex flex-col items-center gap-4 text-center">
+            <motion.div initial={justFinished ? { scale: 0.6, opacity: 0, rotate: -20 } : false}
+                        animate={{ scale: 1, opacity: 1, rotate: 0 }} transition={{ type: 'spring', stiffness: 200, damping: 14 }}>
+              <Logo className="w-12 h-12 text-fg" />
+            </motion.div>
+            <div className="flex flex-col gap-1">
+              <h2 className="text-lg font-bold text-fg">{today.done_today > 0 ? '今天完成' : '今天没有要复习的'}</h2>
+              <p className="text-sm text-fg-muted">
+                {today.done_today > 0 ? `复习了 ${today.done_today} 张。明天再来。` : '新入库的词第二天开始出现在这里。'}
+              </p>
+            </div>
+            {today.new_waiting > 0 && (
+              <button type="button" onClick={() => void moreNew()} className="btn h-10 border border-border text-fg">
+                再来 10 张新卡（还有 {today.new_waiting} 张没学）
+              </button>
+            )}
+          </section>
+        ) : (
+          <section className="rounded-2xl border border-border bg-surface p-5 flex flex-col gap-4">
+            <div className="flex items-baseline">
+              <h2 className="text-base font-bold text-fg">单词和语法</h2>
+              <span className="ml-auto text-sm text-fg-muted">约 {minutes} 分钟</span>
+            </div>
+            <dl className="flex flex-col gap-3 text-sm">
+              <div className="flex items-baseline">
+                <dt className="text-fg-muted">到期复习</dt>
+                <dd className="ml-auto"><b className="text-lg text-fg tabular-nums">{today.due}</b> 张</dd>
+              </div>
+              <div className="flex items-baseline">
+                <dt className="text-fg-muted">新卡</dt>
+                <dd className="ml-auto"><b className="text-lg text-fg tabular-nums">{today.new}</b> / 上限 {today.new_limit}</dd>
+              </div>
+            </dl>
+            <div className="flex flex-col gap-1.5">
+              <div className="h-1.5 rounded-full bg-border overflow-hidden">
+                <div className="h-full bg-fg" style={{ width: `${total ? (today.done_today / total) * 100 : 0}%` }} />
+              </div>
+              <span className="text-xs text-fg-subtle tabular-nums">已完成 {today.done_today} / {total}</span>
+            </div>
+            <button type="button" onClick={() => setPlaying(true)} className="btn-primary h-12 justify-center text-base font-semibold">
+              {today.done_today > 0 ? '继续' : '开始'}
             </button>
-            <span className="text-sm font-semibold text-fg">卡牌复习</span>
-            <button
-              onClick={() => setIsConfigOpen(true)}
-              className="p-1.5 rounded-lg hover:bg-surface-hover transition-colors"
-            >
-              <Settings className="w-4 h-4 text-fg-subtle" />
-            </button>
-          </div>
+          </section>
+        )}
 
-          {/* Stats bar */}
-          <StatsBar todayKnow={todayKnow} todayUnknown={todayUnknown} />
-
-          {/* Infinite deck */}
-          <InfiniteCardDeck config={config} onSwipe={handleSwipe} />
-
-          {/* Config sheet */}
-          {isConfigOpen && (
-            <ConfigSheet
-              config={config}
-              onChange={handleConfigChange}
-              onClose={() => setIsConfigOpen(false)}
-            />
-          )}
-        </>
-      )}
+        {settings && today.library > 0 && (
+          <section className="rounded-2xl border border-border bg-surface p-5 flex flex-col gap-4">
+            <h2 className="text-xs font-semibold text-fg-subtle">设置</h2>
+            <label htmlFor="new-per-day" className="flex items-center gap-3 text-sm text-fg">
+              每天新卡上限
+              <input id="new-per-day" type="number" min={0} max={200} defaultValue={settings.new_cards_per_day}
+                     key={settings.new_cards_per_day}
+                     onBlur={e => {
+                       const v = Number(e.target.value)
+                       if (Number.isFinite(v) && v !== settings.new_cards_per_day) void save({ new_cards_per_day: v })
+                     }}
+                     className="input ml-auto w-24 text-right tabular-nums" />
+            </label>
+            <label htmlFor="retention" className="flex items-center gap-3 text-sm text-fg">
+              目标记住率
+              <select id="retention" value={String(settings.desired_retention)}
+                      onChange={e => void save({ desired_retention: Number(e.target.value) })}
+                      className="input ml-auto w-24">
+                {[0.8, 0.85, 0.9, 0.95].map(r => <option key={r} value={String(r)}>{Math.round(r * 100)}%</option>)}
+              </select>
+            </label>
+            <p className="text-xs text-fg-subtle leading-relaxed">
+              复习时间由算法（FSRS）按每个词单独计算，只看卡片上的「会 / 不会」。记住率越高，复习越频繁。
+            </p>
+          </section>
+        )}
+      </div>
     </div>
   )
+}
+
+function Empty() {
+  return (
+    <section className="flex flex-col gap-4 py-10">
+      <Logo className="w-10 h-10 text-fg" />
+      <h2 className="text-xl font-bold text-fg">今天没有要复习的</h2>
+      <p className="text-sm text-fg-muted leading-relaxed">新入库的词第二天开始出现在这里，每天有限量，做完就结束。</p>
+      <Link to="/" className="btn-primary h-12 justify-center text-base font-semibold">去读一段语料</Link>
+    </section>
+  )
+}
+
+function dateLabel() {
+  const d = new Date()
+  return `${d.getMonth() + 1}月${d.getDate()}日`
 }

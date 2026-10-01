@@ -497,39 +497,48 @@ export interface DraftDetail {
   updated_at: string
 }
 
-// Internalize
-export interface InternalizeProperty {
-  kind: string
-  value: string
+// Review (内化学习)
+export interface ReviewSentence {
+  text: string
+  translation?: string | null
+  surface: string | null
+  meaning_here?: string | null
+  met_at: string
+  source: string
+  current?: boolean
 }
 
-export interface InternalizeCard {
-  id: string
+export interface ReviewCard {
+  atom_id: string
   type: 'vocabulary' | 'grammar'
   key: string
-  jlpt_level: 'N1' | 'N2' | 'N3' | 'N4' | 'N5' | null
-  prompt_value: string | null
-  properties: InternalizeProperty[]
+  reading: string | null
+  level: string | null
+  meaning: string | null
+  connection: string | null
+  is_new: boolean
+  familiar: boolean
+  /** word: no sentence yet; recognize: word marked in its sentence; cloze: blanked, with translation */
+  mode: 'word' | 'recognize' | 'cloze'
+  sentence: ReviewSentence | null
+  sentences: ReviewSentence[]
+  relations: { key: string; type: string }[]
 }
 
-export interface InternalizeQueueResponse {
-  cards: InternalizeCard[]
+export interface ReviewToday {
+  due: number
+  new: number
+  new_limit: number
+  new_introduced_today: number
+  new_waiting: number
+  done_today: number
+  library: number
+  cards: ReviewCard[]
 }
 
-export type SwipeResult = 'know' | 'unknown'
-
-export interface InfiniteConfig {
-  promptMode: 'meaning' | 'reading'
-  levels: string[]  // empty = all levels
-}
-
-export interface InternalizeStats {
-  today: { know: number; unknown: number; total: number }
-  total: { know: number; unknown: number; mastery_pct: number }
-  distribution: {
-    box0: number; box1: number; box2: number
-    box3: number; box4: number; box5: number
-  }
+export interface ReviewSettings {
+  new_cards_per_day: number
+  desired_retention: number
 }
 
 // Knowledge graph

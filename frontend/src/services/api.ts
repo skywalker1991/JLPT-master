@@ -26,8 +26,8 @@ import {
   AttemptReviewData,
   DraftSummary,
   DraftDetail,
-  InternalizeQueueResponse,
-  InternalizeStats,
+  ReviewToday,
+  ReviewSettings,
   AtomGraphResponse,
 } from '../types'
 
@@ -523,31 +523,24 @@ export async function importAnswers(draftId: string, file: File): Promise<DraftD
   return res.json()
 }
 
-// ---- Internalize ----
+// ---- Review (内化学习) ----
 
-export async function getInternalizeQueue(params: {
-  limit: number
-  prompt: 'meaning' | 'reading'
-  levels?: string[]
-}): Promise<InternalizeQueueResponse> {
-  const qs = new URLSearchParams({ limit: String(params.limit), prompt: params.prompt })
-  params.levels?.forEach(l => qs.append('levels', l))
-  return request<InternalizeQueueResponse>(`/api/internalize/queue?${qs}`)
+/** Today's cards: everything due, then new cards up to the daily limit. */
+export async function getReviewToday(extra = 0): Promise<ReviewToday> {
+  const tz = new Date().getTimezoneOffset()
+  return request<ReviewToday>(`/api/review/today?tz=${tz}&extra=${extra}`)
 }
 
-export async function postInternalizeTrace(
-  atomId: string,
-  result: 'know' | 'unknown',
-  promptType: string,
-): Promise<void> {
-  await request<{ ok: boolean }>('/api/internalize/trace', {
-    method: 'POST',
-    body: JSON.stringify({ atom_id: atomId, result, prompt_type: promptType }),
-  })
+export async function postReview(atomId: string, result: 'know' | 'unknown'): Promise<{ due: string; familiar: boolean }> {
+  return request(`/api/review/${atomId}`, { method: 'POST', body: JSON.stringify({ result }) })
 }
 
-export async function getInternalizeStats(): Promise<InternalizeStats> {
-  return request<InternalizeStats>('/api/internalize/stats')
+export async function getReviewSettings(): Promise<ReviewSettings> {
+  return request<ReviewSettings>('/api/review/settings')
+}
+
+export async function updateReviewSettings(body: Partial<ReviewSettings>): Promise<ReviewSettings> {
+  return request<ReviewSettings>('/api/review/settings', { method: 'PATCH', body: JSON.stringify(body) })
 }
 
 

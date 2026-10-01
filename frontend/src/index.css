@@ -41,6 +41,11 @@
     @apply btn text-danger hover:bg-danger/10;
   }
 
+  .kbd {
+    @apply inline-flex items-center justify-center min-w-[2rem] h-7 px-2 rounded-md border border-border
+           bg-surface text-xs text-fg-muted font-sans shadow-[0_1px_0_rgb(var(--c-border))];
+  }
+
   .input {
     @apply w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-fg
            placeholder:text-fg-subtle outline-none

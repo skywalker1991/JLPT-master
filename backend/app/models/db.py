@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 from sqlalchemy import (
     Column, String, Text, DateTime, ForeignKey, UniqueConstraint,
-    CheckConstraint, Index, Integer, SmallInteger, Boolean, LargeBinary, text, func
+    CheckConstraint, Index, Integer, SmallInteger, Boolean, LargeBinary, Float, text, func
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
@@ -32,6 +32,9 @@ class User(Base):
     last_login_at = Column(DateTime(timezone=True), nullable=True)
     # The invite code they signed up with — which post or batch brought them.
     invite_code = Column(String(32), nullable=True)
+    # Review: new cards a day, and the recall probability FSRS aims for
+    new_cards_per_day = Column(SmallInteger, nullable=False, server_default=text("10"))
+    desired_retention = Column(Float, nullable=False, server_default=text("0.9"))
 
     __table_args__ = (
         CheckConstraint("role IN ('user', 'admin')", name="ck_users_role"),
@@ -191,9 +194,17 @@ class Trace(Base):
 class AtomSrsState(Base):
     __tablename__ = "atom_srs_states"
 
+    """A card's FSRS memory state. A row exists once the card has been seen."""
+
     atom_id    = Column(UUID(as_uuid=True), ForeignKey("atoms.id", ondelete="CASCADE"), primary_key=True)
-    box_level  = Column(SmallInteger, nullable=False, default=0)
-    next_review = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    next_review = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))  # FSRS due
+    stability  = Column(Float, nullable=True)       # days until recall falls to the target
+    difficulty = Column(Float, nullable=True)
+    state      = Column(SmallInteger, nullable=False, server_default=text("2"))  # fsrs.State
+    last_review = Column(DateTime(timezone=True), nullable=True)
+    reps       = Column(Integer, nullable=False, server_default=text("0"))
+    lapses     = Column(Integer, nullable=False, server_default=text("0"))
+    introduced_at = Column(DateTime(timezone=True), nullable=True)  # first seen as a new card
     updated_at  = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"), onupdate=lambda: datetime.now(timezone.utc))
 
     atom = relationship("Atom", back_populates="srs_state")
