@@ -28,6 +28,7 @@ export default function App() {
         <Route path="jlpt" element={null} />
         <Route path="internalize" element={null} />
         <Route path="account" element={null} />
+        <Route path="settings" element={null} />
         {isAdmin && <Route path="admin/ingest" element={null} />}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

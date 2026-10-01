@@ -5,7 +5,23 @@ import { Check, X } from 'lucide-react'
 import type { ReviewCard as Card } from '../../types'
 import { postReview } from '../../services/api'
 import { useToast } from '../../context/ToastContext'
-import ReviewCard, { fmt } from './ReviewCard'
+import ReviewCard, { fmt, targetRanges } from './ReviewCard'
+import { useSettings } from '../../context/SettingsContext'
+import { grammarPieces } from '../../utils/marks'
+
+const toHira = (x: string) => x.replace(/[ァ-ヶ]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60))
+const norm = (x: string) => toHira(x.normalize('NFKC')).replace(/[\s、。，,．.！!？?「」『』〜~…・]/g, '')
+
+/** Was this the word (or the grammar) blanked out? Its written form, the
+ *  form in the sentence and its kana all count. */
+function matches(card: Card, said: string): boolean {
+  const got = norm(said)
+  if (!got) return false
+  const forms = card.type === 'grammar'
+    ? [grammarPieces(card.key).join(''), card.key]
+    : [card.key, card.sentence?.surface ?? '', card.reading ?? '']
+  return forms.map(norm).filter(Boolean).some(f => f === got)
+}
 
 interface Props {
   cards: Card[]
@@ -28,7 +44,37 @@ export default function ReviewSession({ cards, onClose, onFinished }: Props) {
   const [at, setAt] = useState(0)
   const [flipped, setFlipped] = useState(false)
   const [leaving, setLeaving] = useState<0 | 1 | -1>(0)
+  const { settings } = useSettings()
+  const [typed, setTyped] = useState('')
+  const [verdict, setVerdict] = useState<boolean | null>(null)
+  const [listening, setListening] = useState(false)
   const card = queue[at]
+  // Typing or saying the answer is for blanked-out cards only
+  const answering = !!card && settings.clozeAnswer !== 'self' && card.mode === 'cloze' && targetRanges(card).length > 0
+
+  const check = (said: string) => {
+    if (!card) return
+    setVerdict(matches(card, said))
+    setFlipped(true)
+  }
+
+  const listen = () => {
+    const W = window as unknown as { SpeechRecognition?: new () => SpeechRec; webkitSpeechRecognition?: new () => SpeechRec }
+    const Rec = W.SpeechRecognition ?? W.webkitSpeechRecognition
+    if (!Rec || listening) return
+    const rec = new Rec()
+    rec.lang = 'ja-JP'
+    rec.interimResults = false
+    rec.onresult = (e: { results: { 0: { transcript: string } }[] }) => {
+      const said = e.results[0]?.[0]?.transcript ?? ''
+      setTyped(said)
+      check(said)
+    }
+    rec.onend = () => setListening(false)
+    rec.onerror = () => { setListening(false); toast('没听清，再说一次或改用打字', 'error') }
+    setListening(true)
+    rec.start()
+  }
 
   const rate = useCallback((know: boolean) => {
     if (!card || !flipped) return
@@ -36,6 +82,8 @@ export default function ReviewSession({ cards, onClose, onFinished }: Props) {
     if (!know && !card.again) setQueue(q => [...q, { ...card, again: true }])
     setLeaving(know ? 1 : -1)
     setFlipped(false)
+    setTyped('')
+    setVerdict(null)
     setAt(i => i + 1)
   }, [card, flipped, toast])
 
@@ -45,7 +93,10 @@ export default function ReviewSession({ cards, onClose, onFinished }: Props) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        if (e.key === 'Enter' && answering && !flipped) { e.preventDefault(); check(typed) }
+        return
+      }
       if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); setFlipped(f => !f) }
       else if (e.key === 'ArrowRight') rate(true)
       else if (e.key === 'ArrowLeft') rate(false)
@@ -53,7 +104,7 @@ export default function ReviewSession({ cards, onClose, onFinished }: Props) {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [rate, onClose])
+  }, [rate, onClose, answering, flipped, typed]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!card) return null
   const progress = Math.min(at, queue.length) / queue.length
@@ -88,6 +139,29 @@ export default function ReviewSession({ cards, onClose, onFinished }: Props) {
               </SwipeCard>
             </AnimatePresence>
           </div>
+
+          {answering && (
+            <div className="w-full max-w-md md:max-w-2xl flex items-center gap-2">
+              {settings.clozeAnswer === 'speak' ? (
+                <button type="button" onClick={listen} disabled={flipped}
+                        className={clsx('btn h-12 flex-1 justify-center border text-base', listening ? 'border-fg bg-accent-light' : 'border-border')}>
+                  {listening ? '在听……' : flipped ? `你说的：${typed || '（没听到）'}` : '点一下，说出空格里的词'}
+                </button>
+              ) : (
+                <>
+                  <label htmlFor="cloze-answer" className="sr-only">空格里的词</label>
+                  <input id="cloze-answer" value={typed} onChange={e => setTyped(e.target.value)} disabled={flipped}
+                         placeholder="打出空格里的词（假名或汉字都行），回车核对" autoComplete="off"
+                         className="input h-12 flex-1 font-jp text-lg" />
+                </>
+              )}
+              {verdict !== null && (
+                <span className={clsx('shrink-0 text-sm font-semibold', verdict ? 'text-success-fg' : 'text-danger-fg')}>
+                  {verdict ? '对了' : '不对'}
+                </span>
+              )}
+            </div>
+          )}
 
           <div className="w-full max-w-md md:max-w-2xl flex items-center justify-between">
             <button type="button" onClick={() => (flipped ? rate(false) : setFlipped(true))} aria-label="不会"
@@ -165,4 +239,13 @@ function SwipeCard({ children, leaving, flipped, onFlip, onRate }: {
       {children}
     </motion.div>
   )
+}
+
+interface SpeechRec {
+  lang: string
+  interimResults: boolean
+  onresult: ((e: { results: { 0: { transcript: string } }[] }) => void) | null
+  onend: (() => void) | null
+  onerror: (() => void) | null
+  start: () => void
 }

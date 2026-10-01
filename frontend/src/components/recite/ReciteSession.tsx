@@ -8,6 +8,7 @@ import { tokensFor } from '../../utils/tokens'
 import { speak } from '../../utils/speech'
 import TokenText from '../shared/TokenText'
 import Logo from '../shared/Logo'
+import { useSettings } from '../../context/SettingsContext'
 
 type Stage = 'line' | 'chain' | 'done'
 
@@ -30,7 +31,8 @@ export default function ReciteSession({ item, next, onFinished, onProgress }: {
   const [at, setAt] = useState(Math.min(item.progress, n))
   const [stage, setStage] = useState<Stage>(item.progress >= n ? 'chain' : 'line')
   const [shown, setShown] = useState(false)
-  const [kana, setKana] = useState(false)
+  const { settings } = useSettings()
+  const [kana, setKana] = useState(settings.reciteKana)
   const [tokens, setTokens] = useState<TokenInfo[][]>([])
   const [speaking, setSpeaking] = useState(false)
   const [stuck, setStuck] = useState<Set<number>>(new Set())

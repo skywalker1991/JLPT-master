@@ -317,3 +317,38 @@ async def merge(atom_id: UUID, body: MergeBody, db: AsyncSession = Depends(get_d
     if src.type == "grammar":
         await qdrant_service.delete_atoms([src.id])
     return {"id": str(dst.id)}
+
+
+@router.get("/kb/export.csv")
+async def export_csv(db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
+    """Everything in the library as CSV — each entry with the sentences it was
+    met in and where. The person's data is theirs to take, always."""
+    import csv
+    import io
+
+    from fastapi.responses import Response
+
+    atoms, props, tags, occ, srs = await _library(db, user)
+    sentences: dict[UUID, list[AtomOccurrence]] = defaultdict(list)
+    for o in (await db.execute(select(AtomOccurrence).where(
+            AtomOccurrence.atom_id.in_([a.id for a in atoms] or [None])).order_by(AtomOccurrence.created_at))).scalars():
+        sentences[o.atom_id].append(o)
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["类型", "写法", "读音", "意思", "等级", "熟悉程度", "入库日期", "例句", "例句译文", "出处"])
+    label = {"new": "新", "learning": "在学", "familiar": "熟"}
+    for a in sorted(atoms, key=lambda a: a.created_at):
+        e = _entry(a, props, tags, occ, srs)
+        rows = sentences.get(a.id) or [None]
+        for o in rows:
+            w.writerow([
+                "词汇" if a.type == "vocabulary" else "语法", a.key, e["reading"] or "", e["meaning"] or "",
+                e["level"] or "", label[e["familiarity"]], a.created_at.date().isoformat(),
+                o.sentence_text if o else "", (o.sentence_translation or "") if o else "",
+                ("语料分析" if o.analysis_id else "JLPT") if o else "",
+            ])
+    return Response(
+        content="﻿" + buf.getvalue(),  # BOM so Excel opens it as UTF-8
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": "attachment; filename=\"jlpt-master-knowledge.csv\""},
+    )

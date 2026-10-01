@@ -68,3 +68,7 @@
     @apply text-xs font-semibold text-fg-subtle uppercase tracking-widest;
   }
 }
+
+/* 日文字号 (设置 → 外观): scales the Japanese text — passages, sentences, cards. */
+html[data-jp="sm"] .font-jp { zoom: 0.9; }
+html[data-jp="lg"] .font-jp { zoom: 1.15; }

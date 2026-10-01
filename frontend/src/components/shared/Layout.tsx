@@ -6,6 +6,7 @@ import KnowledgeBasePage from '../../pages/KnowledgeBasePage'
 import JlptPage from '../../pages/JlptPage'
 import InternalizePage from '../../pages/InternalizePage'
 import AdminIngestPage from '../../pages/AdminIngestPage'
+import SettingsPage from '../../pages/SettingsPage'
 import AccountPage from '../../pages/AccountPage'
 import { useAuth } from '../../context/AuthContext'
 
@@ -35,6 +36,7 @@ export default function Layout() {
         {isAdmin && <Keep active={pathname === '/admin/ingest'}><AdminIngestPage /></Keep>}
         {/* Mounted only while open, so the account list is fresh each visit. */}
         {pathname === '/account' && <div className="flex-1 flex flex-col min-h-0 overflow-hidden"><AccountPage /></div>}
+        {pathname === '/settings' && <div className="flex-1 flex flex-col min-h-0 overflow-hidden"><SettingsPage /></div>}
         {/* /kb/:id needs useParams — rendered via Outlet */}
         {isKbDetail && <div className="flex-1 flex flex-col min-h-0 overflow-hidden"><Outlet /></div>}
       </main>

@@ -1,5 +1,6 @@
+import { Link } from 'react-router-dom'
 import { useState } from 'react'
-import { Loader2, LogOut } from 'lucide-react'
+import { ChevronRight, Loader2, LogOut, SlidersHorizontal } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import { changePassword } from '../services/api'
@@ -41,6 +42,14 @@ export default function AccountPage() {
               <LogOut className="w-4 h-4" />退出登录
             </button>
           </div>
+          <Link to="/settings" className="card p-4 flex items-center gap-3 hover:border-fg-subtle">
+            <SlidersHorizontal className="w-4 h-4 text-fg-muted" />
+            <span className="flex flex-col">
+              <span className="text-sm font-medium text-fg">设置</span>
+              <span className="text-xs text-fg-muted">主题、日文字号、阅读和复习的默认值、导出</span>
+            </span>
+            <ChevronRight className="w-4 h-4 text-fg-subtle ml-auto" />
+          </Link>
         </section>
 
         <section className="flex flex-col gap-3">

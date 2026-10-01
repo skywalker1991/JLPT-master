@@ -19,22 +19,22 @@ const hexToRgb = hex => {
 }
 
 const SEMANTIC = {
-  //  token            light       dark
-  // Dark mode sits just off pure black: cards can then be lighter than the
-  // page (layers read without extra borders) and colour stops glaring.
-  'bg':             ['#FFFFFF', '#0D0D0D'],
-  'surface':        ['#FFFFFF', '#1A1A1A'],
+  //  token            紙 (light)   夜 (dark)
+  // 夜 sits just off black, with ink a warm off-white and one warm accent —
+  // 金茶 — kept for the thick line under a gap and the main button.
+  'bg':             ['#FFFFFF', '#141414'],
+  'surface':        ['#FFFFFF', '#1C1C1C'],
   'border':         ['#E6E4E1', '#2E2E2E'],
-  'fg':             ['#1C1917', '#E8E8E8'],
-  'fg-muted':       ['#6B6560', '#A8A8A8'],
-  'fg-subtle':      ['#A3A09B', '#7A7A7A'],
+  'fg':             ['#1C1917', '#E8E6E1'],
+  'fg-muted':       ['#6B6560', '#A8A49C'],
+  'fg-subtle':      ['#A3A09B', '#7A766F'],
   // Ink accent: the UI itself stays neutral so colour can carry meaning
   // (JLPT levels, parts of speech, right/wrong). Matches the logo.
-  'accent':         ['#1C1917', '#E3E3E3'],
-  'accent-hover':   ['#3A3532', '#FFFFFF'],
-  'accent-light':   ['#F5F4F2', '#232323'],
+  'accent':         ['#1C1917', '#D6C59C'],
+  'accent-hover':   ['#3A3532', '#E6C77A'],
+  'accent-light':   ['#F5F4F2', '#262626'],
   'accent-border':  ['#DBD8D4', '#3A3A3A'],
-  'accent-fg':      ['#1C1917', '#EDEDED'],
+  'accent-fg':      ['#1C1917', '#E8E6E1'],
   'on-accent':      ['#FFFFFF', '#141414'],   // text/icons on an accent fill
   'success':        ['#10B981', '#10B981'],
   'success-light':  ['#ECFDF5', '#0B241B'],
@@ -42,6 +42,22 @@ const SEMANTIC = {
   'danger':         ['#EF4444', '#EF4444'],
   'danger-light':   ['#FEF2F2', '#2E1212'],
   'danger-fg':      ['#991B1B', '#FCA5A5'],
+}
+
+// The two optional light themes: a ground, an ink and one accent each. Only
+// these tokens change; level colours and right / wrong stay the same in
+// every theme — they are information, not decoration.
+const LIGHT_THEMES = {
+  ai: {   // 藍: cool, for long study sessions
+    'bg': '#F4F6F9', 'surface': '#FFFFFF', 'border': '#DDE2EA', 'fg': '#172033', 'fg-muted': '#5A6478',
+    'fg-subtle': '#8C95A5', 'accent': '#2B4C7E', 'accent-hover': '#22406D', 'accent-light': '#EAEEF4',
+    'accent-border': '#CBD3DF', 'accent-fg': '#172033', 'on-accent': '#FFFFFF',
+  },
+  koke: { // 苔: warm, for reading and reciting
+    'bg': '#F5F5EE', 'surface': '#FFFFFF', 'border': '#DFE1D3', 'fg': '#1E2418', 'fg-muted': '#5D6452',
+    'fg-subtle': '#8F947F', 'accent': '#55653A', 'accent-hover': '#475630', 'accent-light': '#ECEDE3',
+    'accent-border': '#D2D5C3', 'accent-fg': '#1E2418', 'on-accent': '#FFFFFF',
+  },
 }
 
 const SHADES = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950]
@@ -89,7 +105,11 @@ const themeVars = plugin(({ addBase }) => {
       )
     }
   }
-  addBase({ ':root': light, ':root.dark': dark })
+  const themes = Object.fromEntries(Object.entries(LIGHT_THEMES).map(([name, tokens]) => [
+    `:root[data-theme="${name}"]:not(.dark)`,
+    Object.fromEntries(Object.entries(tokens).map(([k, hex]) => [`--c-${k}`, hexToRgb(hex)])),
+  ]))
+  addBase({ ':root': light, ':root.dark': dark, ...themes })
 })
 
 const palettes = Object.fromEntries(

@@ -23,9 +23,12 @@
       <script>
       // Apply the saved theme before first paint (see SettingsContext)
       try {
-        var t = (JSON.parse(localStorage.getItem('jlpt-settings') || '{}').theme) || 'system'
-        if (t === 'dark' || (t === 'system' && matchMedia('(prefers-color-scheme: dark)').matches))
-          document.documentElement.classList.add('dark')
+        var s = JSON.parse(localStorage.getItem('jlpt-settings') || '{}')
+        var t = s.theme || 'system', r = document.documentElement
+        if (t === 'dark' || t === 'yoru' || (t === 'system' && matchMedia('(prefers-color-scheme: dark)').matches))
+          r.classList.add('dark')
+        if (t === 'ai' || t === 'koke') r.dataset.theme = t
+        r.dataset.jp = s.jpSize || 'md'
       } catch (e) {}
     </script>
   </head>
