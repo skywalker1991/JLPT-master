@@ -172,9 +172,6 @@ export default function InternalizePage() {
                 {[0.8, 0.85, 0.9, 0.95].map(r => <option key={r} value={String(r)}>{Math.round(r * 100)}%</option>)}
               </select>
             </label>
-            <p className="text-xs text-fg-subtle leading-relaxed">
-              复习时间由算法（FSRS）按每个词单独计算，只看卡片上的「会 / 不会」。记住率越高，复习越频繁。
-            </p>
           </section>
         )}
       </div>

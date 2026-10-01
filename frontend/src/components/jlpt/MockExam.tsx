@@ -134,7 +134,7 @@ export default function MockExam({ attemptId, onExit, onDone }: {
           <section className={clsx('md:w-1/2 md:border-r border-border md:bg-accent-light/50 md:overflow-y-auto md:px-10 md:py-8',
             'mx-3 mt-3 md:m-0 rounded-xl md:rounded-none bg-accent-light/60 px-4 py-4')}>
             <p className="flex items-center text-xs text-fg-subtle mb-2">
-              文章 · 考试中不加任何标记和译文
+              文章
               <button type="button" onClick={() => setPassageOpen(o => !o)} className="ml-auto md:hidden flex items-center gap-0.5 text-fg-muted">
                 {passageOpen ? '收起' : '展开全文'}<ChevronDown className={clsx('w-3.5 h-3.5', passageOpen && 'rotate-180')} />
               </button>

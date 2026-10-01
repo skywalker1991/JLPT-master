@@ -51,7 +51,6 @@ export default function KnowledgeList({ points, sentence, translation }: {
     <div className="flex flex-col gap-4">
       <p className="flex items-baseline gap-2">
         <span className="font-bold text-fg">本题知识点</span>
-        <span className="text-xs text-fg-subtle">逐个决定；原句自动作为例句</span>
       </p>
       {group('选项', options)}
       {group('完整句子', fromSentence)}

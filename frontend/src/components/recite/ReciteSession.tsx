@@ -143,7 +143,6 @@ export default function ReciteSession({ item, next, onFinished, onProgress }: {
                 <div className="rounded-xl border border-dashed border-border bg-accent-light/50 px-4 py-6 text-center text-sm text-fg-subtle">日文已隐藏</div>
               )}
             </div>
-            <p className="text-xs text-fg-subtle leading-relaxed">有卡住的句子：单独再练这几句，然后再连一遍。全部顺下来，这一段才算背完。</p>
             {back}
           </div>
         </div>
@@ -196,7 +195,6 @@ export default function ReciteSession({ item, next, onFinished, onProgress }: {
                             className="btn h-9 rounded-full border border-border text-fg">
                       {speaking ? <Loader2 className="w-4 h-4 animate-spin" /> : <Volume2 className="w-4 h-4" />}听原句
                     </button>
-                    <span className="hidden md:inline text-xs text-fg-subtle">{shown ? '（已显示，按空格隐藏）' : ''}</span>
                     <label className="ml-auto flex items-center gap-1.5 text-sm text-fg-muted cursor-pointer">
                       <input type="checkbox" checked={kana} onChange={e => setKana(e.target.checked)} className="accent-fg w-4 h-4" />假名提示
                     </label>
@@ -215,9 +213,6 @@ export default function ReciteSession({ item, next, onFinished, onProgress }: {
             )
           })}
 
-          <p className="md:hidden text-xs text-fg-subtle leading-relaxed pt-4">
-            整段一直在眼前：背出的句子留着日文、变淡；后面的只露中文。当前这一句的日文整句隐藏，说完点「显示」对照，再点就隐藏。这一句不背出来，就不往下走。
-          </p>
         </div>
       </div>
       <footer className="shrink-0 border-t border-border">

@@ -125,7 +125,6 @@ export default function FollowUp({ analysis }: { analysis: SentenceAnalysis | nu
               <Plus className="w-3 h-3" />引用单词 / 语法
             </button>
           )}
-          {attached.length === 0 && <span className="text-xs text-fg-subtle">不引用就是问这句或整段</span>}
         </div>
 
         {picking && (

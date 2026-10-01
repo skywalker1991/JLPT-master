@@ -127,7 +127,7 @@ export default function PracticeSession({ category, label, onExit, onOpenAnalysi
                 {r && onOpenAnalysis && (
                   <button type="button" onClick={() => onOpenAnalysis(unit, item.id)}
                           className="self-start text-sm text-fg underline underline-offset-4">
-                    看完整解析 ›<span className="ml-2 text-xs text-fg-subtle no-underline">原题、对比、本题知识点、追问都在里面</span>
+                    看完整解析 ›
                   </button>
                 )}
               </section>

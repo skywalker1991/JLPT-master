@@ -210,7 +210,6 @@ export default function ItemRow(props: Props) {
             </div>
           ))}
           <p className="text-[11px] text-fg-subtle">
-            {ask.kind === 'other_spelling' ? '写法相同、读音不同（市場 いちば / しじょう）不会提示合并' : '语法没有统一的原形，相似的由你判断'}
           </p>
         </div>
       )}
@@ -274,7 +273,6 @@ function CardBody(props: Props & { meaningHere: string; onSupplemented: () => vo
       <button type="button" onClick={() => setShowExamples(s => !s)} aria-expanded={showExamples}
               className="flex items-baseline gap-2 text-left">
         <span className="text-xs font-semibold text-fg-muted">AI 例句{atomId && detail ? ` ${detail.examples.length} 句` : ''}</span>
-        <span className="text-[11px] text-fg-subtle">每句一个不同的意思或搭配，不进复习轮换</span>
         {atomId && <ChevronRight className={clsx('w-3.5 h-3.5 text-fg-subtle self-center transition-transform', showExamples && 'rotate-90')} />}
       </button>
       {showExamples && (failed ? (
@@ -362,7 +360,6 @@ function CardBody(props: Props & { meaningHere: string; onSupplemented: () => vo
             <p className="font-jp text-[0.9375rem] text-fg leading-relaxed">
               <Underlined text={sentence} pieces={vocab ? [vocab.surface] : grammarPieces(key)} />
             </p>
-            <p className="text-[11px] text-fg-subtle">{atomId ? '你正在读的这句，已自动记下' : '你正在读的这句；入库时一起保存'}</p>
           </div>
         )}
         {newMeaning && (

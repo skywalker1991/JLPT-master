@@ -50,7 +50,7 @@ export default function SettingsPage() {
     <div className="flex items-center gap-4 py-4 border-b border-border">
       <label htmlFor={id} className="flex-1 min-w-0 flex flex-col gap-0.5">
         <span className="text-[0.9375rem] text-fg">{title}</span>
-        <span className="text-xs text-fg-subtle">{hint}</span>
+        {hint && <span className="text-xs text-fg-subtle">{hint}</span>}
       </label>
       {control}
     </div>
@@ -64,14 +64,13 @@ export default function SettingsPage() {
           {SECTIONS.map(([id, label]) => (
             <a key={id} href={`#${id}`} className="rounded-lg px-3 py-2 text-sm text-fg-muted hover:bg-accent-light hover:text-fg">{label}</a>
           ))}
-          <p className="text-xs text-fg-subtle leading-relaxed pt-4">这里是默认值。页面上的开关（门槛、振假名、译文）只改当前这一次。</p>
         </nav>
 
         <div className="flex-1 min-w-0 flex flex-col">
           <h1 className="md:hidden text-xl font-bold text-fg pb-2">设置</h1>
 
           <h2 id="look" className="text-xs font-semibold text-fg-subtle pt-4 scroll-mt-6">外观</h2>
-          {row('主题', '默认跟随系统：白天「紙」，晚上「夜」', (
+          {row('主题', '', (
             <span role="radiogroup" aria-label="主题" className="flex flex-wrap justify-end gap-2">
               {THEMES.map(t => (
                 <button key={t.value} type="button" role="radio" aria-checked={settings.theme === t.value}
@@ -86,46 +85,46 @@ export default function SettingsPage() {
               ))}
             </span>
           ))}
-          {row('日文字号', '正文、原句、卡片里的日文',
+          {row('日文字号', '',
             segmented<JpSize>(settings.jpSize, [['sm', '小'], ['md', '中'], ['lg', '大']], v => updateSettings({ jpSize: v }), '日文字号'))}
 
           <h2 id="read" className="text-xs font-semibold text-fg-subtle pt-8 scroll-mt-6">阅读（语料分析、JLPT 解析）</h2>
-          {row('生词标注门槛', '只给这个等级以上的词划粗横杠；页面上也能临时切换', (
+          {row('生词标注门槛', '', (
             <select id="set-level" value={settings.markLevel} onChange={e => updateSettings({ markLevel: e.target.value as MarkLevel })} className="input w-28">
               <option value="N1">N1</option><option value="N2">N2 以上</option><option value="N3">N3 以上</option>
               <option value="N4">N4 以上</option><option value="all">全部</option>
             </select>
           ), 'set-level')}
-          {row('振假名', '默认显示', (
+          {row('振假名', '', (
             <input id="set-furigana" type="checkbox" checked={!settings.hideFurigana} className="accent-fg w-5 h-5"
                    onChange={e => updateSettings({ hideFurigana: !e.target.checked })} />
           ), 'set-furigana')}
-          {row('逐句译文', '默认显示', (
+          {row('逐句译文', '', (
             <input id="set-zh" type="checkbox" checked={settings.showTranslations} className="accent-fg w-5 h-5"
                    onChange={e => updateSettings({ showTranslations: e.target.checked })} />
           ), 'set-zh')}
 
           <h2 id="review" className="text-xs font-semibold text-fg-subtle pt-8 scroll-mt-6">复习（内化学习）</h2>
-          {row('每天新卡上限', '到期的复习不受这个数限制', (
+          {row('每天新卡上限', '', (
             <input id="set-new" type="number" min={0} max={200} key={review?.new_cards_per_day} defaultValue={review?.new_cards_per_day ?? ''}
                    onBlur={e => { const v = Number(e.target.value); if (review && Number.isFinite(v) && v !== review.new_cards_per_day) void saveReview({ new_cards_per_day: v }) }}
                    className="input w-24 text-right tabular-nums" />
           ), 'set-new')}
-          {row('目标记住率', '越高复习越频繁（FSRS）', (
+          {row('目标记住率', '越高，复习越频繁', (
             <select id="set-ret" value={review ? String(review.desired_retention) : ''} onChange={e => void saveReview({ desired_retention: Number(e.target.value) })} className="input w-24">
               {[0.8, 0.85, 0.9, 0.95].map(r => <option key={r} value={String(r)}>{Math.round(r * 100)}%</option>)}
             </select>
           ), 'set-ret')}
-          {row('挖空卡怎么答', speechSupported ? '默认只在心里想、自己判断' : '默认只在心里想、自己判断；这个浏览器不支持语音识别',
+          {row('挖空卡怎么答', speechSupported ? '' : '这个浏览器不支持语音识别',
             segmented<ClozeAnswer>(settings.clozeAnswer, [['self', '自评'], ['type', '打字'], ['speak', '说出来', !speechSupported]],
               v => updateSettings({ clozeAnswer: v }), '挖空卡怎么答'))}
-          {row('背诵：假名提示', '默认关', (
+          {row('背诵：假名提示', '', (
             <input id="set-kana" type="checkbox" checked={settings.reciteKana} className="accent-fg w-5 h-5"
                    onChange={e => updateSettings({ reciteKana: e.target.checked })} />
           ), 'set-kana')}
 
           <h2 id="data" className="text-xs font-semibold text-fg-subtle pt-8 scroll-mt-6">数据</h2>
-          {row('导出知识库', 'CSV：每个词条连同遇到过的句子和出处；Excel 可以直接打开', (
+          {row('导出知识库', '', (
             <a href="/api/kb/export.csv" download className="btn h-10 border border-border text-fg"><Download className="w-4 h-4" />导出 CSV</a>
           ))}
         </div>

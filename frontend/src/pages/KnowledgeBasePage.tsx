@@ -122,7 +122,6 @@ export default function KnowledgeBasePage() {
                   ))}
                 </span>
               ) : <span className="text-sm text-fg-subtle">还没有反复忘记的</span>}
-              <span className="text-[11px] text-fg-subtle">点开回到原句重读，或去追问</span>
             </div>
           </div>
         )}

@@ -13,10 +13,6 @@ import { grammarPieces } from '../utils/marks'
 
 const LEVEL_CLASS: Record<string, string> = { N1: 'badge-n1', N2: 'badge-n2', N3: 'badge-n3', N4: 'badge-n4', N5: 'badge-n5' }
 const TYPE_ORDER = ['synonym', 'derivative', 'confusable', 'antonym', 'collocation']
-const TYPE_HINT: Record<string, string> = {
-  synonym: '意思接近，容易用混；差别写在说明里', derivative: '同一个词根或语法核心变出来的',
-  confusable: '长得像或读音像，意思无关', antonym: '意思相反', collocation: '经常一起用',
-}
 const day = (iso: string) => { const d = new Date(iso); return `${d.getMonth() + 1}月${d.getDate()}日` }
 
 /**
@@ -33,7 +29,6 @@ export default function AtomDetailPage() {
   const [e, setE] = useState<KbEntry | null>(null)
   const [hidden, setHidden] = useState<Set<string>>(new Set())
   const [gone, setGone] = useState(false)
-  const [tab, setTab] = useState<'sentences' | 'relations' | 'info'>('sentences')
   const [merging, setMerging] = useState(false)
 
   useEffect(() => {
@@ -79,7 +74,7 @@ export default function AtomDetailPage() {
   const sentenceList = (
     <section className="flex flex-col gap-2.5">
       <h2 className="flex items-baseline gap-2 text-sm font-semibold text-fg">
-        遇到过的句子<span className="text-xs font-normal text-fg-subtle">自动记下的句子如果配错了，点「这句不是这个词」</span>
+        遇到过的句子
       </h2>
       {sentences.length === 0 && <p className="text-sm text-fg-subtle">还没有句子：在语料分析或 JLPT 里再遇到它时会记下</p>}
       {sentences.map(s => (
@@ -110,9 +105,6 @@ export default function AtomDetailPage() {
         {e.review.due && ` · 下次 ${day(e.review.due)}`}
         {e.review.lapses > 0 && ` · 忘过 ${e.review.lapses} 次`}
       </p>
-      <p className="text-xs text-fg-subtle">
-        正面：{e.review.familiarity === 'familiar' || e.type === 'grammar' ? '挖空 + 中文' : `划出词（稳定度到 7 天换成挖空）`}
-      </p>
     </section>
   )
 
@@ -132,47 +124,30 @@ export default function AtomDetailPage() {
     )
   }
 
+  const tidy = (
+    <>
+      {review}
+      <EditPanel entry={e} onSaved={setE} />
+      {actions}
+      {merging && <MergeBox entry={e} onDone={to => navigate(`/kb/${to}`, { replace: true })} onCancel={() => setMerging(false)} />}
+    </>
+  )
+
   return (
-    <div className="flex-1 min-h-0 flex flex-col md:flex-row">
-      <div className="md:w-[30rem] shrink-0 md:border-r border-border md:bg-accent-light/30 md:overflow-y-auto px-4 md:px-8 py-4 md:py-8 flex flex-col gap-6">
-        <button type="button" onClick={() => navigate('/kb')} className="self-start -ml-1 flex items-center gap-0.5 text-sm text-fg-muted hover:text-fg">
-          <ChevronLeft className="w-4 h-4" />知识库
-        </button>
-        {header}
-        <div className="hidden md:flex flex-col gap-6">
+    <div className="flex-1 min-h-0 overflow-y-auto">
+      <div className="max-w-6xl mx-auto px-4 md:px-10 py-4 md:py-8 flex flex-col md:flex-row gap-8 md:gap-12">
+        <main className="flex-1 min-w-0 flex flex-col gap-6">
+          <button type="button" onClick={() => navigate('/kb')} className="self-start -ml-1 flex items-center gap-0.5 text-sm text-fg-muted hover:text-fg">
+            <ChevronLeft className="w-4 h-4" />知识库
+          </button>
+          {header}
           {sentenceList}
-          {review}
-          <EditPanel entry={e} onSaved={setE} />
-          {actions}
-          {merging && <MergeBox entry={e} onDone={to => navigate(`/kb/${to}`, { replace: true })} onCancel={() => setMerging(false)} />}
-        </div>
-
-        {/* Phone: tabs */}
-        <div className="md:hidden flex flex-col gap-4">
-          <div role="tablist" className="flex gap-1 border-b border-border">
-            {([['sentences', `句子 ${sentences.length}`], ['relations', `关系 ${e.relations.length}`], ['info', '复习与整理']] as const).map(([k, label]) => (
-              <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)}
-                      className={clsx('px-3 py-2 text-sm -mb-px border-b-2', tab === k ? 'border-fg text-fg font-semibold' : 'border-transparent text-fg-muted')}>
-                {label}
-              </button>
-            ))}
-          </div>
-          {tab === 'sentences' && sentenceList}
-          {tab === 'relations' && <Relations entry={e} />}
-          {tab === 'info' && (
-            <div className="flex flex-col gap-6">
-              {review}
-              <EditPanel entry={e} onSaved={setE} />
-              {actions}
-              {merging && <MergeBox entry={e} onDone={to => navigate(`/kb/${to}`, { replace: true })} onCancel={() => setMerging(false)} />}
-            </div>
-          )}
-        </div>
+          <Relations entry={e} />
+        </main>
+        <aside className="md:w-80 shrink-0 flex flex-col gap-6 md:pt-10 border-t md:border-t-0 border-border pt-6">
+          {tidy}
+        </aside>
       </div>
-
-      <main className="hidden md:block flex-1 min-w-0 overflow-y-auto px-10 py-8">
-        <Relations entry={e} />
-      </main>
       {undoToast}
     </div>
   )
@@ -201,24 +176,14 @@ function Underlined({ text, pieces }: { text: string; pieces: string[] }) {
 function Relations({ entry: e }: { entry: KbEntry }) {
   const [open, setOpen] = useState<string | null>(null)
   const groups = useMemo(() => TYPE_ORDER.map(t => [t, e.relations.filter(r => r.type === t)] as const).filter(([, rs]) => rs.length), [e])
-  if (e.relations.length === 0) {
-    return (
-      <section className="flex flex-col gap-2">
-        <h2 className="text-lg font-bold text-fg">关系</h2>
-        <p className="text-sm text-fg-muted leading-relaxed">还没有。追问回答或 JLPT 错题解析里的「差在哪」下面点「存成关系」，就会出现在这里。</p>
-      </section>
-    )
-  }
+  if (e.relations.length === 0) return null
   return (
-    <section className="flex flex-col gap-5">
-      <h2 className="flex items-baseline gap-3">
-        <span className="text-lg font-bold text-fg">关系</span>
-        <span className="text-xs text-fg-subtle">{e.relations.length} 条 · 按「为什么相关」分组，点一条展开成配对</span>
-      </h2>
+    <section className="flex flex-col gap-4">
+      <h2 className="text-sm font-semibold text-fg">关系</h2>
       {groups.map(([type, rs]) => (
         <div key={type} className="flex flex-col gap-2">
-          <h3 className="flex items-baseline gap-2 text-sm font-semibold text-fg">
-            {RELATION_LABEL[type] ?? type}<span className="text-xs font-normal text-fg-subtle">{TYPE_HINT[type]}</span>
+          <h3 className="text-xs text-fg-subtle">
+            {RELATION_LABEL[type] ?? type}
           </h3>
           {rs.map(r => open === r.id ? (
             <div key={r.id} className="rounded-2xl border-[1.5px] border-fg bg-surface p-5 flex flex-col gap-4">
@@ -286,7 +251,7 @@ function EditPanel({ entry: e, onSaved }: { entry: KbEntry; onSaved: (e: KbEntry
   }
   return (
     <section className="flex flex-col">
-      <h2 className="text-xs font-semibold text-fg-subtle pb-1">词条信息 · 点「改」直接改</h2>
+      <h2 className="text-xs font-semibold text-fg-subtle pb-1">词条信息</h2>
       {rows.map(r => (
         <div key={r.k} className="flex items-center gap-3 py-2.5 border-b border-border text-sm">
           <span className="w-10 text-fg-subtle shrink-0">{r.label}</span>
@@ -308,7 +273,6 @@ function EditPanel({ entry: e, onSaved }: { entry: KbEntry; onSaved: (e: KbEntry
           )}
         </div>
       ))}
-      <p className="text-[11px] text-fg-subtle leading-relaxed pt-2">改过的地方标「你改的」，AI 以后不会覆盖它。删除词条会连同句子和关系一起删，10 秒内可以撤销，不做回收站。</p>
     </section>
   )
 }

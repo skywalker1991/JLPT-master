@@ -146,9 +146,6 @@ export default function SentencePanel({
           {grammarList}
         </>
       )}
-      {analysis && !analysis.failed && (
-        <p className="text-xs text-fg-subtle">入库时，这一句会作为例句和来源一起保存</p>
-      )}
     </div>
   )
 }

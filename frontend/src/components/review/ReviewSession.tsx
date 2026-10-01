@@ -186,7 +186,7 @@ export default function ReviewSession({ cards, onClose, onFinished }: Props) {
         {/* Desktop: the sentences met, once the card is turned */}
         <aside className="hidden md:flex w-[24rem] shrink-0 border-l border-border flex-col gap-3 px-6 py-8 overflow-y-auto">
           <h2 className="flex items-baseline gap-2 text-sm font-semibold text-fg">
-            遇到过的句子<span className="text-xs font-normal text-fg-subtle">翻面后显示；每次复习换一句</span>
+            遇到过的句子
           </h2>
           {flipped ? (card.sentences.length > 0 ? card.sentences.map((s, i) => (
             <div key={i} className={clsx('rounded-xl px-3.5 py-3 flex flex-col gap-1', s.current ? 'bg-accent-light' : '')}>
@@ -196,7 +196,6 @@ export default function ReviewSession({ cards, onClose, onFinished }: Props) {
           )) : <p className="text-sm text-fg-subtle">还没有遇到过的句子</p>) : (
             <p className="text-sm text-fg-subtle">先想一想，再翻面</p>
           )}
-          <p className="text-xs text-fg-subtle leading-relaxed pt-2">熟了以后，正面会从「划出词」变成「挖空＋中文」，操作不变。</p>
         </aside>
       </div>
     </div>

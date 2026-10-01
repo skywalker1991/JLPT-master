@@ -24,7 +24,6 @@ export default function JlptHome({ data, onPractice, onPaper, onMistakes }: {
       <section className="md:flex-1 md:min-w-0 md:overflow-y-auto px-4 md:px-10 py-5 md:py-8 flex flex-col gap-4">
         <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h1 className="text-2xl font-bold text-fg">练习</h1>
-          <span className="text-sm text-fg-muted">按题型练，不计时，每题做完马上看解析 · 从 {data.papers.length} 套真题里抽</span>
         </header>
         <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {data.categories.map(c => {
@@ -47,16 +46,12 @@ export default function JlptHome({ data, onPractice, onPaper, onMistakes }: {
             )
           })}
         </div>
-        <p className="text-xs text-fg-subtle">
-          红色 = 正确率低于 {WEAK}%，建议先练。点一个题型，开始练一组（没做过的优先，错过的会再出现）。
-        </p>
       </section>
 
       <aside className="md:w-[30rem] shrink-0 md:border-l border-border md:bg-accent-light/40 md:overflow-y-auto px-4 md:px-8 py-5 md:py-8 flex flex-col gap-4">
         <header className="flex flex-col gap-1">
           <p className="flex flex-wrap items-baseline gap-x-3">
             <span className="text-xl font-bold text-fg">模拟考</span>
-            <span className="text-xs text-fg-muted">整套 · 按真实时间计时 · 交卷前不给答案</span>
           </p>
           <p className="text-xs text-fg-subtle">言語知識・読解 110 分钟　聴解 55 分钟</p>
         </header>

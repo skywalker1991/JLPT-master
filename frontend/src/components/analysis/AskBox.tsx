@@ -91,7 +91,6 @@ export function AskComposer() {
             </button>
           </span>
         ))}
-        <span className="ml-auto hidden md:inline text-fg-subtle">词卡、语法卡展开后点「追问」加进来</span>
       </div>
       <div className="flex items-center gap-2">
         <label htmlFor="ask-input" className="sr-only">追问</label>

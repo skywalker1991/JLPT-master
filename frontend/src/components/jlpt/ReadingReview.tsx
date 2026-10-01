@@ -73,7 +73,7 @@ export default function ReadingReview({ data, itemId, chosen, correct, ask }: {
           {prob.type === 'listening' && <PlayAudio itemId={item.id} />}
           <p className="flex items-baseline gap-2">
             <span className="text-lg font-bold text-fg">{reading ? KIND_LABEL[reading.kind] : '文章'}</span>
-            {reading && <span className="text-xs text-fg-subtle">{reading.sentences.length} 句 · 和语料分析同一套阅读组件</span>}
+            {reading && <span className="text-xs text-fg-subtle">{reading.sentences.length} 句</span>}
           </p>
           {failed ? (
             <button type="button" onClick={() => setAttempt(a => a + 1)} className="self-start btn h-9 border border-border">

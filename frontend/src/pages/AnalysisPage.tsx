@@ -324,11 +324,6 @@ export default function AnalysisPage() {
                 )}
                 {toolbar}
                 {reader}
-                <p className="text-xs text-fg-subtle">
-                  <span className="hidden md:inline">点一句，在右边看译文和解析；</span>
-                  <span className="md:hidden">点一句，从底部看译文和解析；</span>
-                  粗横杠是生词，细灰线是已在库，虚线是语法；读完值得背就点「要背」。
-                </p>
                 <div className="hidden md:block"><AskThread /></div>
               </div>
             </div>

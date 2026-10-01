@@ -139,7 +139,6 @@ export default function ReciteView({ onBack }: { onBack: () => void }) {
         {working && session ? session : (
           <>
             <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 flex flex-col gap-3">
-              <p className="text-xs text-fg-muted leading-relaxed">在语料分析里点「要背」，就排到队尾。一次只背一段，背完才出现下一段。拖动或「↑」调整顺序；点「语料 ›」回到原来的语料分析重新学。</p>
               {queueList}
             </div>
             {first && (
