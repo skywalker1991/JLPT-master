@@ -7,8 +7,7 @@ const LEVEL_CLASS: Record<string, string> = {
 }
 
 export const RELATION_LABEL: Record<string, string> = {
-  synonym: '近义', nuance: '近义', formal_casual: '近义',
-  derivative: '同源', confusable: '形音易混', contrast: '反义', collocation: '搭配',
+  synonym: '近义', derivative: '同源', confusable: '形音易混', antonym: '反义', collocation: '搭配',
 }
 
 /** Where in the sentence the card's word / grammar sits: [start, end) ranges. */

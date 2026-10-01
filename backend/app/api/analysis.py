@@ -797,7 +797,29 @@ def _parse_ask_answer(raw: str, known: set[str]) -> dict:
         if kind not in ("vocab", "grammar") or not key or not meaning or key in known:
             continue
         items.append({"kind": kind, "key": key, "reading": (it.get("reading") or "").strip() or None, "meaning": meaning})
-    return {"response": answer or raw.strip(), "new_items": items[:3]}
+    return {"response": answer or raw.strip(), "new_items": items[:3], "pair": _parse_pair(data.get("pair"))}
+
+
+_RELATION_TYPES = {"synonym", "derivative", "confusable", "antonym", "collocation"}
+
+
+def _parse_pair(raw) -> dict | None:
+    """Two entries the answer told apart, and how — offered as 「存成关系」."""
+    if not isinstance(raw, dict):
+        return None
+    sides = []
+    for side in (raw.get("a"), raw.get("b")):
+        if not isinstance(side, dict):
+            return None
+        kind, key = side.get("kind"), (side.get("key") or "").strip()
+        if kind not in ("vocab", "grammar") or not key:
+            return None
+        sides.append({"kind": kind, "key": key, "reading": (side.get("reading") or "").strip() or None,
+                      "meaning": (side.get("meaning") or "").strip() or None})
+    difference = (raw.get("difference") or "").strip()
+    if raw.get("type") not in _RELATION_TYPES or not difference or sides[0]["key"] == sides[1]["key"]:
+        return None
+    return {"a": sides[0], "b": sides[1], "type": raw["type"], "difference": difference[:120]}
 
 
 # ---------------------------------------------------------------------------

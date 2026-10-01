@@ -518,7 +518,7 @@ _PROMPTS: dict[str, str] = {
 - stem_notes：题干中值得注意的词/语法（≤2个，排除选项语法）
 - options_analysis 每项：grammar.pattern（〜开头，不含具体词汇）、grammar.meaning、grammar.connection（接续方式）、grammar.example、explanation；若该语法不存在，explanation中注明，不入atoms
 - atoms：正确语法 + 最相似干扰语法（≤3个，type="grammar"）
-- relations：语法点之间的关系（nuance/contrast/synonym等）
+- relations：语法点之间的关系（synonym/derivative/confusable/antonym/collocation）
 
 直接输出JSON：
 {schema_json}""",

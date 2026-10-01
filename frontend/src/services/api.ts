@@ -4,6 +4,7 @@ import {
   SentenceAnalysis,
   CardDetail,
   OccurrenceInput,
+  ComparedPair,
   CreateAtomRequest,
   CreateAtomResponse,
   AddPropertiesRequest,
@@ -662,4 +663,11 @@ export async function addOccurrence(atomId: string, body: {
   occurrence: OccurrenceInput; analysis_id?: string | null; variant?: string | null
 }): Promise<{ atom_id: string }> {
   return request(`/api/atoms/${atomId}/occurrences`, { method: 'POST', body: JSON.stringify(body) })
+}
+
+/** Keep one 「差在哪」 as a relation; either entry is added if it isn't kept yet. */
+export async function savePair(body: ComparedPair & {
+  source?: 'ask' | 'jlpt'; analysis_id?: string | null; sentence_index?: number | null; item_id?: string | null
+}): Promise<{ relation_id: string; a: string; b: string }> {
+  return request('/api/relations/pair', { method: 'POST', body: JSON.stringify(body) })
 }

@@ -55,7 +55,8 @@ VALID_KINDS = {
 }
 
 # Valid relation types
-VALID_RELATION_TYPES = {"synonym", "formal_casual", "derivative", "contrast", "nuance", "confusable"}
+# Why two entries belong together; how they differ goes in the note.
+VALID_RELATION_TYPES = {"synonym", "derivative", "confusable", "antonym", "collocation"}
 
 
 async def get_atom_by_key(

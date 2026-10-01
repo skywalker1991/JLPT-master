@@ -226,6 +226,11 @@ FOLLOWUP_ASK = """
 不要列出这句话已经解析过的这些：{known_items}
 kind 只能是 vocab 或 grammar；key 用词典形或语法句型（如「〜ように」）；reading 只有单词需要（平假名）；meaning 用中文简短说明。
 
+如果这次问答是在辨析两个词或两个语法的差别（例如「A 和 B 有什么区别」「这里能不能换成 B」），再给出 pair，否则 pair 填 null：
+- a、b：两个词条，各自 {{"kind", "key", "reading", "meaning"}}，key 用词典形或语法句型。
+- type：两者为什么相关，只能是 synonym（近义）、derivative（同源）、confusable（形音易混）、antonym（反义）、collocation（搭配）之一。
+- difference：一句话说清差在哪，不超过 60 字。
+
 直接输出 JSON 对象，不要 ```json 代码块，不要任何前缀或后缀文字。格式：
-{{"answer": "给学习者的回答", "new_items": [{{"kind": "vocab", "key": "考える", "reading": "かんがえる", "meaning": "思考，考虑"}}]}}
+{{"answer": "给学习者的回答", "new_items": [{{"kind": "vocab", "key": "考える", "reading": "かんがえる", "meaning": "思考，考虑"}}], "pair": null}}
 """

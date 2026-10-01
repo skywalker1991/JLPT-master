@@ -239,3 +239,19 @@ def test_unanalysed_sentence_is_flagged_for_retry(monkeypatch):
 def test_normalized_sentence_drops_the_failed_flag():
     s = analysis_api._normalize_sentence({"index": 9, "text": "x", "failed": True, "translation": "t"}, 2, "二つ目。")
     assert s["index"] == 2 and s["text"] == "二つ目。" and "failed" not in s and s["vocab"] == []
+
+
+def test_parse_ask_answer_keeps_a_compared_pair():
+    raw = json.dumps({"answer": "…", "new_items": [], "pair": {
+        "a": {"kind": "vocab", "key": "落ち着く", "reading": "おちつく", "meaning": "沉稳"},
+        "b": {"kind": "vocab", "key": "静か", "reading": "しずか", "meaning": "安静"},
+        "type": "synonym", "difference": "静か说声音少；落ち着く说氛围让人安定。"}}, ensure_ascii=False)
+    pair = analysis_api._parse_ask_answer(raw, set())["pair"]
+    assert pair["type"] == "synonym" and pair["a"]["key"] == "落ち着く" and pair["b"]["reading"] == "しずか"
+
+
+def test_parse_ask_answer_drops_a_malformed_pair():
+    for bad in [None, {"a": {"kind": "vocab", "key": "x"}}, {"a": {"kind": "vocab", "key": "x"}, "b": {"kind": "vocab", "key": "y"},
+                "type": "nuance", "difference": "d"}]:
+        raw = json.dumps({"answer": "…", "pair": bad}, ensure_ascii=False)
+        assert analysis_api._parse_ask_answer(raw, set())["pair"] is None

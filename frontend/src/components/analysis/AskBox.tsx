@@ -4,6 +4,7 @@ import { askTargets, type AskTarget } from '../../types'
 import { ask } from '../../services/api'
 import { useToast } from '../../context/ToastContext'
 import { AskContext, NewItemChip } from './AskPanel'
+import SavePair from '../shared/SavePair'
 
 const sameTarget = (a: AskTarget, b: AskTarget) => a.kind === b.kind && a.key === b.key
 
@@ -25,6 +26,12 @@ export function AskThread() {
             <span className="text-sm text-fg-muted ml-1">{entry.params.question}</span>
           </div>
           <p className="text-[0.9375rem] text-fg leading-relaxed whitespace-pre-wrap">{entry.result.response}</p>
+          {entry.result.pair && (
+            <div className="flex flex-col gap-2 pt-1">
+              <p className="text-sm text-fg-muted"><span className="text-fg font-semibold mr-2">差在哪</span>{entry.result.pair.difference}</p>
+              <SavePair pair={entry.result.pair} source="ask" analysisId={ctx.analysisId} sentenceIndex={entry.params.sentence_index} />
+            </div>
+          )}
           {entry.result.new_items && entry.result.new_items.length > 0 && (
             <div className="flex flex-wrap gap-1.5 pt-1">
               {entry.result.new_items.map(item => <NewItemChip key={`${item.kind}-${item.key}`} item={item} />)}

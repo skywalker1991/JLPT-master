@@ -290,6 +290,93 @@ async def add_occurrence(
     return {"atom_id": str(atom.id)}
 
 
+class PairSide(BaseModel):
+    kind: str = Field(pattern="^(vocab|grammar)$")
+    key: str = Field(min_length=1, max_length=100)
+    reading: str | None = Field(default=None, max_length=100)
+    meaning: str | None = Field(default=None, max_length=300)
+
+
+class SavePairRequest(BaseModel):
+    """One 「差在哪」 kept as a relation: two entries, why they belong
+    together, and how they differ. Either entry is added if it isn't kept yet."""
+    a: PairSide
+    b: PairSide
+    type: str
+    difference: str = Field(min_length=1, max_length=300)
+    # Where the comparison came from: an analysis follow-up or a JLPT question
+    source: str = Field(default="ask", pattern="^(ask|jlpt)$")
+    analysis_id: UUID | None = None
+    sentence_index: int | None = None
+    item_id: UUID | None = None
+
+
+async def _atom_for(db: AsyncSession, side: PairSide, user: User, analysis: Analysis | None,
+                    sentence_index: int | None) -> Atom:
+    atom_type = "vocabulary" if side.kind == "vocab" else "grammar"
+    key = _normalize_grammar_key(side.key) if atom_type == "grammar" else side.key.strip()
+    reading = (side.reading or "").strip() or None if atom_type == "vocabulary" else None
+    atom = await atom_service.get_atom_by_key(db, atom_type, key, user_id=user.id, reading=reading)
+    if atom is None:
+        atom = await atom_service.create_atom(db, atom_type, key, user_id=user.id, reading=reading)
+        props = [p for p in (
+            ("reading", reading), ("meaning", side.meaning),
+        ) if p[1]]
+        for kind, value in props:
+            db.add(AtomProperty(atom_id=atom.id, kind=kind, value=value, source_type="ai"))
+        await atom_service.add_trace(db, atom.id, "added", {"key": key, "type": atom_type, "via": "relation"})
+        if atom_type == "grammar":
+            await db.flush()
+            await qdrant_service.upsert_grammar_atom(atom.id, key, side.meaning or "", user.id)
+    # The sentence the question was about, when the entry appears in it
+    if analysis is not None and sentence_index is not None:
+        sentences = (analysis.session_data or {}).get("sentences") or []
+        if 0 <= sentence_index < len(sentences):
+            s = sentences[sentence_index]
+            text_ = s.get("text") or ""
+            surface = next((v.get("surface") for v in s.get("vocab") or []
+                            if (v.get("base") or v.get("surface")) == key), None)
+            if text_ and (surface or key.lstrip("〜") in text_):
+                await atom_service.record_occurrence(
+                    db, atom.id, text_, analysis_id=analysis.id, sentence_index=sentence_index,
+                    sentence_text_translation=s.get("translation") or None, surface=surface,
+                )
+    return atom
+
+
+@router.post("/relations/pair", status_code=201)
+async def save_pair(body: SavePairRequest, db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
+    if body.type not in atom_service.VALID_RELATION_TYPES:
+        raise HTTPException(status_code=422, detail="Unknown relation type")
+    analysis = None
+    if body.analysis_id is not None:
+        analysis = (await db.execute(
+            select(Analysis).where(Analysis.id == body.analysis_id, Analysis.user_id == user.id)
+        )).scalar_one_or_none()
+    a = await _atom_for(db, body.a, user, analysis, body.sentence_index)
+    b = await _atom_for(db, body.b, user, analysis, body.sentence_index)
+    if a.id == b.id:
+        raise HTTPException(status_code=422, detail="两边是同一个词条")
+    note = {"text": body.difference.strip(), "source": body.source}
+    if body.item_id:
+        note["item_id"] = str(body.item_id)
+    if body.analysis_id:
+        note["analysis_id"] = str(body.analysis_id)
+    existing = (await db.execute(select(AtomRelation).where(
+        or_(and_(AtomRelation.from_id == a.id, AtomRelation.to_id == b.id),
+            and_(AtomRelation.from_id == b.id, AtomRelation.to_id == a.id)),
+        AtomRelation.type == body.type,
+    ))).scalar_one_or_none()
+    if existing is not None:
+        existing.note = note
+        relation = existing
+    else:
+        relation = AtomRelation(from_id=a.id, to_id=b.id, type=body.type, note=note, source_type="user")
+        db.add(relation)
+    await db.commit()
+    return {"relation_id": str(relation.id), "a": str(a.id), "b": str(b.id)}
+
+
 # ---------------------------------------------------------------------------
 # POST /atoms/{id}/properties
 # ---------------------------------------------------------------------------

@@ -30,7 +30,7 @@ RELATION_ITEM = {
         "to_key": {"type": "string"},
         "relation_type": {
             "type": "string",
-            "enum": ["synonym", "formal_casual", "derivative", "contrast", "nuance", "confusable"],
+            "enum": ["synonym", "derivative", "confusable", "antonym", "collocation"],
         },
         "note": {"type": "string"},
     },
@@ -73,9 +73,10 @@ GRAMMAR_DETAIL = {
 # ── Prompt text ───────────────────────────────────────────────────────────────
 
 RELATION_GUIDE = (
-    "relation_type 枚举（只能用这6种）：\n"
-    "  synonym=同义  formal_casual=语体差异  derivative=派生形式\n"
-    "  contrast=对比/反义  nuance=细微语义差别  confusable=易混淆（汉字音近/形近）"
+    "relation_type 枚举（只能用这5种，按「为什么相关」分）：\n"
+    "  synonym=近义（含语感、语体不同的近义）  derivative=同源（同一词根或语法核心）\n"
+    "  confusable=形音易混（字形或读音相近）  antonym=反义  collocation=搭配\n"
+    "  差在哪（语感、使用条件、语体）写进 note，不作为类型"
 )
 
 # Injected into exam prompts via {atom_rules}

@@ -584,7 +584,17 @@ export interface AskEntry {
     kind?: 'sentence' | 'vocab' | 'grammar'
     target?: string
   }
-  result: { response: string; new_items?: AskNewItem[] }
+  result: { response: string; new_items?: AskNewItem[]; pair?: ComparedPair | null }
+}
+
+export type RelationType = 'synonym' | 'derivative' | 'confusable' | 'antonym' | 'collocation'
+
+/** Two entries an answer told apart: offered as 「存成关系」 */
+export interface ComparedPair {
+  a: { kind: 'vocab' | 'grammar'; key: string; reading: string | null; meaning: string | null }
+  b: { kind: 'vocab' | 'grammar'; key: string; reading: string | null; meaning: string | null }
+  type: RelationType
+  difference: string
 }
 
 /** Items an ask referenced, reading either shape. */
