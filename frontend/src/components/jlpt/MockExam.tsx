@@ -7,6 +7,8 @@ import { useToast } from '../../context/ToastContext'
 import Passage from '../exam/Passage'
 import PlayAudio from '../exam/PlayAudio'
 import QuestionBlock from './QuestionBlock'
+import PaperPage, { AnswerSheet } from './PaperPage'
+import { useIsDesktop } from '../../hooks/useIsDesktop'
 
 interface Slot { item: ItemSchema; problem: ProblemDetail; section: string }
 
@@ -36,6 +38,7 @@ export default function MockExam({ attemptId, onExit, onDone }: {
   const [confirm, setConfirm] = useState(false)
   const [passageOpen, setPassageOpen] = useState(false)
   const handing = useRef(false)
+  const desktop = useIsDesktop()
 
   const load = useCallback(async () => {
     const s = await getMock(attemptId)
@@ -89,23 +92,110 @@ export default function MockExam({ attemptId, onExit, onDone }: {
   const banStart = listening ? slots.findIndex(s => s.problem.id === problem.id && (s.item.meta?.ban ?? s.item.id) === (item.meta?.ban ?? item.id)) : -1
   const side = !!passage || pages.length > 0
 
-  const choose = async (opt: string) => {
-    setState(s => s && { ...s, answers: { ...s.answers, [item.id]: opt } })
-    try { await answerMock(attemptId, item.id, opt) } catch (e) {
+  const chooseFor = async (itemId: string, opt: string) => {
+    setState(s => s && { ...s, answers: { ...s.answers, [itemId]: opt } })
+    try { await answerMock(attemptId, itemId, opt) } catch (e) {
       toast(e instanceof Error ? e.message : '这题没记上，请再选一次', 'error')
     }
   }
+  const choose = (opt: string) => chooseFor(item.id, opt)
 
-  const toggleFlag = async () => {
+  const flagFor = async (itemId: string) => {
     try {
-      const r = await flagMock(attemptId, item.id, !flagged)
+      const r = await flagMock(attemptId, itemId, !state.flags.includes(itemId))
       setState(s => s && { ...s, flags: r.flags })
     } catch { toast('没标上，请再试一次', 'error') }
   }
+  const toggleFlag = () => flagFor(item.id)
+
+  const unanswered = slots.length - answered
+  const confirmDialog = (
+    <>
+      {confirm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center px-6">
+          <div className="absolute inset-0 bg-black/40 animate-fade-in" onClick={() => setConfirm(false)} />
+          <div role="dialog" aria-modal="true" className="relative w-full max-w-sm bg-surface rounded-2xl p-6 flex flex-col gap-4 animate-pop-in">
+            <h2 className="text-lg font-bold text-fg">{state.stage === 'written' ? '交言語知識・読解？' : '交卷？'}</h2>
+            <p className="text-sm text-fg-muted leading-relaxed">
+              {unanswered > 0 ? `还有 ${unanswered} 题没答` : '都答完了'}
+              {state.flags.length > 0 ? `，${state.flags.length} 题标了不确定` : ''}。
+              {state.stage === 'written' ? '交了以后不能再改，聴解随即开始计时。' : '交了以后看成绩和错题。'}
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button type="button" onClick={() => setConfirm(false)} className="btn h-10 border border-border text-fg">再看看</button>
+              <button type="button" onClick={() => void handIn()} className="btn-primary h-10">交</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
 
   const go = (i: number) => { setAt(Math.max(0, Math.min(slots.length - 1, i))); setPassageOpen(false) }
+
+  if (desktop) {
+    const problems = state.sections.flatMap(sec => sec.problems.map(p => ({ p, listening: sec.name.includes('聴解') })))
+    const pi = Math.max(0, problems.findIndex(x => x.p.id === problem.id))
+    const goProblem = (i: number, itemId?: string) => {
+      const target = problems[Math.max(0, Math.min(problems.length - 1, i))]
+      const idx = slots.findIndex(sl => (itemId ? sl.item.id === itemId : sl.problem.id === target.p.id))
+      if (idx >= 0) setAt(idx)
+      requestAnimationFrame(() => {
+        if (itemId) document.getElementById(`q-${itemId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        else document.getElementById('paper-scroll')?.scrollTo({ top: 0 })
+      })
+    }
+    const lastProblem = pi >= problems.length - 1
+    const firstOfBan = (it: ItemSchema) => {
+      const same = problem.items.filter(x => (x.meta?.ban ?? x.id) === (it.meta?.ban ?? it.id))
+      return same[0]?.id === it.id
+    }
+    return (
+      <div className="flex-1 min-h-0 flex flex-col">
+        <header className="h-14 shrink-0 flex items-center gap-3 px-6 border-b border-border">
+          <span className="text-xs font-semibold rounded-full bg-fg text-bg px-2.5 py-0.5">模拟考</span>
+          <span className="font-bold text-fg">{state.label} {state.level}</span>
+          <span className="text-sm text-fg-muted">{STAGE_LABEL[state.stage]}</span>
+          <span className="ml-auto text-sm text-fg-muted tabular-nums">已答 {answered} / {slots.length}</span>
+          <span className={clsx('text-xl font-bold tabular-nums', left < 300 ? 'text-danger-fg' : 'text-fg')}>{clock(left)}</span>
+          <button type="button" onClick={() => setConfirm(true)} className="btn-primary h-9">
+            {state.stage === 'written' ? '交这一部分' : '交卷'}
+          </button>
+        </header>
+        <div className="flex-1 min-h-0 flex bg-accent-light/50">
+          <div id="paper-scroll" className="flex-1 min-w-0 overflow-y-auto px-8 py-8">
+            <div key={problem.id} className="max-w-3xl mx-auto flex flex-col gap-5 animate-fade-in">
+              <PaperPage problem={problem} answers={state.answers} onChoose={(id, o) => void chooseFor(id, o)}
+                         flags={state.flags} onFlag={id => void flagFor(id)} listeningFirstOf={firstOfBan} />
+              <div className="flex items-center gap-3 font-sans">
+                <button type="button" disabled={pi === 0} onClick={() => goProblem(pi - 1)}
+                        className="btn h-10 border border-border bg-surface text-fg disabled:opacity-30"><ChevronLeft className="w-4 h-4" />上一个大题</button>
+                {lastProblem ? (
+                  <button type="button" onClick={() => setConfirm(true)} className="ml-auto btn-primary h-10 px-5">
+                    {state.stage === 'written' ? '交这一部分' : '交卷'}
+                  </button>
+                ) : (
+                  <button type="button" onClick={() => goProblem(pi + 1)} className="ml-auto btn-primary h-10 px-5">
+                    下一个大题（{problems[pi + 1].p.name}）<ChevronRight className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+          <aside className="w-64 shrink-0 border-l border-border bg-surface overflow-y-auto px-5 py-6 flex flex-col gap-3">
+            <h2 className="text-sm font-semibold text-fg">解答用紙</h2>
+            <AnswerSheet
+              groups={problems.map(({ p, listening }) => ({ name: `${listening ? '聴解 ' : ''}${p.name}`, items: p.items.map(i => ({ id: i.id, num: i.num })) }))}
+              answers={state.answers} flags={state.flags} current={problem.items[0]?.id}
+              onChoose={(id, o) => { void chooseFor(id, o) }}
+              onJump={id => goProblem(problems.findIndex(x => x.p.items.some(i => i.id === id)), id)} />
+          </aside>
+        </div>
+        {confirmDialog}
+      </div>
+    )
+  }
   const last = at >= slots.length - 1
-  const unanswered = slots.length - answered
 
   return (
     <div className="fixed inset-0 z-50 bg-bg flex flex-col md:static md:z-auto md:flex-1 md:min-h-0"
@@ -205,23 +295,7 @@ export default function MockExam({ attemptId, onExit, onDone }: {
         </div>
       )}
 
-      {confirm && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center px-6">
-          <div className="absolute inset-0 bg-black/40 animate-fade-in" onClick={() => setConfirm(false)} />
-          <div role="dialog" aria-modal="true" className="relative w-full max-w-sm bg-surface rounded-2xl p-6 flex flex-col gap-4 animate-pop-in">
-            <h2 className="text-lg font-bold text-fg">{state.stage === 'written' ? '交言語知識・読解？' : '交卷？'}</h2>
-            <p className="text-sm text-fg-muted leading-relaxed">
-              {unanswered > 0 ? `还有 ${unanswered} 题没答` : '都答完了'}
-              {state.flags.length > 0 ? `，${state.flags.length} 题标了不确定` : ''}。
-              {state.stage === 'written' ? '交了以后不能再改，聴解随即开始计时。' : '交了以后看成绩和错题。'}
-            </p>
-            <div className="flex gap-3 justify-end">
-              <button type="button" onClick={() => setConfirm(false)} className="btn h-10 border border-border text-fg">再看看</button>
-              <button type="button" onClick={() => void handIn()} className="btn-primary h-10">交</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {confirmDialog}
     </div>
   )
 }

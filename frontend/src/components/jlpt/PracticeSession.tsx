@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
 import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
-import type { PracticeUnit } from '../../types'
+import type { ItemSchema, PracticeUnit } from '../../types'
+import PaperPage from './PaperPage'
+import { useIsDesktop } from '../../hooks/useIsDesktop'
 import { answerPractice, getPractice } from '../../services/api'
 import { useToast } from '../../context/ToastContext'
 import Passage from '../exam/Passage'
@@ -30,6 +32,7 @@ export default function PracticeSession({ category, level, paperId, label, onExi
   const [at, setAt] = useState(0)
   const [results, setResults] = useState<Record<string, Result>>({})
   const [round, setRound] = useState(0)
+  const desktop = useIsDesktop()
 
   // Drawing a set also starts its explanations on the server, so draw each
   // set once (React may run this effect twice in development).
@@ -64,9 +67,13 @@ export default function PracticeSession({ category, level, paperId, label, onExi
       <span className="text-xs font-semibold rounded-full border border-fg px-2.5 py-0.5 text-fg">练习 · {label}</span>
       {units && units.length > 0 && (
         <span className="ml-auto flex items-center gap-3 text-xs text-fg-muted tabular-nums">
-          <span>{Math.min(at + 1, units.length)} / {units.length}</span>
+          <span>{desktop && paperId
+            ? `已答 ${all.length} / ${units.reduce((n, u) => n + u.problem.items.length, 0)}`
+            : `${Math.min(at + 1, units.length)} / ${units.length}`}</span>
           <span className="hidden sm:block w-40 h-1.5 rounded-full bg-border overflow-hidden">
-            <span className="block h-full bg-fg" style={{ width: `${(Math.min(at, units.length) / units.length) * 100}%` }} />
+            <span className="block h-full bg-fg" style={{ width: `${(desktop && paperId
+              ? all.length / Math.max(1, units.reduce((n, u) => n + u.problem.items.length, 0))
+              : Math.min(at, units.length) / units.length) * 100}%` }} />
           </span>
           <span>对 {right} · 错 {all.length - right}</span>
         </span>
@@ -91,6 +98,47 @@ export default function PracticeSession({ category, level, paperId, label, onExi
           <div className="flex gap-3">
             <button type="button" onClick={onExit} className="btn h-11 px-5 border border-border text-fg">{paperId ? '回到试卷' : '回到 JLPT'}</button>
             <button type="button" onClick={() => { setResults({}); setRound(r => r + 1) }} className="btn-primary h-11 px-5">{paperId ? '再做一遍' : '再练一组'}</button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Desktop, one paper: its 問題 as printed pages, right / wrong under each answer
+  if (desktop && paperId) {
+    const pages: { paper: string; problem: PracticeUnit['problem'] }[] = []
+    for (const u of units) {
+      const last = pages[pages.length - 1]
+      if (last && last.problem.id === u.problem.id) last.problem = { ...last.problem, items: [...last.problem.items, ...u.problem.items] }
+      else pages.push({ paper: u.paper, problem: u.problem })
+    }
+    const page = pages[Math.min(at, pages.length - 1)]
+    const chosen = Object.fromEntries(Object.entries(results).map(([k, r]) => [k, r.chosen]))
+    const correct = Object.fromEntries(Object.entries(results).map(([k, r]) => [k, r.correct]))
+    const firstOfBan = (it: ItemSchema) => page.problem.items.find(x => (x.meta?.ban ?? x.id) === (it.meta?.ban ?? it.id))?.id === it.id
+    return (
+      <div className="flex-1 min-h-0 flex flex-col">
+        {header}
+        <div className="flex-1 min-h-0 overflow-y-auto bg-accent-light/50 px-8 py-8">
+          <div key={page.problem.id} className="max-w-3xl mx-auto flex flex-col gap-5 animate-fade-in">
+            <PaperPage problem={page.problem} answers={chosen} correct={correct} listeningFirstOf={firstOfBan}
+                       onChoose={(id, o) => void answer(id, o)}
+                       after={it => results[it.id] && (
+                         <div className="flex flex-col gap-2 pt-1">
+                           <DiffBox itemId={it.id} type={page.problem.type} chosen={results[it.id].chosen} correct={results[it.id].correct} />
+                           {onOpenAnalysis && (
+                             <button type="button" onClick={() => onOpenAnalysis({ paper: page.paper, section: '', problem: page.problem }, it.id)}
+                                     className="self-start text-sm text-fg underline underline-offset-4">看完整解析 ›</button>
+                           )}
+                         </div>
+                       )} />
+            <div className="flex items-center gap-3">
+              <button type="button" disabled={at === 0} onClick={() => setAt(a => a - 1)}
+                      className="btn h-10 border border-border bg-surface text-fg disabled:opacity-30"><ChevronLeft className="w-4 h-4" />上一个大题</button>
+              <button type="button" onClick={() => setAt(a => (a + 1 >= pages.length ? units.length : a + 1))} className="ml-auto btn-primary h-10 px-5">
+                {at + 1 < pages.length ? <>下一个大题（{pages[at + 1].problem.name}）<ChevronRight className="w-4 h-4" /></> : '做完了'}
+              </button>
+            </div>
           </div>
         </div>
       </div>
