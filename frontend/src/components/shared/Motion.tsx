@@ -36,3 +36,12 @@ export function Connected({ className = 'w-5 h-5' }: { className?: string }) {
     </span>
   )
 }
+
+/** The mark at rest on the login page: 连接成立, again and again. */
+export function Idle({ className = 'w-5 h-5' }: { className?: string }) {
+  return (
+    <span className="inline-flex idle" aria-hidden="true">
+      <Mark className={className} />
+    </span>
+  )
+}

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Loader2 } from 'lucide-react'
-import { Connected, Thinking } from '../components/shared/Motion'
+import { Idle, Thinking } from '../components/shared/Motion'
 import { useAuth } from '../context/AuthContext'
 import { getAuthConfig, type SignupMode } from '../services/api'
 import { suggestEmail } from '../utils/emailTypo'
@@ -46,8 +46,8 @@ export default function LoginPage() {
          style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
       <div className="w-full max-w-sm flex flex-col gap-8">
         <div className="flex flex-col items-center gap-3 text-center">
-          {/* The mark draws itself in on arrival (连接成立), and thinks while signing in */}
-          {busy ? <Thinking className="w-12 h-12 text-fg" /> : <Connected className="w-12 h-12 text-fg" />}
+          {/* The mark keeps connecting while the page waits, and thinks while signing in */}
+          {busy ? <Thinking className="w-12 h-12 text-fg" /> : <Idle className="w-12 h-12 text-fg" />}
           <h1 className="text-xl font-semibold text-fg tracking-[-0.02em]">日本語 Master</h1>
           <p className="text-sm text-fg-muted">
             {mode === 'login' ? '登录后继续你的语料、知识库和复习' : '创建账号，开始你自己的词典'}
