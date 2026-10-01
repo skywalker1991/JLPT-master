@@ -28,6 +28,8 @@ interface UseAnalysisReturn {
   startAnalysis: (text: string, imageBase64?: string, imageMime?: string) => Promise<void>
   restoreFromHistory: (record: AnalysisRecord) => void
   reset: () => void
+  /** Put a re-analysed sentence in place of the one that failed */
+  replaceSentence: (analysis: SentenceAnalysis) => void
 }
 
 /** Rough client-side split for immediate display before API responds */
@@ -340,9 +342,13 @@ export function useAnalysis(): UseAnalysisReturn {
       .catch(() => savePending(null))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const replaceSentence = useCallback((analysis: SentenceAnalysis) => {
+    setSentences(prev => prev.map((s, i) => (i === analysis.index ? { ...s, analysis } : s)))
+  }, [])
+
   return {
     inputType, analysisId, asks, addAsk, sentences, selectedIndex,
     isStreaming, phase, error,
-    setSelectedIndex, startAnalysis, restoreFromHistory, reset,
+    setSelectedIndex, startAnalysis, restoreFromHistory, reset, replaceSentence,
   }
 }

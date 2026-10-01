@@ -23,7 +23,7 @@ interface AskContextValue {
   /** Items referenced by the question being written */
   attached: AskTarget[]
   setAttached: (targets: AskTarget[]) => void
-  composerRef: RefObject<HTMLTextAreaElement>
+  composerRef: RefObject<HTMLElement>
 }
 
 export const AskContext = createContext<AskContextValue | null>(null)
@@ -152,7 +152,7 @@ export default function FollowUp({ analysis }: { analysis: SentenceAnalysis | nu
 
         <div className="flex items-end gap-2">
           <textarea
-            ref={composerRef}
+            ref={composerRef as RefObject<HTMLTextAreaElement>}
             value={question}
             onChange={e => setQuestion(e.target.value)}
             onKeyDown={e => {
@@ -206,7 +206,7 @@ export function AttachButton({ target }: { target: AskTarget }) {
 }
 
 /** A word / grammar point the answer introduced; one tap adds it to the knowledge base. */
-function NewItemChip({ item }: { item: AskNewItem }) {
+export function NewItemChip({ item }: { item: AskNewItem }) {
   const occurrence = useOccurrence()
   const { toast } = useToast()
   const navigate = useNavigate()

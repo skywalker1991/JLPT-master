@@ -9,7 +9,13 @@ export interface Settings {
   hideJa: boolean         // sentence card: hide Japanese (recall practice)
   hideFurigana: boolean   // sentence card: hide the kana readings
   hideZh: boolean         // sentence card: hide the translation
+  /** Reader: mark words at this level and harder as gaps ('all' = every level) */
+  markLevel: MarkLevel
+  /** Reader: show each sentence's translation under it */
+  showTranslations: boolean
 }
+
+export type MarkLevel = 'N1' | 'N2' | 'N3' | 'N4' | 'all'
 
 interface SettingsCtx {
   settings: Settings
@@ -21,7 +27,8 @@ const Ctx = createContext<SettingsCtx | null>(null)
 
 const DEFAULTS: Settings = {
   levelFilter: [], model: 'gemini-2.5-flash', theme: 'system',
-  hideJa: false, hideFurigana: false, hideZh: false,
+  hideJa: false, hideFurigana: true, hideZh: false,
+  markLevel: 'N3', showTranslations: false,
 }
 
 export function SettingsProvider({ children }: { children: ReactNode }) {

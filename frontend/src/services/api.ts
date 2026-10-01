@@ -642,3 +642,15 @@ export async function createInvites(body: {
 export async function updateInvite(code: string, body: { is_active?: boolean; note?: string }): Promise<InviteRow> {
   return request<InviteRow>(`/api/admin/invites/${encodeURIComponent(code)}`, { method: 'PATCH', body: JSON.stringify(body) })
 }
+
+/** Which of these dictionary forms / grammar patterns are already in the library (key → atom id). */
+export async function lookupAtoms(vocab: string[], grammar: string[]): Promise<{
+  vocab: Record<string, string>; grammar: Record<string, string>
+}> {
+  return request('/api/atoms/lookup', { method: 'POST', body: JSON.stringify({ vocab, grammar }) })
+}
+
+/** Analyse one sentence again after the first run left it without a result. */
+export async function retrySentence(analysisId: string, index: number): Promise<SentenceAnalysis> {
+  return request<SentenceAnalysis>(`/api/analyses/${analysisId}/sentences/${index}/retry`, { method: 'POST' })
+}

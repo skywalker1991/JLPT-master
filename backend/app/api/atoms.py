@@ -3,6 +3,7 @@ import re
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy import select, func, or_, and_, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -41,6 +42,42 @@ def _validate_jlpt(value: str | None) -> str | None:
     if value and _JLPT_PATTERN.match(value):
         return value
     return None
+
+
+class LookupRequest(BaseModel):
+    vocab: list[str] = Field(default_factory=list, max_length=1000)
+    grammar: list[str] = Field(default_factory=list, max_length=1000)
+
+
+@router.post("/atoms/lookup")
+async def lookup_atoms(
+    body: LookupRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """Which of these words / grammar points are already in the user's library.
+
+    The reader marks a word it has seen before differently from a new one, so
+    it asks for a whole passage at once. Keys are dictionary forms (vocab) and
+    patterns (grammar); the answer maps each key found to its atom id.
+    """
+    async def found(atom_type: str, keys: list[str]) -> dict[str, str]:
+        keys = [k for k in {k.strip() for k in keys} if k]
+        if not keys:
+            return {}
+        rows = await db.execute(
+            select(Atom.key, Atom.id).where(
+                Atom.user_id == user.id, Atom.type == atom_type, Atom.key.in_(keys),
+            )
+        )
+        return {k: str(i) for k, i in rows.all()}
+
+    grammar_keys = {g: _normalize_grammar_key(g) for g in body.grammar}
+    grammar_found = await found("grammar", list(grammar_keys.values()))
+    return {
+        "vocab": await found("vocabulary", body.vocab),
+        "grammar": {g: grammar_found[n] for g, n in grammar_keys.items() if n in grammar_found},
+    }
 
 
 # ---------------------------------------------------------------------------

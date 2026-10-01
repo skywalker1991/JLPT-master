@@ -57,6 +57,8 @@ export interface SentenceAnalysis {
   translation: string
   vocab: VocabItem[]
   grammar: GrammarItem[]
+  /** The model gave nothing back for this sentence; it can be retried alone */
+  failed?: boolean
 }
 
 // Atoms

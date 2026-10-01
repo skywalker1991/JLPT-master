@@ -1,51 +1,68 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
-import { Plus, Loader2, History, X } from 'lucide-react'
-import { useAnalysis } from '../hooks/useAnalysis'
-import { useSwipe } from '../hooks/useSwipe'
-import SentenceList from '../components/analysis/SentenceList'
-import SentenceCard from '../components/analysis/SentenceCard'
-import AnalysisCard from '../components/analysis/AnalysisCard'
-import AnalysisInput from '../components/analysis/AnalysisInput'
-import AnalysisHistory from '../components/analysis/AnalysisHistory'
-import FollowUp, { AskContext } from '../components/analysis/AskPanel'
-import type { AskTarget } from '../types'
-import { getAnalyses, getAnalysis, deleteAnalysis } from '../services/api'
-import type { AnalysisRecord } from '../types'
 import clsx from 'clsx'
+import { ChevronLeft, ChevronRight, Loader2, Menu, Plus, X } from 'lucide-react'
+import { useAnalysis } from '../hooks/useAnalysis'
+import { useKnown } from '../hooks/useKnown'
+import { useSettings, type MarkLevel } from '../context/SettingsContext'
+import { useToast } from '../context/ToastContext'
+import PassageReader from '../components/reader/PassageReader'
+import SentencePanel from '../components/analysis/SentencePanel'
+import NewAnalysisBox from '../components/analysis/NewAnalysisBox'
+import AnalysisHistory from '../components/analysis/AnalysisHistory'
+import { AskContext } from '../components/analysis/AskPanel'
+import { AskComposer, AskThread } from '../components/analysis/AskBox'
+import type { AnalysisRecord, AskTarget } from '../types'
+import type { Mark } from '../utils/marks'
+import { getAnalyses, getAnalysis, deleteAnalysis, retrySentence } from '../services/api'
 
+const LEVELS: { value: MarkLevel; label: string }[] = [
+  { value: 'N1', label: 'N1' },
+  { value: 'N2', label: 'N2 以上' },
+  { value: 'N3', label: 'N3 以上' },
+  { value: 'N4', label: 'N4 以上' },
+  { value: 'all', label: '全部' },
+]
+
+/**
+ * 语料分析: paste a passage, read it whole with the gaps marked, pick a
+ * sentence to see its translation, words and grammar, ask about it.
+ */
 export default function AnalysisPage() {
   const { pathname } = useLocation()
   const isActive = pathname === '/'
+  const { settings, updateSettings } = useSettings()
+  const { toast } = useToast()
 
   const {
     analysisId, asks, addAsk,
     sentences, selectedIndex,
-    isStreaming, phase, error,
-    setSelectedIndex, startAnalysis, restoreFromHistory, reset,
+    isStreaming, error,
+    setSelectedIndex, startAnalysis, restoreFromHistory, reset, replaceSentence,
   } = useAnalysis()
+  const { known, remember } = useKnown(sentences.map(s => s.analysis))
 
   const [draftText, setDraftText] = useState('')
   const [imageData, setImageData] = useState<string | null>(null)
-  const [imageMime, setImageMime] = useState<string>('image/png')
-  const [history, setHistory]     = useState<AnalysisRecord[]>([])
-  const [historyLoading, setHistoryLoading] = useState(false)
+  const [imageMime, setImageMime] = useState('image/png')
+  const [history, setHistory] = useState<AnalysisRecord[]>([])
+  const [historyLoading, setHistoryLoading] = useState(true)
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [sheetOpen, setSheetOpen] = useState(false)
+  const [picked, setPicked] = useState<{ sentence: number; item: Mark['item'] } | null>(null)
+  const [retrying, setRetrying] = useState<number | null>(null)
 
   const hasResults = sentences.length > 0 || isStreaming
+  const analysed = sentences.filter(s => s.analysis && !s.analysis.failed).length
 
   const loadHistory = useCallback(async () => {
-    setHistoryLoading(true)
     try {
-      const records = await getAnalyses({ limit: 50, status: 'completed,in_progress' })
-      setHistory(records)
-    } catch { /* ignore */ } finally {
+      setHistory(await getAnalyses({ limit: 50, status: 'completed,in_progress' }))
+    } catch { /* keep what we have */ } finally {
       setHistoryLoading(false)
     }
   }, [])
 
-  // Load on mount, shortly after an analysis starts (shows it as 分析中)
-  // and after it finishes
   useEffect(() => { loadHistory() }, [loadHistory])
   useEffect(() => {
     if (isStreaming) {
@@ -64,22 +81,25 @@ export default function AnalysisPage() {
     reset()
     setDraftText('')
     setImageData(null)
+    setSheetOpen(false)
+    setHistoryOpen(false)
   }
 
   const handleRestoreHistory = async (record: AnalysisRecord) => {
     try {
-      const full = await getAnalysis(record.id)
-      restoreFromHistory(full)
+      restoreFromHistory(await getAnalysis(record.id))
     } catch {
       restoreFromHistory(record)
     }
     setHistoryOpen(false)
+    setSheetOpen(false)
   }
 
   const handleDeleteHistory = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation()
     await deleteAnalysis(id)
     setHistory(prev => prev.filter(r => r.id !== id))
+    if (id === analysisId) handleNew()
   }
 
   const loadImage = useCallback((file: File) => {
@@ -95,10 +115,8 @@ export default function AnalysisPage() {
 
   useEffect(() => {
     const onPaste = (e: ClipboardEvent) => {
-      if (!isActive || isStreaming) return
-      const items = e.clipboardData?.items
-      if (!items) return
-      for (const item of items) {
+      if (!isActive || isStreaming || hasResults) return
+      for (const item of e.clipboardData?.items ?? []) {
         if (item.type.startsWith('image/')) {
           e.preventDefault()
           const file = item.getAsFile()
@@ -109,173 +127,249 @@ export default function AnalysisPage() {
     }
     document.addEventListener('paste', onPaste)
     return () => document.removeEventListener('paste', onPaste)
-  }, [isActive, isStreaming, loadImage])
+  }, [isActive, isStreaming, hasResults, loadImage])
 
-  // Follow-up composer: items referenced by the question being written
-  // (per sentence — cleared when switching sentences).
+  // What the follow-up question is about, besides the sentence itself
   const [attached, setAttached] = useState<AskTarget[]>([])
-  const composerRef = useRef<HTMLTextAreaElement>(null)
+  const composerRef = useRef<HTMLInputElement>(null)
   useEffect(() => { setAttached([]) }, [selectedIndex, analysisId])
 
-  // Sentence switching: swipe on phones, dots / numbers everywhere.
-  // slideDir picks the slide-in direction of the next sentence.
-  const [slideDir, setSlideDir] = useState<0 | 1 | -1>(0)
-  const slideRef = useRef<HTMLDivElement>(null)
-
-  const selectSentence = useCallback((index: number) => {
-    if (index === selectedIndex) return
-    setSlideDir(selectedIndex === null || index > selectedIndex ? 1 : -1)
+  const select = (index: number) => {
     setSelectedIndex(index)
-  }, [selectedIndex, setSelectedIndex])
+    setPicked(null)
+    setSheetOpen(true)
+  }
 
-  const swipeAreaRef = useSwipe(dir => {
-    const next = (selectedIndex ?? 0) + dir
-    if (next < 0 || next >= sentences.length) return
-    if (!sentences[next].preprocessed.text.trim()) return
-    selectSentence(next)
-  }, slideRef)
+  const pickItem = (sentence: number, item: Mark['item']) => {
+    setSelectedIndex(sentence)
+    setPicked({ sentence, item })
+    setSheetOpen(true)
+  }
 
-  const selectedSentence     = selectedIndex !== null ? sentences[selectedIndex] : null
-  const selectedPreprocessed = selectedSentence?.preprocessed ?? null
-  const selectedAnalysis     = selectedSentence?.analysis ?? null
+  const retry = async (index: number) => {
+    if (!analysisId || retrying !== null) return
+    setRetrying(index)
+    try {
+      replaceSentence(await retrySentence(analysisId, index))
+    } catch (err) {
+      toast(err instanceof Error ? err.message : '还是没分析出来，稍后再试', 'error')
+    } finally {
+      setRetrying(null)
+    }
+  }
+
+  const selected = selectedIndex !== null ? sentences[selectedIndex] : null
+  const panel = selected && selectedIndex !== null ? (tabs: boolean) => (
+    <SentencePanel
+      key={`${analysisId}-${selectedIndex}`}
+      index={selectedIndex}
+      text={selected.preprocessed.text}
+      analysis={selected.analysis}
+      streaming={isStreaming}
+      threshold={settings.markLevel}
+      known={known}
+      remember={remember}
+      picked={picked?.sentence === selectedIndex ? picked.item : null}
+      retrying={retrying === selectedIndex}
+      onRetry={() => void retry(selectedIndex)}
+      tabs={tabs}
+    />
+  ) : null
+
+  const historyList = (
+    <AnalysisHistory history={history} loading={historyLoading}
+                     onSelect={handleRestoreHistory} onDelete={handleDeleteHistory} />
+  )
+
+  const toolbar = (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl md:bg-accent-light md:px-3 md:py-2 text-sm">
+      <label className="relative inline-flex items-center gap-2 h-9 pl-3 pr-8 rounded-lg border border-border bg-surface text-fg">
+        <span aria-hidden="true" className="w-4 h-[3px] rounded-full bg-fg" />
+        <span className="hidden md:inline text-fg-muted">生词</span>
+        <span className="sr-only">把这个等级以上的词标成生词</span>
+        <select
+          value={settings.markLevel}
+          onChange={e => updateSettings({ markLevel: e.target.value as MarkLevel })}
+          className="absolute inset-0 opacity-0 cursor-pointer"
+        >
+          {LEVELS.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
+        </select>
+        <span>{LEVELS.find(l => l.value === settings.markLevel)?.label}</span>
+        <span aria-hidden="true" className="absolute right-3 text-[0.6rem] text-fg-subtle">▼</span>
+      </label>
+      <span className="flex items-center gap-1.5 text-fg-muted text-xs md:text-sm">
+        <span aria-hidden="true" className="w-4 border-t border-fg-subtle" />已在库
+      </span>
+      <span className="flex items-center gap-1.5 text-fg-muted text-xs md:text-sm">
+        <span aria-hidden="true" className="w-4 border-t border-dashed border-fg-muted" />语法
+      </span>
+      <label className="ml-auto flex items-center gap-1.5 text-fg-muted cursor-pointer">
+        <input type="checkbox" checked={!settings.hideFurigana} className="accent-fg w-4 h-4"
+               onChange={e => updateSettings({ hideFurigana: !e.target.checked })} />振假名
+      </label>
+      <label className="hidden md:flex items-center gap-1.5 text-fg-muted cursor-pointer">
+        <input type="checkbox" checked={settings.showTranslations} className="accent-fg w-4 h-4"
+               onChange={e => updateSettings({ showTranslations: e.target.checked })} />逐句译文
+      </label>
+    </div>
+  )
+
+  const reader = (
+    <PassageReader
+      sentences={sentences.map(s => ({ text: s.preprocessed.text, tokens: s.preprocessed.tokens, analysis: s.analysis }))}
+      selectedIndex={selectedIndex}
+      onSelect={select}
+      onPickItem={pickItem}
+      threshold={settings.markLevel}
+      known={known}
+      furigana={!settings.hideFurigana}
+      translations={settings.showTranslations}
+      streaming={isStreaming}
+      retrying={retrying}
+      onRetry={i => void retry(i)}
+    />
+  )
 
   return (
-    <div className="flex flex-1 min-h-0 p-2 md:p-4 gap-4 overflow-hidden">
+    <AskContext.Provider value={{
+      analysisId, sentenceIndex: selectedIndex,
+      sentenceText: selected?.preprocessed.text ?? null,
+      sentenceTranslation: selected?.analysis?.translation ?? null,
+      asks, addAsk, busy: isStreaming, attached, setAttached, composerRef,
+    }}>
+    <div className="flex flex-1 min-h-0 overflow-hidden">
 
-      {/* ── Left: History sidebar (desktop) ── */}
-      <div className="card hidden md:flex w-56 shrink-0 flex-col overflow-hidden">
-        <div className="px-3 py-3 border-b border-border shrink-0">
-          <button onClick={handleNew} className="btn-primary w-full gap-2 justify-center">
+      {/* ── History (desktop) ── */}
+      <aside className="hidden md:flex w-60 shrink-0 flex-col border-r border-border bg-accent-light/40">
+        <div className="p-4 pb-2">
+          <button type="button" onClick={handleNew}
+                  className="btn w-full justify-center h-10 border border-border bg-surface text-fg font-semibold hover:border-fg-subtle">
             <Plus className="w-4 h-4" />新建分析
           </button>
         </div>
-        <AnalysisHistory
-          history={history}
-          loading={historyLoading}
-          onSelect={handleRestoreHistory}
-          onDelete={handleDeleteHistory}
-        />
-      </div>
+        <p className="px-4 pt-2 text-xs text-fg-subtle">最近</p>
+        {historyList}
+      </aside>
 
-      {/* ── Mobile history overlay ── */}
+      {/* ── History (phone) ── */}
       {historyOpen && (
-        <div className="md:hidden fixed inset-0 z-40 flex flex-col justify-end">
+        <div className="md:hidden fixed inset-0 z-50 flex">
           <div className="absolute inset-0 bg-black/40" onClick={() => setHistoryOpen(false)} />
-          <div className="relative bg-surface rounded-t-2xl flex flex-col max-h-[70vh] z-10">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
-              <span className="font-semibold text-sm text-fg">历史记录</span>
-              <button onClick={() => setHistoryOpen(false)} className="p-1 rounded-lg hover:bg-gray-100 text-fg-muted">
-                <X className="w-4 h-4" />
+          <div className="relative w-[82%] max-w-xs bg-surface flex flex-col"
+               style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+            <div className="flex items-center justify-between px-4 h-14 border-b border-border">
+              <span className="font-semibold text-fg">最近的语料</span>
+              <button type="button" onClick={() => setHistoryOpen(false)} aria-label="关闭" className="p-2 -mr-2 text-fg-muted">
+                <X className="w-5 h-5" />
               </button>
             </div>
-            <AnalysisHistory
-              history={history}
-              loading={historyLoading}
-              onSelect={handleRestoreHistory}
-              onDelete={handleDeleteHistory}
-            />
+            {historyList}
           </div>
         </div>
       )}
 
-      {/* ── Main: Results + Input ── */}
-      <div className="card flex-1 flex flex-col min-h-0 overflow-hidden">
-
-        {/* Mobile top bar */}
-        <div className="md:hidden flex items-center gap-2 px-3 py-2 border-b border-border shrink-0">
-          <button onClick={handleNew} className="btn-primary gap-1.5 py-1.5 text-xs">
-            <Plus className="w-3.5 h-3.5" />新建
+      {/* ── Passage ── */}
+      <main className="flex-1 min-w-0 flex flex-col min-h-0">
+        <header className="md:hidden h-14 shrink-0 flex items-center gap-2 px-1 border-b border-border">
+          <button type="button" onClick={() => setHistoryOpen(true)} aria-label="最近的语料" className="w-11 h-11 flex items-center justify-center text-fg">
+            <Menu className="w-5 h-5" />
           </button>
-          <button
-            onClick={() => setHistoryOpen(true)}
-            className="btn-ghost gap-1.5 py-1.5 text-xs"
-          >
-            <History className="w-3.5 h-3.5" />历史
-          </button>
-        </div>
+          <span className="font-semibold text-fg">语料分析</span>
+          {hasResults && (
+            <button type="button" onClick={handleNew} aria-label="新建分析" className="ml-auto w-11 h-11 flex items-center justify-center text-fg">
+              <Plus className="w-5 h-5" />
+            </button>
+          )}
+        </header>
 
-        {/* Results area */}
-        {hasResults ? (
-          <AskContext.Provider value={{ analysisId, sentenceIndex: selectedIndex, sentenceText: selectedSentence?.preprocessed.text ?? null, sentenceTranslation: selectedSentence?.analysis?.translation ?? null, asks, addAsk, busy: isStreaming, attached, setAttached, composerRef }}>
-          <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
-
-            {/* Sentence nav */}
-            <div className="border-b border-border shrink-0">
-              <SentenceList
-                sentences={sentences}
-                selectedIndex={selectedIndex}
-                isStreaming={isStreaming}
-                onSelect={selectSentence}
-              />
-            </div>
-
-            {/* Mobile: sentence + vocab/grammar scroll together so a long
-                sentence can't squeeze the analysis to zero height.
-                Desktop: sentence card stays pinned, analysis scrolls. */}
-            <div
-              ref={swipeAreaRef}
-              className="flex-1 min-h-0 flex flex-col overflow-hidden"
-            >
-            <div
-              key={selectedIndex ?? -1}
-              ref={slideRef}
-              // touch-action must sit on the scroll container itself: the browser
-              // ignores it on ancestors above the nearest scroller
-              style={{ touchAction: 'pan-y pinch-zoom' }}
-              className={clsx(
-                'flex-1 min-h-0 overflow-y-auto md:overflow-hidden md:flex md:flex-col md:animate-none',
-                slideDir === 1 && 'animate-slide-from-right',
-                slideDir === -1 && 'animate-slide-from-left',
-              )}
-            >
-              {/* Sentence card */}
-              {selectedPreprocessed && (
-                <div className="px-3 md:px-6 pt-3 md:pt-4 pb-2 md:shrink-0">
-                  <SentenceCard
-                    preprocessed={selectedPreprocessed}
-                    analysis={selectedAnalysis}
-                  />
+        {!hasResults ? (
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            <NewAnalysisBox
+              text={draftText} imageData={imageData} imageMime={imageMime} error={error}
+              firstUse={!historyLoading && history.length === 0}
+              onTextChange={setDraftText} onImagePick={loadImage}
+              onImageClear={() => setImageData(null)} onSubmit={handleAnalyze}
+            />
+          </div>
+        ) : (
+          <>
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              <div className="max-w-3xl mx-auto px-5 md:px-10 py-5 md:py-8 flex flex-col gap-5">
+                <div className="hidden md:flex items-baseline gap-3">
+                  <h2 className="text-2xl font-bold text-fg">原文</h2>
+                  <span className="text-sm text-fg-muted tabular-nums">
+                    {sentences.length} 句{isStreaming && ` · 已分析 ${analysed} 句`}
+                  </span>
+                  {isStreaming && (
+                    <span className="ml-auto flex items-center gap-2 text-sm text-fg-muted">
+                      <Loader2 className="w-4 h-4 animate-spin" />还在分析，先读着
+                    </span>
+                  )}
                 </div>
-              )}
-
-              {/* Vocab + grammar */}
-              <div className="px-3 md:px-6 pb-6 pt-2 md:flex-1 md:min-h-0 md:overflow-y-auto">
-                <AnalysisCard
-                  preprocessed={selectedPreprocessed}
-                  analysis={selectedAnalysis}
-                />
-                <FollowUp analysis={selectedAnalysis} />
+                {isStreaming && sentences.length > 0 && (
+                  <div className="h-1 rounded-full bg-border overflow-hidden" role="progressbar"
+                       aria-valuenow={analysed} aria-valuemax={sentences.length} aria-label="分析进度">
+                    <div className="h-full bg-fg transition-[width] duration-500" style={{ width: `${(analysed / sentences.length) * 100}%` }} />
+                  </div>
+                )}
+                {toolbar}
+                {reader}
+                <p className="text-xs text-fg-subtle">
+                  <span className="hidden md:inline">点一句，在右边看译文和解析；</span>
+                  <span className="md:hidden">点一句，从底部看译文和解析；</span>
+                  粗横杠是生词，细灰线是已在库，虚线是语法。
+                </p>
+                <div className="hidden md:block"><AskThread /></div>
               </div>
             </div>
+            <div className="hidden md:block shrink-0 px-10 pb-5 pt-2">
+              <div className="max-w-3xl mx-auto"><AskComposer /></div>
+            </div>
+          </>
+        )}
+      </main>
+
+      {/* ── Selected sentence (desktop) ── */}
+      {hasResults && (
+        <aside className="hidden md:block w-[26rem] shrink-0 border-l border-border overflow-y-auto">
+          <div className="px-6 py-7">
+            {panel ? panel(false) : <p className="text-sm text-fg-subtle">点左边的一句，这里显示它的译文、词和语法</p>}
+          </div>
+        </aside>
+      )}
+
+      {/* ── Selected sentence (phone): bottom sheet ── */}
+      {hasResults && sheetOpen && panel && selectedIndex !== null && (
+        <div className="md:hidden fixed inset-0 z-50 flex flex-col justify-end">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setSheetOpen(false)} />
+          <div className="relative bg-surface rounded-t-2xl max-h-[85dvh] flex flex-col"
+               style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+            <button type="button" onClick={() => setSheetOpen(false)} aria-label="收起"
+                    className="mx-auto mt-2 mb-1 w-12 h-1.5 rounded-full bg-border shrink-0" />
+            <div className="flex items-center justify-between px-4 pt-1 shrink-0">
+              <button type="button" aria-label="上一句" disabled={selectedIndex === 0}
+                      onClick={() => select(selectedIndex - 1)}
+                      className="w-11 h-11 rounded-xl border border-border flex items-center justify-center disabled:opacity-30">
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+              <span className="text-xs text-fg-subtle tabular-nums">第 {selectedIndex + 1} / {sentences.length} 句</span>
+              <button type="button" aria-label="下一句" disabled={selectedIndex >= sentences.length - 1}
+                      onClick={() => select(selectedIndex + 1)}
+                      className="w-11 h-11 rounded-xl border border-border flex items-center justify-center disabled:opacity-30">
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            </div>
+            <div className={clsx('flex-1 min-h-0 overflow-y-auto px-4 pt-3 pb-4 flex flex-col gap-4')}>
+              {panel(true)}
+              <AskThread />
+            </div>
+            <div className="shrink-0 px-4 pb-3 pt-2 border-t border-border">
+              <AskComposer />
             </div>
           </div>
-          </AskContext.Provider>
-        ) : (
-          <div className="flex-1 flex items-center justify-center text-fg-subtle text-sm">
-            {isStreaming
-              ? <Loader2 className="w-5 h-5 animate-spin" />
-              : '输入日语文本，开始分析'
-            }
-          </div>
-        )}
-
-        {/* Unified input — analysis / progress / followup */}
-        <div className="border-t border-border shrink-0">
-          <AnalysisInput
-            text={draftText}
-            imageData={imageData}
-            isStreaming={isStreaming}
-            hasResults={hasResults}
-            phase={phase}
-            error={error}
-            onTextChange={setDraftText}
-            onImagePick={loadImage}
-            onImageClear={() => setImageData(null)}
-            onSubmit={handleAnalyze}
-          />
         </div>
-      </div>
-
+      )}
     </div>
+    </AskContext.Provider>
   )
 }

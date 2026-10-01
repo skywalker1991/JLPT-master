@@ -286,6 +286,20 @@ def _extract_completed_sentences(buffer: str, already_emitted: int) -> list[dict
     return results[already_emitted:]
 
 
+def _normalize_sentence(raw: dict, idx: int, text: str) -> dict:
+    """A sentence as the model returned it, pinned to the source text and index."""
+    sentence = {
+        **raw,
+        "index": idx,
+        "text": text,
+        "translation": raw.get("translation") or "",
+        "vocab": raw.get("vocab") or [],
+        "grammar": raw.get("grammar") or [],
+    }
+    sentence.pop("failed", None)
+    return sentence
+
+
 def _build_free_text_prompt(sentences: dict[int, str]) -> str:
     """Prompt for analysing pre-split sentences, keyed by their index."""
     numbered = "\n".join(f"[{i}] {text}" for i, text in sentences.items())
@@ -519,14 +533,7 @@ def _build_event_stream(request: AnalyzeRequest, analysis_id: UUID, db: AsyncSes
                 idx = raw.get("index")
                 if not isinstance(idx, int) or idx not in source or idx in results:
                     return None
-            sentence = {
-                **raw,
-                "index": idx,
-                "text": source[idx],
-                "translation": raw.get("translation") or "",
-                "vocab": raw.get("vocab") or [],
-                "grammar": raw.get("grammar") or [],
-            }
+            sentence = _normalize_sentence(raw, idx, source[idx])
             results[idx] = sentence
             return sentence
 
@@ -560,7 +567,8 @@ def _build_event_stream(request: AnalyzeRequest, analysis_id: UUID, db: AsyncSes
         for i, text in source.items():
             if i not in results:
                 logger.warning("Analysis %s: sentence %d left unanalysed", analysis_id, i)
-                sentence = {"index": i, "text": text, "translation": "", "vocab": [], "grammar": []}
+                sentence = {"index": i, "text": text, "translation": "", "vocab": [], "grammar": [],
+                            "failed": True}
                 results[i] = sentence
                 yield {"event": "sentence", "data": json.dumps(sentence, ensure_ascii=False)}
 
@@ -776,6 +784,47 @@ def _parse_ask_answer(raw: str, known: set[str]) -> dict:
 # ---------------------------------------------------------------------------
 # POST /analyses/{id}/followup
 # ---------------------------------------------------------------------------
+
+@router.post("/analyses/{analysis_id}/sentences/{index}/retry")
+async def retry_sentence(
+    analysis_id: UUID,
+    index: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """Analyse again one sentence the first run left without a result, so a
+    single failure doesn't mean starting the whole passage over."""
+    result = await db.execute(select(Analysis).where(Analysis.id == analysis_id, Analysis.user_id == user.id))
+    analysis = result.scalar_one_or_none()
+    if analysis is None:
+        raise HTTPException(status_code=404, detail="Analysis not found")
+    if _effective_status(analysis) == "in_progress":
+        raise HTTPException(status_code=409, detail="这段还在分析，等它结束再重试")
+    data = dict(analysis.session_data or {})
+    sentences = list(data.get("sentences") or [])
+    pos = next((p for p, s in enumerate(sentences) if isinstance(s, dict) and s.get("index") == index), None)
+    if pos is None:
+        raise HTTPException(status_code=404, detail="没有这一句")
+    text = sentences[pos].get("text") or ""
+
+    llm = get_llm_client()
+    buffer = ""
+    try:
+        async for chunk in llm.analyze_stream(_build_free_text_prompt({index: text}), _FREE_TEXT_SCHEMA):
+            buffer += chunk
+    except Exception as e:
+        logger.error("Retry of sentence %d in %s failed: %s", index, analysis_id, e)
+    got = _extract_completed_sentences(buffer, 0)
+    if not got:
+        raise HTTPException(status_code=502, detail="这句还是没分析出来，稍后再试")
+
+    sentence = _normalize_sentence(got[0], index, text)
+    sentences[pos] = sentence
+    data["sentences"] = sentences
+    await db.execute(update(Analysis).where(Analysis.id == analysis_id).values(session_data=data))
+    await db.commit()
+    return sentence
+
 
 @router.post("/analyses/{analysis_id}/followup")
 async def followup(

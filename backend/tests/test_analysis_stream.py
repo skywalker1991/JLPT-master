@@ -223,3 +223,14 @@ def test_preprocess_batch_rejects_an_oversized_request():
     import pytest
     with pytest.raises(Exception):
         asyncio.run(analysis_api.preprocess_batch(PreprocessBatchRequest(texts=["あ"] * 501)))
+
+
+def test_unanalysed_sentence_is_flagged_for_retry(monkeypatch):
+    events, db = _run(monkeypatch, _FailingLLM(), "一つ目。二つ目。")
+    sentences = [json.loads(e["data"]) for e in events if e["event"] == "sentence"]
+    assert all(s.get("failed") for s in sentences)
+
+
+def test_normalized_sentence_drops_the_failed_flag():
+    s = analysis_api._normalize_sentence({"index": 9, "text": "x", "failed": True, "translation": "t"}, 2, "二つ目。")
+    assert s["index"] == 2 and s["text"] == "二つ目。" and "failed" not in s and s["vocab"] == []
