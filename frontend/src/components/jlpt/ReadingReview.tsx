@@ -75,9 +75,20 @@ export default function ReadingReview({ data, itemId, chosen, correct, ask }: {
   const options = analysis?.options_analysis ?? []
   const sel = selected != null && reading ? reading.sentences[selected] : null
 
+  const sentencePanel = sel && selected != null && reading && (
+    <SentencePanel key={selected} index={selected} text={sel.text} analysis={sel} streaming={false}
+                   threshold={settings.markLevel} known={known} remember={remember}
+                   picked={picked} retrying={false} onRetry={() => {}} />
+  )
+
   return (
-    <div className="flex-1 min-h-0 flex flex-col md:flex-row">
-      <main className="flex-1 min-w-0 overflow-y-auto">
+    <AskContext.Provider value={{
+      analysisId: null, sentenceIndex: selected, sentenceText: sel?.text ?? null,
+      sentenceTranslation: sel?.translation ?? null, asks: [], addAsk: () => {}, busy: false,
+      attached, setAttached, composerRef,
+    }}>
+    <div className="flex-1 min-h-0 flex flex-col overflow-y-auto md:overflow-hidden md:flex-row">
+      <main className="md:flex-1 min-w-0 md:overflow-y-auto">
         <div className="max-w-3xl mx-auto px-4 md:px-10 py-5 md:py-8 flex flex-col gap-5">
           {prob.type === 'listening' && <PlayAudio itemId={item.id} />}
           <p className="flex items-baseline gap-2">
@@ -93,11 +104,7 @@ export default function ReadingReview({ data, itemId, chosen, correct, ask }: {
               <Thinking className="w-5 h-5" />正在逐句分析这段{prob.type === 'listening' ? '原文' : '文章'}……第一次要半分钟左右
             </div>
           ) : (
-            <AskContext.Provider value={{
-              analysisId: null, sentenceIndex: selected, sentenceText: sel?.text ?? null,
-              sentenceTranslation: sel?.translation ?? null, asks: [], addAsk: () => {}, busy: false,
-              attached, setAttached, composerRef,
-            }}>
+            <>
               <ReaderToolbar />
               <PassageReader
                 sentences={reading.sentences.map((s, i) => ({ text: s.text, tokens: tokens[i] ?? [], analysis: s }))}
@@ -110,19 +117,17 @@ export default function ReadingReview({ data, itemId, chosen, correct, ask }: {
                 translations={settings.showTranslations}
                 streaming={false}
               />
-              {sel && selected != null && (
-                <div className="rounded-2xl bg-accent-light/60 px-4 md:px-5 py-4">
-                  <SentencePanel key={selected} index={selected} text={sel.text} analysis={sel} streaming={false}
-                                 threshold={settings.markLevel} known={known} remember={remember}
-                                 picked={picked} retrying={false} onRetry={() => {}} />
-                </div>
-              )}
-            </AskContext.Provider>
+              {/* phone: the sentence under the text */}
+              {sentencePanel && <div className="md:hidden rounded-2xl bg-accent-light/60 px-4 py-4">{sentencePanel}</div>}
+            </>
           )}
         </div>
       </main>
 
-      <aside className="md:w-[28rem] shrink-0 md:border-l border-border overflow-y-auto px-4 md:px-7 py-5 md:py-8 flex flex-col gap-4">
+      {/* desktop, as 語料分析: the tapped sentence on the right, the question under it */}
+      <aside className="md:w-[28rem] shrink-0 md:border-l border-border flex flex-col md:min-h-0">
+        <div className="hidden md:block flex-1 min-h-0 overflow-y-auto px-7 py-6">{sentencePanel}</div>
+        <div className="shrink-0 md:max-h-[50%] md:overflow-y-auto md:border-t border-border px-4 md:px-7 py-5 flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
           <p className="flex items-baseline gap-3">
             <span className="text-3xl font-bold text-fg tabular-nums">{item.num}</span>
@@ -155,7 +160,9 @@ export default function ReadingReview({ data, itemId, chosen, correct, ask }: {
           })}
         </ul>
         {ask}
+        </div>
       </aside>
     </div>
+    </AskContext.Provider>
   )
 }
