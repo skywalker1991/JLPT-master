@@ -102,14 +102,6 @@ export default function JlptPage() {
     <JlptHome
       data={overview}
       onPaper={row => setView({ kind: 'paper', paperId: row.id })}
-      onMock={async row => {
-        try {
-          const { attempt_id } = await startMock(row.id)
-          setView({ kind: 'mock', attemptId: attempt_id, paperId: row.id })
-        } catch (e) {
-          setError(e instanceof Error ? e.message : '开始不了这套卷子')
-        }
-      }}
       onMistakes={() => setView({ kind: 'mistakes' })}
       onLevel={l => { setOverview(null); updateSettings({ jlptLevel: l }) }}
     />
