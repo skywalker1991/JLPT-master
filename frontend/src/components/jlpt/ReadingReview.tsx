@@ -87,8 +87,8 @@ export default function ReadingReview({ data, itemId, chosen, correct, ask }: {
       sentenceTranslation: sel?.translation ?? null, asks: [], addAsk: () => {}, busy: false,
       attached, setAttached, composerRef,
     }}>
-    <div className="flex-1 min-h-0 flex flex-col overflow-y-auto md:overflow-hidden md:flex-row">
-      <main className="md:flex-1 min-w-0 md:overflow-y-auto">
+    <div className="flex-1 min-h-0 flex">
+      <main className="flex-1 min-w-0 overflow-y-auto">
         <div className="max-w-3xl mx-auto px-4 md:px-10 py-5 md:py-8 flex flex-col gap-5">
           {prob.type === 'listening' && <PlayAudio itemId={item.id} />}
           <p className="flex items-baseline gap-2">
@@ -121,13 +121,8 @@ export default function ReadingReview({ data, itemId, chosen, correct, ask }: {
               {sentencePanel && <div className="md:hidden rounded-2xl bg-accent-light/60 px-4 py-4">{sentencePanel}</div>}
             </>
           )}
-        </div>
-      </main>
-
-      {/* desktop, as 語料分析: the tapped sentence on the right, the question under it */}
-      <aside className="md:w-[28rem] shrink-0 md:border-l border-border flex flex-col md:min-h-0">
-        <div className="hidden md:block flex-1 min-h-0 overflow-y-auto px-7 py-6">{sentencePanel}</div>
-        <div className="shrink-0 md:max-h-[50%] md:overflow-y-auto md:border-t border-border px-4 md:px-7 py-5 flex flex-col gap-4">
+          {/* the question, under the text */}
+          <section className="flex flex-col gap-4 border-t border-border pt-6">
         <div className="flex flex-col gap-1.5">
           <p className="flex items-baseline gap-3">
             <span className="text-3xl font-bold text-fg tabular-nums">{item.num}</span>
@@ -160,7 +155,13 @@ export default function ReadingReview({ data, itemId, chosen, correct, ask }: {
           })}
         </ul>
         {ask}
+          </section>
         </div>
+      </main>
+
+      {/* desktop, as 語料分析: the right column is the tapped sentence */}
+      <aside className="hidden md:block w-[28rem] shrink-0 border-l border-border overflow-y-auto px-7 py-6">
+        {sentencePanel}
       </aside>
     </div>
     </AskContext.Provider>
