@@ -659,6 +659,8 @@ export interface JlptPaperRow {
   status: 'new' | 'in_progress' | 'completed'
   attempt_id: string | null
   stage: 'written' | 'listening' | null
+  /** Seconds left on the part being taken, while a mock exam is under way */
+  remaining?: number | null
   total: number | null
   /** Questions in the paper, and how many have been answered (practice or mock) */
   questions: number
@@ -672,7 +674,7 @@ export interface PaperOverview {
   kinds: { id: JlptCategory['id']; label: string; total: number; answered: number; right: number }[]
   written_minutes: number
   listening_minutes: number
-  mock: { attempt_id: string; status: 'in_progress' | 'completed'; stage: string | null; total: number | null; max_total: number } | null
+  mock: { attempt_id: string; status: 'in_progress' | 'completed'; stage: string | null; remaining: number | null; total: number | null; max_total: number } | null
 }
 
 export interface JlptOverview {

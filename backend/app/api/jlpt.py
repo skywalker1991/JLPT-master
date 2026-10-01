@@ -132,6 +132,7 @@ async def overview(
             else:
                 row["status"] = "in_progress"
                 row["stage"] = (a.meta or {}).get("stage", "written")
+                row["remaining"] = _remaining(a.meta or {})
         paper_rows.append(row)
 
     in_level = {r[0].id for r in bank}
@@ -749,6 +750,7 @@ async def paper_overview(paper_id: UUID, db: AsyncSession = Depends(get_db), use
         "mock": None if mock is None else {
             "attempt_id": str(mock.id), "status": mock.status,
             "stage": (mock.meta or {}).get("stage"),
+            "remaining": _remaining(mock.meta or {}) if mock.status == "in_progress" else None,
             "total": (mock.meta or {}).get("result", {}).get("total"),
             "max_total": sum(p.max for p in lv.parts),
         },

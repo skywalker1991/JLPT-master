@@ -1,14 +1,16 @@
 import clsx from 'clsx'
 import { ChevronRight } from 'lucide-react'
 import type { JlptOverview, JlptPaperRow } from '../../types'
+import { mockUnderway } from './mockStatus'
 
 /**
  * The JLPT home: the papers of the chosen level. Open one to practise it by
  * kind or sit it as a mock exam. Mistakes from all of them sit apart.
  */
-export default function JlptHome({ data, onPaper, onMistakes, onLevel }: {
+export default function JlptHome({ data, onPaper, onMock, onMistakes, onLevel }: {
   data: JlptOverview
   onPaper: (p: JlptPaperRow) => void
+  onMock: (p: JlptPaperRow) => void
   onMistakes: () => void
   onLevel: (level: string) => void
 }) {
@@ -40,22 +42,24 @@ export default function JlptHome({ data, onPaper, onMistakes, onLevel }: {
           {data.papers.map(p => {
             const pct = p.questions ? Math.round((p.done / p.questions) * 100) : 0
             return (
-              <li key={p.id}>
+              <li key={p.id} className="relative">
                 <button type="button" onClick={() => onPaper(p)}
-                        className="w-full text-left rounded-2xl border border-border bg-surface px-5 py-4 flex flex-col gap-3 hover:border-fg-subtle hover:-translate-y-0.5 transition-[border-color,transform] duration-150">
-                  <span className="flex items-baseline gap-3">
+                        className="w-full text-left rounded-2xl border border-border bg-surface px-5 py-4 flex flex-col gap-3 hover:border-fg-subtle transition-colors">
+                  <span className="flex items-baseline gap-3 pr-28">
                     <span className="text-lg font-bold text-fg">{p.label}</span>
-                    <span className="ml-auto text-sm text-fg-muted">
-                      {p.status === 'completed' && p.total != null ? `模拟考 ${p.total} 分`
-                        : p.status === 'in_progress' ? '模拟考进行中' : ''}
-                    </span>
+                    {p.status === 'completed' && p.total != null && <span className="text-sm text-fg-muted">模拟考 {p.total} 分</span>}
                   </span>
                   <span className="h-1.5 rounded-full bg-border overflow-hidden">
                     <span className="block h-full bg-fg" style={{ width: `${pct}%` }} />
                   </span>
                   <span className="text-xs text-fg-muted tabular-nums">
-                    {p.done === 0 ? `${p.questions} 题 · 还没做` : `做了 ${p.done} / ${p.questions} 题`}
+                    {p.status === 'in_progress' ? <span className="text-fg">{mockUnderway(p.stage, p.remaining, true)}</span>
+                      : p.done === 0 ? `${p.questions} 题 · 还没做` : `做了 ${p.done} / ${p.questions} 题`}
                   </span>
+                </button>
+                <button type="button" onClick={() => onMock(p)}
+                        className={clsx('absolute top-3.5 right-4 btn h-8 text-xs', p.status === 'in_progress' ? 'btn-primary' : 'border border-border bg-surface text-fg')}>
+                  {p.status === 'in_progress' ? '继续模拟考' : p.status === 'completed' ? '再考一次' : '模拟考'}
                 </button>
               </li>
             )

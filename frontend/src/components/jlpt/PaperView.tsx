@@ -3,6 +3,7 @@ import clsx from 'clsx'
 import { ChevronLeft, Loader2 } from 'lucide-react'
 import type { PaperOverview } from '../../types'
 import { getPaperOverview } from '../../services/api'
+import { mockUnderway } from './mockStatus'
 
 const WEAK = 60
 
@@ -61,7 +62,7 @@ export default function PaperView({ paperId, onBack, onPractice, onMock, onResul
             <div className="flex flex-col gap-1 flex-1 min-w-[12rem]">
               <span className="text-lg font-bold text-fg">
                 {mock?.status === 'completed' && mock.total != null ? `上次 ${mock.total} / ${mock.max_total} 分`
-                  : mock?.status === 'in_progress' ? `做到 ${mock.stage === 'listening' ? '聴解' : '言語知識・読解'}` : '整套，按真实时间'}
+                  : mock?.status === 'in_progress' ? mockUnderway(mock.stage, mock.remaining) : '整套，按真实时间'}
               </span>
               <span className="text-xs text-fg-subtle">言語知識・読解 {p.written_minutes} 分钟　聴解 {p.listening_minutes} 分钟　交卷前不给答案</span>
             </div>
