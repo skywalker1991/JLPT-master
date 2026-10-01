@@ -88,7 +88,7 @@ export default function SettingsPage() {
           {row('日文字号', '',
             segmented<JpSize>(settings.jpSize, [['sm', '小'], ['md', '中'], ['lg', '大']], v => updateSettings({ jpSize: v }), '日文字号'))}
 
-          <h2 id="read" className="text-xs font-semibold text-fg-subtle pt-8 scroll-mt-6">阅读（语料分析、JLPT 解析）</h2>
+          <h2 id="read" className="text-xs font-semibold text-fg-subtle pt-8 scroll-mt-6">阅读（精读、JLPT 解析）</h2>
           {row('生词标注门槛', '', (
             <select id="set-level" value={settings.markLevel} onChange={e => updateSettings({ markLevel: e.target.value as MarkLevel })} className="input w-28">
               <option value="N1">N1</option><option value="N2">N2 以上</option><option value="N3">N3 以上</option>
@@ -104,7 +104,7 @@ export default function SettingsPage() {
                    onChange={e => updateSettings({ showTranslations: e.target.checked })} />
           ), 'set-zh')}
 
-          <h2 id="review" className="text-xs font-semibold text-fg-subtle pt-8 scroll-mt-6">复习（内化学习）</h2>
+          <h2 id="review" className="text-xs font-semibold text-fg-subtle pt-8 scroll-mt-6">复习（提取练习）</h2>
           {row('每天新卡上限', '', (
             <input id="set-new" type="number" min={0} max={200} key={review?.new_cards_per_day} defaultValue={review?.new_cards_per_day ?? ''}
                    onBlur={e => { const v = Number(e.target.value); if (review && Number.isFinite(v) && v !== review.new_cards_per_day) void saveReview({ new_cards_per_day: v }) }}

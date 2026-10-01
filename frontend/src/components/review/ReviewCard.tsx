@@ -123,7 +123,7 @@ export default function ReviewCard({ card, flipped }: { card: Card; flipped: boo
         )}
       </div>
       <div className="mt-auto text-xs text-fg-subtle">
-        {s ? `${fmt(s.met_at)} · ${s.source}` : '还没有遇到过的原句：在语料分析或 JLPT 里再遇到它时会记下'}
+        {s ? `${fmt(s.met_at)} · ${s.source}` : '还没有遇到过的原句：在精读或 JLPT 里再遇到它时会记下'}
       </div>
     </div>
   )

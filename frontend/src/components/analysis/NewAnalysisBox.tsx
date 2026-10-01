@@ -48,7 +48,7 @@ export default function NewAnalysisBox({
         </h1>
         {firstUse && (
           <p className="text-sm md:text-[0.9375rem] text-fg-muted leading-relaxed max-w-2xl">
-            从电子书、网页复制一段，或者拖入截图。分析完，你卡住的词和语法会留在知识库里，之后在内化学习里复习。
+            从电子书、网页复制一段，或者拖入截图。分析完，你卡住的词和语法会留在知识库里，之后在提取练习里复习。
           </p>
         )}
       </div>

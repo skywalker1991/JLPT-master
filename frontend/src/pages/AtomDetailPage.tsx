@@ -76,7 +76,7 @@ export default function AtomDetailPage() {
       <h2 className="flex items-baseline gap-2 text-sm font-semibold text-fg">
         遇到过的句子
       </h2>
-      {sentences.length === 0 && <p className="text-sm text-fg-subtle">还没有句子：在语料分析或 JLPT 里再遇到它时会记下</p>}
+      {sentences.length === 0 && <p className="text-sm text-fg-subtle">还没有句子：在精读或 JLPT 里再遇到它时会记下</p>}
       {sentences.map(s => (
         <div key={s.id} className="group rounded-xl border border-border bg-surface px-4 py-3 flex flex-col gap-1">
           <p className="font-jp text-[1.0625rem] leading-relaxed text-fg">

@@ -48,7 +48,7 @@ export default function ReciteView({ onBack }: { onBack: () => void }) {
   const queueList = (
     <div className="flex flex-col gap-3">
       {data.queue.length === 0 && (
-        <p className="text-sm text-fg-muted leading-relaxed">队列是空的。在语料分析里读完一段，点「要背」，它就排进来。</p>
+        <p className="text-sm text-fg-muted leading-relaxed">队列是空的。在精读里读完一段，点「要背」，它就排进来。</p>
       )}
       {data.queue.map((r, i) => (
         <div key={r.id}
@@ -116,7 +116,7 @@ export default function ReciteView({ onBack }: { onBack: () => void }) {
       {/* Desktop: the queue beside the passage being said */}
       <aside className="hidden md:flex w-80 shrink-0 border-r border-border bg-accent-light/30 flex-col gap-4 px-5 py-6 overflow-y-auto">
         <div className="flex items-center gap-1">
-          <button type="button" onClick={onBack} aria-label="回到内化学习" className="-ml-2 p-1.5 text-fg-muted hover:text-fg"><ChevronLeft className="w-4 h-4" /></button>
+          <button type="button" onClick={onBack} aria-label="回到提取练习" className="-ml-2 p-1.5 text-fg-muted hover:text-fg"><ChevronLeft className="w-4 h-4" /></button>
           <h2 className="font-bold text-fg">背诵队列</h2>
           <span className="text-xs text-fg-subtle ml-2">一次一段</span>
         </div>

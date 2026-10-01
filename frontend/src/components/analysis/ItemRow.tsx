@@ -358,7 +358,7 @@ function CardBody(props: Props & { meaningHere: string; onSupplemented: () => vo
             <p className="font-jp text-[0.9375rem] text-fg leading-relaxed">
               <Underlined text={o.sentence_text} pieces={o.surface ? [o.surface] : vocab ? [key] : grammarPieces(key)} />
             </p>
-            <p className="text-[11px] text-fg-subtle">{fmtDate(o.created_at)} · {o.analysis_id ? '语料分析' : 'JLPT'}</p>
+            <p className="text-[11px] text-fg-subtle">{fmtDate(o.created_at)} · {o.analysis_id ? '精读' : 'JLPT'}</p>
           </div>
         ))}
         {sentence && (

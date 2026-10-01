@@ -5,13 +5,13 @@ import clsx from 'clsx'
 import Logo from './Logo'
 
 export const NAV = [
-  { to: '/',            end: true,  icon: FileText,   label: '语料分析', mobile: true },
-  { to: '/jlpt',        end: false, icon: BookMarked, label: 'JLPT专题', mobile: true },
+  { to: '/',            end: true,  icon: FileText,   label: '精读', mobile: true },
+  { to: '/jlpt',        end: false, icon: BookMarked, label: 'JLPT', mobile: true },
   // 实时视频 is hidden until subtitles can be fetched reliably and a video
   // plays without them — pages/VideoPage and api/video.py are kept as they are.
   // To restore: this entry (icon: Video), its <Keep> in Layout, its route in App.
   { to: '/kb',          end: false, icon: BookOpen,   label: '知识库',   mobile: true },
-  { to: '/internalize', end: false, icon: Brain,      label: '内化学习', mobile: true },
+  { to: '/internalize', end: false, icon: Brain,      label: '提取练习', mobile: true },
   { to: '/admin/ingest', end: false, icon: Settings,  label: '管理',     mobile: false, admin: true },  // desktop only
 ]
 

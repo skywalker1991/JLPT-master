@@ -95,7 +95,7 @@ export default function InternalizePage() {
     <div className="flex-1 min-h-0 overflow-y-auto">
       <div className="max-w-xl mx-auto px-4 md:px-0 py-5 md:py-10 flex flex-col gap-4">
         <header className="flex flex-col gap-1">
-          <h1 className="text-xl font-bold text-fg">内化学习</h1>
+          <h1 className="text-xl font-bold text-fg">提取练习</h1>
           <p className="text-xs text-fg-muted">{dateLabel()} · 今天要做的，做完就结束</p>
         </header>
 
@@ -206,7 +206,7 @@ function ReciteCard({ queue, doneCount, onOpen }: { queue: Recitation[]; doneCou
           <p className="text-xs text-fg-subtle">正在背 · 已背出 {first.progress} / {first.sentences.length} 句 · 背完才出现下一段</p>
         </>
       ) : (
-        <p className="text-sm text-fg-muted">队列是空的。在语料分析里读完一段，点「要背」。</p>
+        <p className="text-sm text-fg-muted">队列是空的。在精读里读完一段，点「要背」。</p>
       )}
       <button type="button" onClick={onOpen} className="btn h-11 justify-center border border-border text-fg">
         {first ? (first.progress > 0 ? '继续背' : '开始背') : '看已背完的'}

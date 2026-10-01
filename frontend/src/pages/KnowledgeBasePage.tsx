@@ -67,7 +67,7 @@ export default function KnowledgeBasePage() {
         <div className="max-w-sm flex flex-col gap-4">
           <Logo className="w-10 h-10 text-fg" />
           <h1 className="text-xl font-bold text-fg">知识库还是空的</h1>
-          <p className="text-sm text-fg-muted leading-relaxed">在语料分析里读一段，把卡住的词和语法入库；遇到过的句子会跟着一起存进来。</p>
+          <p className="text-sm text-fg-muted leading-relaxed">在精读里读一段，把卡住的词和语法入库；遇到过的句子会跟着一起存进来。</p>
           <Link to="/" className="btn-primary h-12 justify-center text-base font-semibold">去读一段语料</Link>
         </div>
       </div>
