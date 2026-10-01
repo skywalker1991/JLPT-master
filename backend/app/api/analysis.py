@@ -8,7 +8,8 @@ from sse_starlette.sse import EventSourceResponse
 from sqlalchemy import and_, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.db import Analysis, async_session_factory, get_db
+from app.api.deps import current_user
+from app.models.db import Analysis, User, async_session_factory, get_db
 from app.schemas.analysis import (
     AnalyzeRequest,
     PreprocessRequest,
@@ -445,7 +446,8 @@ async def _relay(job: _Job):
 
 
 @router.post("/analyze")
-async def analyze(request: AnalyzeRequest, db: AsyncSession = Depends(get_db)):
+async def analyze(request: AnalyzeRequest, db: AsyncSession = Depends(get_db),
+                  user: User = Depends(current_user)):
     """
     Create an analysis record, start the analysis as a background job and
     stream its events via SSE (first a "start" event carrying analysis_id,
@@ -453,6 +455,7 @@ async def analyze(request: AnalyzeRequest, db: AsyncSession = Depends(get_db)):
     """
     input_content = request.text or request.image or ""
     analysis_record = Analysis(
+        user_id=user.id,
         input_type=request.type,
         input_content=input_content,
         status="in_progress",
@@ -779,9 +782,10 @@ async def followup(
     analysis_id: UUID,
     request: FollowupRequest,
     db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
 ):
     """Run a follow-up AI query against an existing analysis."""
-    result = await db.execute(select(Analysis).where(Analysis.id == analysis_id))
+    result = await db.execute(select(Analysis).where(Analysis.id == analysis_id, Analysis.user_id == user.id))
     analysis = result.scalar_one_or_none()
     if analysis is None:
         raise HTTPException(status_code=404, detail="Analysis not found")
@@ -885,13 +889,14 @@ async def list_analyses(
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
 ):
     """
     List analyses with pagination and an optional comma-separated status
     filter. "in_progress" means a job is still running; "interrupted" is an
     in_progress record whose job is gone (e.g. lost in a restart).
     """
-    query = select(Analysis).order_by(Analysis.created_at.desc())
+    query = select(Analysis).where(Analysis.user_id == user.id).order_by(Analysis.created_at.desc())
     if status:
         running = list(_jobs)
         conditions = []
@@ -927,9 +932,10 @@ async def list_analyses(
 # ---------------------------------------------------------------------------
 
 @router.get("/analyses/{analysis_id}")
-async def get_analysis(analysis_id: UUID, db: AsyncSession = Depends(get_db)):
+async def get_analysis(analysis_id: UUID, db: AsyncSession = Depends(get_db),
+                       user: User = Depends(current_user)):
     """Return full analysis record."""
-    result = await db.execute(select(Analysis).where(Analysis.id == analysis_id))
+    result = await db.execute(select(Analysis).where(Analysis.id == analysis_id, Analysis.user_id == user.id))
     analysis = result.scalar_one_or_none()
     if analysis is None:
         raise HTTPException(status_code=404, detail="Analysis not found")
@@ -949,9 +955,10 @@ async def get_analysis(analysis_id: UUID, db: AsyncSession = Depends(get_db)):
 # ---------------------------------------------------------------------------
 
 @router.delete("/analyses/{analysis_id}", status_code=204)
-async def delete_analysis(analysis_id: UUID, db: AsyncSession = Depends(get_db)):
+async def delete_analysis(analysis_id: UUID, db: AsyncSession = Depends(get_db),
+                          user: User = Depends(current_user)):
     """Delete an analysis and cascade to analysis_atoms."""
-    result = await db.execute(select(Analysis).where(Analysis.id == analysis_id))
+    result = await db.execute(select(Analysis).where(Analysis.id == analysis_id, Analysis.user_id == user.id))
     analysis = result.scalar_one_or_none()
     if analysis is None:
         raise HTTPException(status_code=404, detail="Analysis not found")

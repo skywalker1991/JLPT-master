@@ -3,6 +3,8 @@ import logging
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response
+
+from app.api.deps import current_user, require_admin
 from sqlalchemy import delete, distinct, select, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,7 +12,7 @@ from app.models.db import (
     ExamAdjudication,
     ExamPaper, ExamSection, ExamProblem, ExamItem, ExamMedia,
     QuestionAnalysis, ProblemAnalysis, ExamAttempt, AttemptAnswer,
-    ExamItemRevision, ExamItemReport, get_db,
+    ExamItemRevision, ExamItemReport, User, get_db,
 )
 from app.schemas.exam import (
     ExamPaperList, ExamPaperDetail, SectionDetail, ProblemDetail,
@@ -941,6 +943,15 @@ async def get_exam(paper_id: UUID, db: AsyncSession = Depends(get_db)):
     return await build_paper_detail(db, paper)
 
 
+async def _own_attempt(db: AsyncSession, attempt_id: UUID, user: User) -> ExamAttempt:
+    """The attempt, if it is this person's; otherwise the same 404 as an
+    attempt that does not exist."""
+    attempt = await db.get(ExamAttempt, attempt_id)
+    if attempt is None or attempt.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Attempt not found")
+    return attempt
+
+
 # ── 开始答题 ──────────────────────────────────────────────────────────────────
 
 @router.post("/exams/{paper_id}/attempts", response_model=StartAttemptResponse)
@@ -948,6 +959,7 @@ async def start_attempt(
     paper_id: UUID,
     body: StartAttemptRequest | None = None,
     db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
 ):
     """Begin a sitting over the 問題 chosen for it.
 
@@ -957,7 +969,7 @@ async def start_attempt(
     if not await db.get(ExamPaper, paper_id):
         raise HTTPException(status_code=404, detail="Exam paper not found")
     scope = [str(p) for p in (body.problem_ids if body else None) or []] or None
-    attempt = ExamAttempt(paper_id=paper_id, scope=scope)
+    attempt = ExamAttempt(paper_id=paper_id, scope=scope, user_id=user.id)
     db.add(attempt)
     await db.flush()
     await db.commit()
@@ -967,10 +979,8 @@ async def start_attempt(
 # ── 答题进度 ──────────────────────────────────────────────────────────────────
 
 @router.get("/attempts/{attempt_id}", response_model=AttemptStatus)
-async def get_attempt(attempt_id: UUID, db: AsyncSession = Depends(get_db)):
-    attempt = await db.get(ExamAttempt, attempt_id)
-    if attempt is None:
-        raise HTTPException(status_code=404, detail="Attempt not found")
+async def get_attempt(attempt_id: UUID, db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
+    attempt = await _own_attempt(db, attempt_id, user)
     answered = (await db.execute(
         select(AttemptAnswer.item_id).where(AttemptAnswer.attempt_id == attempt_id)
     )).scalars().all()
@@ -985,9 +995,9 @@ async def get_attempt(attempt_id: UUID, db: AsyncSession = Depends(get_db)):
 @router.put("/attempts/{attempt_id}/answers", response_model=SubmitAnswerResponse)
 async def submit_answer(
     attempt_id: UUID, req: SubmitAnswerRequest, db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
 ):
-    if not await db.get(ExamAttempt, attempt_id):
-        raise HTTPException(status_code=404, detail="Attempt not found")
+    await _own_attempt(db, attempt_id, user)
 
     item = await db.get(ExamItem, req.item_id)
     if item is None:
@@ -1023,10 +1033,9 @@ async def submit_section(
     attempt_id: UUID, section_id: UUID,
     background: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
 ):
-    attempt = await db.get(ExamAttempt, attempt_id)
-    if attempt is None:
-        raise HTTPException(status_code=404, detail="Attempt not found")
+    attempt = await _own_attempt(db, attempt_id, user)
     section = await db.get(ExamSection, section_id)
     if section is None:
         raise HTTPException(status_code=404, detail="Section not found")
@@ -1239,11 +1248,13 @@ _LISTENING_TYPES = {"listening"}
 
 
 @router.get("/stats/accuracy", response_model=AccuracyStats)
-async def get_accuracy_stats(db: AsyncSession = Depends(get_db)):
+async def get_accuracy_stats(db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
     rows = (await db.execute(
         select(AttemptAnswer.is_correct, ExamProblem.type)
+        .join(ExamAttempt, AttemptAnswer.attempt_id == ExamAttempt.id)
         .join(ExamItem, AttemptAnswer.item_id == ExamItem.id)
         .join(ExamProblem, ExamItem.problem_id == ExamProblem.id)
+        .where(ExamAttempt.user_id == user.id)
     )).all()
 
     counts: dict[str, dict[str, int]] = {
@@ -1272,12 +1283,12 @@ async def get_accuracy_stats(db: AsyncSession = Depends(get_db)):
 # ── 考试记录列表 ──────────────────────────────────────────────────────────────
 
 @router.get("/exams/{paper_id}/attempts", response_model=list[AttemptSummary])
-async def list_paper_attempts(paper_id: UUID, db: AsyncSession = Depends(get_db)):
+async def list_paper_attempts(paper_id: UUID, db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
     if not await db.get(ExamPaper, paper_id):
         raise HTTPException(status_code=404, detail="Exam paper not found")
     rows = (await db.execute(
         select(ExamAttempt)
-        .where(ExamAttempt.paper_id == paper_id)
+        .where(ExamAttempt.paper_id == paper_id, ExamAttempt.user_id == user.id)
         .order_by(ExamAttempt.started_at.desc())
     )).scalars().all()
     if not rows:
@@ -1512,6 +1523,7 @@ async def list_mistakes(
     category: str | None = None,
     paper_id: UUID | None = None,
     db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
 ):
     """Every question answered wrongly, worst first.
 
@@ -1540,6 +1552,7 @@ async def list_mistakes(
         .join(ExamSection, ExamProblem.section_id == ExamSection.id)
         .join(ExamPaper, ExamSection.paper_id == ExamPaper.id)
         .outerjoin(QuestionAnalysis, QuestionAnalysis.item_id == ExamItem.id)
+        .where(ExamAttempt.user_id == user.id)
         .group_by(ExamItem.id, ExamProblem.id, ExamPaper.id)
         .having(func.count().filter(AttemptAnswer.is_correct.is_(False)) > 0)
     )).all()
@@ -1581,9 +1594,8 @@ def _category_of(problem_type: str) -> str:
 # ── 完成考试 ──────────────────────────────────────────────────────────────────
 
 @router.post("/attempts/{attempt_id}/complete")
-async def complete_attempt(attempt_id: UUID, db: AsyncSession = Depends(get_db)):
-    if not await db.get(ExamAttempt, attempt_id):
-        raise HTTPException(status_code=404, detail="Attempt not found")
+async def complete_attempt(attempt_id: UUID, db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
+    await _own_attempt(db, attempt_id, user)
     await db.execute(
         update(ExamAttempt).where(ExamAttempt.id == attempt_id)
         .values(status="completed", completed_at=func.now())
@@ -1595,9 +1607,8 @@ async def complete_attempt(attempt_id: UUID, db: AsyncSession = Depends(get_db))
 # ── 删除考试记录 ─────────────────────────────────────────────────────────────
 
 @router.delete("/attempts/{attempt_id}", status_code=204)
-async def delete_attempt(attempt_id: UUID, db: AsyncSession = Depends(get_db)):
-    if not await db.get(ExamAttempt, attempt_id):
-        raise HTTPException(status_code=404, detail="Attempt not found")
+async def delete_attempt(attempt_id: UUID, db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
+    await _own_attempt(db, attempt_id, user)
     await db.execute(delete(AttemptAnswer).where(AttemptAnswer.attempt_id == attempt_id))
     await db.execute(delete(ExamAttempt).where(ExamAttempt.id == attempt_id))
     await db.commit()
@@ -1606,10 +1617,8 @@ async def delete_attempt(attempt_id: UUID, db: AsyncSession = Depends(get_db)):
 # ── 考试复习（答案+解析入口） ─────────────────────────────────────────────────
 
 @router.get("/attempts/{attempt_id}/review", response_model=AttemptReview)
-async def get_attempt_review(attempt_id: UUID, db: AsyncSession = Depends(get_db)):
-    attempt = await db.get(ExamAttempt, attempt_id)
-    if attempt is None:
-        raise HTTPException(status_code=404, detail="Attempt not found")
+async def get_attempt_review(attempt_id: UUID, db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
+    attempt = await _own_attempt(db, attempt_id, user)
 
     sections = (await db.execute(
         select(ExamSection)
@@ -1725,7 +1734,7 @@ async def _record_decision(db, item, revisions, note) -> None:
     await db.flush()
 
 
-@router.patch("/exam/items/{item_id}")
+@router.patch("/exam/items/{item_id}", dependencies=[Depends(require_admin)])
 async def edit_item(item_id: UUID, body: dict, db: AsyncSession = Depends(get_db)):
     """Correct one question. Scoped to the item so the paper is not rebuilt
     and attempt history keeps pointing at the same rows."""
@@ -1762,7 +1771,7 @@ async def edit_item(item_id: UUID, body: dict, db: AsyncSession = Depends(get_db
     }
 
 
-@router.patch("/exam/problems/{problem_id}")
+@router.patch("/exam/problems/{problem_id}", dependencies=[Depends(require_admin)])
 async def edit_problem(problem_id: UUID, body: dict, db: AsyncSession = Depends(get_db)):
     """Correct what a 問題 prints once — its passage, its instruction — and
     keep it as a ruling with no question number, so it outlives the paper."""
@@ -1786,7 +1795,7 @@ async def edit_problem(problem_id: UUID, body: dict, db: AsyncSession = Depends(
     }
 
 
-@router.get("/exam/items/{item_id}/revisions")
+@router.get("/exam/items/{item_id}/revisions", dependencies=[Depends(require_admin)])
 async def list_revisions(item_id: UUID, db: AsyncSession = Depends(get_db)):
     """What has been changed on this question. A past attempt was answered
     against the wording as it stood, so the history is worth being able to see."""
@@ -1807,20 +1816,28 @@ async def list_revisions(item_id: UUID, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/exam/items/{item_id}/report", status_code=201)
-async def report_item(item_id: UUID, body: dict, db: AsyncSession = Depends(get_db)):
+async def report_item(item_id: UUID, body: dict, db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
     """Flag a question while answering — the moment a defect is actually
     noticed, rather than when someone next reviews an import."""
     attempt_id = body.get("attempt_id")
+    attempt_uuid = None
+    if attempt_id:
+        try:
+            attempt_uuid = (await _own_attempt(db, UUID(attempt_id), user)).id
+        except (ValueError, HTTPException):
+            attempt_uuid = None  # not theirs, or not an id: the report stands without it
     report = await exam_edit.report_item(
         db, item_id, body.get("kind", "other"),
         note=body.get("note"),
-        attempt_id=UUID(attempt_id) if attempt_id else None,
+        attempt_id=attempt_uuid,
     )
+    if report.user_id is None:
+        report.user_id = user.id
     await db.commit()
     return {"id": str(report.id), "status": report.status, "kind": report.kind}
 
 
-@router.get("/exam/reports")
+@router.get("/exam/reports", dependencies=[Depends(require_admin)])
 async def list_reports(status: str = "open", db: AsyncSession = Depends(get_db)):
     """Flagged questions waiting to be dealt with, with enough of each to act
     on without opening the paper."""
@@ -1849,7 +1866,7 @@ async def list_reports(status: str = "open", db: AsyncSession = Depends(get_db))
     ]
 
 
-@router.post("/exam/reports/{report_id}/resolve")
+@router.post("/exam/reports/{report_id}/resolve", dependencies=[Depends(require_admin)])
 async def resolve_report(report_id: UUID, db: AsyncSession = Depends(get_db)):
     report = await exam_edit.resolve_report(db, report_id)
     await db.commit()

@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router-dom'
-import { FileText, BookMarked, BookOpen, Brain, Settings } from 'lucide-react'
+import { FileText, BookMarked, BookOpen, Brain, Settings, UserRound } from 'lucide-react'
+import { useAuth } from '../../context/AuthContext'
 import clsx from 'clsx'
 import { useSettings } from '../../context/SettingsContext'
 import ThemeToggle from './ThemeToggle'
@@ -29,11 +30,12 @@ export const NAV = [
   // To restore: this entry (icon: Video), its <Keep> in Layout, its route in App.
   { to: '/kb',          end: false, icon: BookOpen,   label: '知识库',   mobile: true },
   { to: '/internalize', end: false, icon: Brain,      label: '内化学习', mobile: true },
-  { to: '/admin/ingest', end: false, icon: Settings,  label: '管理',     mobile: false },  // desktop only
+  { to: '/admin/ingest', end: false, icon: Settings,  label: '管理',     mobile: false, admin: true },  // desktop only
 ]
 
 export default function TopNav() {
   const { settings, updateSettings, toggleLevel } = useSettings()
+  const { user, isAdmin } = useAuth()
 
   return (
     // Desktop only — phones use BottomNav
@@ -46,7 +48,7 @@ export default function TopNav() {
 
       {/* Tab nav */}
       <nav className="flex items-center gap-0.5 ml-1 md:ml-2">
-        {NAV.map(({ to, end, icon: Icon, label }) => (
+        {NAV.filter(n => !('admin' in n) || isAdmin).map(({ to, end, icon: Icon, label }) => (
           <NavLink
             key={to}
             to={to}
@@ -103,6 +105,18 @@ export default function TopNav() {
       </select>
 
       <ThemeToggle className="shrink-0" />
+
+      <NavLink
+        to="/account"
+        title={user?.email}
+        className={({ isActive }) => clsx(
+          'flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm font-semibold shrink-0 transition-colors',
+          isActive ? 'bg-accent-light text-accent-fg' : 'text-fg-muted hover:text-fg hover:bg-gray-100',
+        )}
+      >
+        <UserRound className="w-4 h-4" />
+        <span className="max-w-32 truncate">{user?.display_name || user?.email?.split('@')[0]}</span>
+      </NavLink>
     </header>
   )
 }

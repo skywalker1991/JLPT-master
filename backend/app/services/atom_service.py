@@ -58,23 +58,24 @@ VALID_KINDS = {
 VALID_RELATION_TYPES = {"synonym", "formal_casual", "derivative", "contrast", "nuance", "confusable"}
 
 
-async def get_atom_by_key(db: AsyncSession, type: str, key: str) -> Atom | None:
-    """Look up an atom by (type, key) unique pair."""
+async def get_atom_by_key(db: AsyncSession, type: str, key: str, *, user_id: UUID) -> Atom | None:
+    """Look up an atom by (type, key) in one person's dictionary."""
     result = await db.execute(
-        select(Atom).where(and_(Atom.type == type, Atom.key == key))
+        select(Atom).where(and_(Atom.user_id == user_id, Atom.type == type, Atom.key == key))
     )
     return result.scalar_one_or_none()
 
 
-async def get_atom_by_id(db: AsyncSession, atom_id: UUID) -> Atom | None:
-    """Look up an atom by primary key."""
-    result = await db.execute(select(Atom).where(Atom.id == atom_id))
+async def get_atom_by_id(db: AsyncSession, atom_id: UUID, *, user_id: UUID) -> Atom | None:
+    """Look up an atom by primary key — only if it is this person's. Someone
+    else's atom is answered exactly like one that does not exist."""
+    result = await db.execute(select(Atom).where(Atom.id == atom_id, Atom.user_id == user_id))
     return result.scalar_one_or_none()
 
 
-async def create_atom(db: AsyncSession, type: str, key: str) -> Atom:
+async def create_atom(db: AsyncSession, type: str, key: str, *, user_id: UUID) -> Atom:
     """Create and persist a new atom. Does NOT commit — caller controls transaction."""
-    atom = Atom(type=type, key=key)
+    atom = Atom(type=type, key=key, user_id=user_id)
     db.add(atom)
     await db.flush()  # get generated id without committing
     return atom

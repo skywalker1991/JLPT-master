@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router-dom'
 import clsx from 'clsx'
+import { UserRound } from 'lucide-react'
 import { NAV } from './TopNav'
 import ThemeToggle from './ThemeToggle'
 
@@ -31,6 +32,15 @@ export default function BottomNav() {
         </NavLink>
       ))}
       <ThemeToggle variant="tab" />
+      <NavLink
+        to="/account"
+        className={({ isActive }) => clsx(
+          'flex flex-col items-center gap-0.5 pt-2 pb-1.5 text-[10px] font-medium transition-colors',
+          isActive ? 'text-accent-fg' : 'text-fg-subtle',
+        )}
+      >
+        {({ isActive }) => (<><UserRound className={clsx('w-5 h-5', isActive && 'text-accent')} />账号</>)}
+      </NavLink>
     </nav>
   )
 }

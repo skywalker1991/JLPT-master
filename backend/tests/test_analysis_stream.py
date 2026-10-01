@@ -1,5 +1,7 @@
 import asyncio
 import json
+import uuid
+from types import SimpleNamespace
 
 from app.api import analysis as analysis_api
 from app.api.analysis import _extract_completed_sentences
@@ -20,6 +22,10 @@ def test_extract_ignores_braces_inside_strings():
     buf = '{"sentences": [{"index": 0, "text": "a", "usage": "名詞＋{の}"}, {"index": 1, "text": "b}"}, {"index": 2'
     got = _extract_completed_sentences(buf, 0)
     assert [s["index"] for s in got] == [0, 1]
+
+
+# analyze() is called directly here, so the signed-in user is passed by hand.
+_USER = SimpleNamespace(id=uuid.uuid4())
 
 
 class _FakeDB:
@@ -75,7 +81,7 @@ def _run(monkeypatch, llm, text, disconnect_after=None):
     monkeypatch.setattr(analysis_api, "_session_factory", lambda: db)
 
     async def go():
-        resp = await analysis_api.analyze(AnalyzeRequest(text=text, type="text"), db=db)
+        resp = await analysis_api.analyze(AnalyzeRequest(text=text, type="text"), db=db, user=_USER)
         events = []
         async for e in resp.body_iterator:
             events.append(e)

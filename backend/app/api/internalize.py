@@ -7,7 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func, case, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.db import Atom, AtomProperty, AtomTag, AtomSrsState, Trace, get_db
+from app.api.deps import current_user
+from app.models.db import Atom, AtomProperty, AtomTag, AtomSrsState, Trace, User, get_db
 from app.services import atom_service
 from app.services.internalize_service import (
     extract_jlpt_level,
@@ -24,6 +25,7 @@ async def get_queue(
     prompt: Literal['meaning', 'reading'] = Query(default="meaning"),
     levels: list[str] = Query(default=[]),
     db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
 ):
     """
     Returns atoms ordered by SRS due-date.
@@ -40,6 +42,7 @@ async def get_queue(
     query = (
         select(Atom)
         .outerjoin(AtomSrsState, AtomSrsState.atom_id == Atom.id)
+        .where(Atom.user_id == user.id)
         .order_by(order_expr)
         .limit(limit)
     )
@@ -99,7 +102,7 @@ async def get_queue(
 
 
 @router.post("/internalize/trace", status_code=201)
-async def record_trace(body: dict, db: AsyncSession = Depends(get_db)):
+async def record_trace(body: dict, db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
     """Records a card swipe result and updates the atom's SRS state."""
     atom_id_str = body.get("atom_id")
     result = body.get("result")
@@ -113,7 +116,7 @@ async def record_trace(body: dict, db: AsyncSession = Depends(get_db)):
     except (ValueError, TypeError):
         raise HTTPException(status_code=422, detail="invalid atom_id")
 
-    atom = await atom_service.get_atom_by_id(db, atom_id)
+    atom = await atom_service.get_atom_by_id(db, atom_id, user_id=user.id)
     if atom is None:
         raise HTTPException(status_code=404, detail="Atom not found")
 
@@ -145,7 +148,7 @@ async def record_trace(body: dict, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/internalize/stats")
-async def get_stats(db: AsyncSession = Depends(get_db)):
+async def get_stats(db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
     """Returns today's and all-time review stats plus box-level distribution."""
     today_start = datetime.now(timezone.utc).replace(
         hour=0, minute=0, second=0, microsecond=0
@@ -155,18 +158,24 @@ async def get_stats(db: AsyncSession = Depends(get_db)):
         select(
             func.sum(case((Trace.detail["result"].astext == "know", 1), else_=0)).label("know"),
             func.sum(case((Trace.detail["result"].astext == "unknown", 1), else_=0)).label("unknown"),
-        ).where(Trace.action == "review", Trace.created_at >= today_start)
+        )
+        .join(Atom, Atom.id == Trace.atom_id)
+        .where(Atom.user_id == user.id, Trace.action == "review", Trace.created_at >= today_start)
     )).one()
 
     total_row = (await db.execute(
         select(
             func.sum(case((Trace.detail["result"].astext == "know", 1), else_=0)).label("know"),
             func.sum(case((Trace.detail["result"].astext == "unknown", 1), else_=0)).label("unknown"),
-        ).where(Trace.action == "review")
+        )
+        .join(Atom, Atom.id == Trace.atom_id)
+        .where(Atom.user_id == user.id, Trace.action == "review")
     )).one()
 
     dist_rows = (await db.execute(
         select(AtomSrsState.box_level, func.count().label("cnt"))
+        .join(Atom, Atom.id == AtomSrsState.atom_id)
+        .where(Atom.user_id == user.id)
         .group_by(AtomSrsState.box_level)
     )).all()
 

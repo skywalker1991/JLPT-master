@@ -14,10 +14,79 @@ class Base(DeclarativeBase):
     pass
 
 
+class User(Base):
+    """Someone who signs in. Everything they collect — atoms, analyses,
+    attempts — hangs off this row; the exam bank does not, it is shared."""
+
+    __tablename__ = "users"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # Stored lower-cased: an address is compared as the person typed it the
+    # first time, not as they typed it today.
+    email = Column(String(320), nullable=False, unique=True)
+    password_hash = Column(Text, nullable=False)
+    display_name = Column(String(100), nullable=True)
+    role = Column(String(20), nullable=False, server_default=text("'user'"))  # 'user' | 'admin'
+    is_active = Column(Boolean, nullable=False, server_default=text("true"))
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    last_login_at = Column(DateTime(timezone=True), nullable=True)
+    # The invite code they signed up with — which post or batch brought them.
+    invite_code = Column(String(32), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint("role IN ('user', 'admin')", name="ck_users_role"),
+    )
+
+
+class InviteCode(Base):
+    """A way in while sign-up is by invitation. One code can admit several
+    people (a batch posted somewhere) up to `max_uses`; the note says where it
+    was handed out, so it is possible to tell which post brought whom."""
+
+    __tablename__ = "invite_codes"
+
+    code = Column(String(32), primary_key=True)
+    note = Column(Text, nullable=True)
+    max_uses = Column(Integer, nullable=False, server_default=text("1"))
+    used_count = Column(Integer, nullable=False, server_default=text("0"))
+    expires_at = Column(DateTime(timezone=True), nullable=True)
+    is_active = Column(Boolean, nullable=False, server_default=text("true"))
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+
+    __table_args__ = (
+        CheckConstraint("used_count <= max_uses", name="ck_invite_codes_uses"),
+    )
+
+
+class UserSession(Base):
+    """A signed-in browser. The cookie carries a random token; only its hash
+    is kept here, so a copy of this table cannot be replayed as a login."""
+
+    __tablename__ = "user_sessions"
+
+    token_hash = Column(String(64), primary_key=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    last_seen_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    user_agent = Column(Text, nullable=True)
+
+    user = relationship("User")
+
+    __table_args__ = (
+        Index("ix_user_sessions_user_id", "user_id"),
+        Index("ix_user_sessions_expires_at", "expires_at"),
+    )
+
+
 class Atom(Base):
     __tablename__ = "atoms"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # Every atom belongs to one person's dictionary. Nullable only so rows
+    # from before accounts existed can be migrated; new rows always set it.
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
     type = Column(String(20), nullable=False)
     key = Column(Text, nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
@@ -31,7 +100,9 @@ class Atom(Base):
     occurrences = relationship("AtomOccurrence", back_populates="atom", cascade="all, delete-orphan")
 
     __table_args__ = (
-        UniqueConstraint("type", "key", name="uq_atoms_type_key"),
+        # Unique per dictionary, not globally: two people can both keep 得る.
+        UniqueConstraint("user_id", "type", "key", name="uq_atoms_user_type_key"),
+        Index("ix_atoms_user_id", "user_id"),
         Index("ix_atoms_type", "type"),
         Index("ix_atoms_key", "key"),
         Index("ix_atoms_created_at", "created_at"),
@@ -144,6 +215,7 @@ class Analysis(Base):
     __tablename__ = "analyses"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
     input_type = Column(String(20), nullable=False)
     # 'text'|'image'|'jlpt_grammar'|'jlpt_reading'|'jlpt_ordering'|'jlpt_listening'
     input_content = Column(Text, nullable=False)
@@ -155,6 +227,7 @@ class Analysis(Base):
     occurrences = relationship("AtomOccurrence", back_populates="analysis")
 
     __table_args__ = (
+        Index("ix_analyses_user_id", "user_id"),
         Index("ix_analyses_status", "status"),
         Index("ix_analyses_input_type", "input_type"),
         Index("ix_analyses_created_at", "created_at"),
@@ -505,6 +578,8 @@ class ExamItemReport(Base):
     item_id = Column(UUID(as_uuid=True), ForeignKey("exam_items.id", ondelete="CASCADE"), nullable=False)
     # SET NULL so clearing attempt history keeps the defect it turned up.
     attempt_id = Column(UUID(as_uuid=True), ForeignKey("exam_attempts.id", ondelete="SET NULL"), nullable=True)
+    # Who flagged it. SET NULL: a report about the bank outlives the account.
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     kind = Column(String(20), nullable=False)   # wrong_answer | typo | missing | other
     note = Column(Text, nullable=True)
     status = Column(String(10), nullable=False, server_default=text("'open'"))
@@ -524,6 +599,7 @@ class ExamAttempt(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     paper_id = Column(UUID(as_uuid=True), ForeignKey("exam_papers.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
     status = Column(String(20), nullable=False, server_default=text("'in_progress'"))
     score = Column(JSONB, nullable=True)
     # The 問題 this sitting set out to cover, as a list of problem ids. A run is
@@ -540,6 +616,7 @@ class ExamAttempt(Base):
 
     __table_args__ = (
         Index("ix_exam_attempts_paper_id", "paper_id"),
+        Index("ix_exam_attempts_user_id", "user_id"),
         Index("ix_exam_attempts_status", "status"),
     )
 

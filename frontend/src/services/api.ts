@@ -31,14 +31,22 @@ import {
 
 const BASE_URL = import.meta.env.VITE_API_URL || ''
 
+/** Fired when the server says the session is gone (expired, signed out
+ *  elsewhere, account disabled). AuthContext listens and shows the sign-in page. */
+export const UNAUTHORIZED_EVENT = 'jm:unauthorized'
+
 async function request<T>(
   path: string,
   options?: RequestInit,
 ): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     headers: { 'Content-Type': 'application/json', ...options?.headers },
+    credentials: 'same-origin',
     ...options,
   })
+  if (res.status === 401 && !path.startsWith('/api/auth/')) {
+    window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
+  }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
     throw new Error(body.detail ?? `HTTP ${res.status}`)
@@ -78,6 +86,7 @@ export async function* analyzeStream(
     body: JSON.stringify(req),
     signal: opts.signal,
   })
+  if (res.status === 401) window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
   if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`)
 
   const reader = res.body.getReader()
@@ -537,4 +546,99 @@ export async function postInternalizeTrace(
 
 export async function getInternalizeStats(): Promise<InternalizeStats> {
   return request<InternalizeStats>('/api/internalize/stats')
+}
+
+
+// ── Accounts ──────────────────────────────────────────────────────────────────
+
+export interface AuthUser {
+  id: string
+  email: string
+  display_name: string | null
+  role: 'user' | 'admin'
+}
+
+export interface AdminUserRow extends AuthUser {
+  is_active: boolean
+  created_at: string | null
+  last_login_at: string | null
+  atoms: number
+  analyses: number
+  attempts: number
+}
+
+export type SignupMode = 'open' | 'invite' | 'closed'
+
+export async function getMe(): Promise<AuthUser> {
+  return request<AuthUser>('/api/auth/me')
+}
+
+export async function getAuthConfig(): Promise<{ signup_mode: SignupMode }> {
+  return request('/api/auth/config')
+}
+
+export async function login(email: string, password: string): Promise<AuthUser> {
+  return request<AuthUser>('/api/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ email, password }),
+  })
+}
+
+export async function signup(email: string, password: string, displayName?: string, inviteCode?: string): Promise<AuthUser> {
+  return request<AuthUser>('/api/auth/signup', {
+    method: 'POST',
+    body: JSON.stringify({ email, password, display_name: displayName || null, invite_code: inviteCode || null }),
+  })
+}
+
+export async function logout(): Promise<void> {
+  await request<void>('/api/auth/logout', { method: 'POST' })
+}
+
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  await request<void>('/api/auth/password', {
+    method: 'POST',
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+  })
+}
+
+export async function listUsers(): Promise<AdminUserRow[]> {
+  return request<AdminUserRow[]>('/api/admin/users')
+}
+
+export async function createUser(body: {
+  email: string; password: string; display_name?: string; role: 'user' | 'admin'
+}): Promise<AuthUser> {
+  return request<AuthUser>('/api/admin/users', { method: 'POST', body: JSON.stringify(body) })
+}
+
+export async function updateUser(id: string, body: {
+  display_name?: string; role?: 'user' | 'admin'; is_active?: boolean; password?: string
+}): Promise<AuthUser & { is_active: boolean }> {
+  return request(`/api/admin/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) })
+}
+
+export interface InviteRow {
+  code: string
+  note: string | null
+  max_uses: number
+  used_count: number
+  expires_at: string | null
+  is_active: boolean
+  created_at: string | null
+  users: string[]
+}
+
+export async function listInvites(): Promise<InviteRow[]> {
+  return request<InviteRow[]>('/api/admin/invites')
+}
+
+export async function createInvites(body: {
+  note?: string; max_uses: number; expires_at?: string | null; count?: number
+}): Promise<InviteRow[]> {
+  return request<InviteRow[]>('/api/admin/invites', { method: 'POST', body: JSON.stringify(body) })
+}
+
+export async function updateInvite(code: string, body: { is_active?: boolean; note?: string }): Promise<InviteRow> {
+  return request<InviteRow>(`/api/admin/invites/${encodeURIComponent(code)}`, { method: 'PATCH', body: JSON.stringify(body) })
 }

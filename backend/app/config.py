@@ -25,6 +25,23 @@ class Settings(BaseSettings):
     #: the truth of it. Empty means no source viewing.
     EXAM_SOURCE_DIR: str = ""
 
+    # ── Accounts ─────────────────────────────────────────────────────────────
+    #: The first admin, created at start-up when no admin exists yet. Data
+    #: from before accounts existed is handed to this account.
+    ADMIN_EMAIL: str = ""
+    ADMIN_PASSWORD: str = ""
+    #: 'closed' — only an admin creates accounts; 'invite' — sign-up needs an
+    #: invite code an admin handed out; 'open' — anyone can sign up.
+    #: Closed by default: every account spends model calls.
+    SIGNUP_MODE: str = "closed"
+    SESSION_DAYS: int = 30
+    #: Send the session cookie over HTTPS only. Must be true once the site is
+    #: served over HTTPS; while it is plain HTTP the cookie would never be sent.
+    COOKIE_SECURE: bool = False
+    #: Origins allowed to make state-changing requests besides the site itself
+    #: (the Vite dev server, which proxies to a different host).
+    TRUSTED_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000"
+
     model_config = SettingsConfigDict(env_file=".env")
 
 

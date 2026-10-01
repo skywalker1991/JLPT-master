@@ -6,8 +6,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func, or_, and_, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import current_user
 from app.models.db import (
-    Atom, AtomProperty, AtomRelation, AtomTag, Trace, get_db
+    Analysis, Atom, AtomProperty, AtomRelation, AtomTag, Trace, User, get_db
 )
 from app.schemas.atoms import (
     CreateAtomRequest,
@@ -63,13 +64,22 @@ async def _record_occurrence(db: AsyncSession, atom_id: UUID, request: CreateAto
 
 
 @router.post("/atoms", response_model=CreateAtomResponse)
-async def create_atom(request: CreateAtomRequest, db: AsyncSession = Depends(get_db)):
+async def create_atom(request: CreateAtomRequest, db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
     """
     Create a new atom with properties. Returns 'exists', 'similar', or 'created'.
     Grammar atoms go through Qdrant similarity check first.
     """
     atom_type = request.type
     key = request.key
+
+    # The analysis a sentence came from must be this person's own; an id from
+    # someone else's history is dropped rather than linked.
+    if request.analysis_id is not None:
+        owned = await db.execute(
+            select(Analysis.id).where(Analysis.id == request.analysis_id, Analysis.user_id == user.id)
+        )
+        if owned.first() is None:
+            request.analysis_id = None
 
     # Step 1: Normalize grammar key
     if atom_type == "grammar":
@@ -85,7 +95,7 @@ async def create_atom(request: CreateAtomRequest, db: AsyncSession = Depends(get
 
     existing = None
     for k in keys_to_try:
-        existing = await atom_service.get_atom_by_key(db, atom_type, k)
+        existing = await atom_service.get_atom_by_key(db, atom_type, k, user_id=user.id)
         if existing is not None:
             break
 
@@ -117,7 +127,7 @@ async def create_atom(request: CreateAtomRequest, db: AsyncSession = Depends(get
         meaning = meaning_values[0] if meaning_values else ""
         query = f"{key} {meaning}".strip()
 
-        similar = await qdrant_service.search_similar(query, limit=5, score_threshold=0.75)
+        similar = await qdrant_service.search_similar(query, user.id, limit=5, score_threshold=0.75)
         if similar:
             # Check for near-exact match (score > 0.95)
             top = similar[0]
@@ -126,7 +136,7 @@ async def create_atom(request: CreateAtomRequest, db: AsyncSession = Depends(get
                 atom_id_str = top["id"]
                 try:
                     atom_id = UUID(atom_id_str)
-                    db_atom = await atom_service.get_atom_by_id(db, atom_id)
+                    db_atom = await atom_service.get_atom_by_id(db, atom_id, user_id=user.id)
                     if db_atom is not None:
                         props = await atom_service.get_properties(db, db_atom.id)
                         prop_responses = [
@@ -167,7 +177,7 @@ async def create_atom(request: CreateAtomRequest, db: AsyncSession = Depends(get
             )
 
     # Step 4: Create atom
-    atom = await atom_service.create_atom(db, atom_type, key)
+    atom = await atom_service.create_atom(db, atom_type, key, user_id=user.id)
 
     # Add properties
     if request.properties:
@@ -190,7 +200,7 @@ async def create_atom(request: CreateAtomRequest, db: AsyncSession = Depends(get
     if atom_type == "grammar":
         meaning_values = [p.value for p in request.properties if p.kind == "meaning"]
         meaning = meaning_values[0] if meaning_values else ""
-        await qdrant_service.upsert_grammar_atom(atom.id, key, meaning)
+        await qdrant_service.upsert_grammar_atom(atom.id, key, meaning, user.id)
 
     return CreateAtomResponse(atom_id=atom.id, status="created")
 
@@ -204,9 +214,10 @@ async def add_properties(
     atom_id: UUID,
     request: AddPropertiesRequest,
     db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
 ):
     """Add properties to an existing atom with deduplication."""
-    atom = await atom_service.get_atom_by_id(db, atom_id)
+    atom = await atom_service.get_atom_by_id(db, atom_id, user_id=user.id)
     if atom is None:
         raise HTTPException(status_code=404, detail="Atom not found")
 
@@ -235,6 +246,7 @@ async def add_relation(
     atom_id: UUID,
     request: CreateRelationRequest,
     db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
 ):
     """Create a relation between two atoms."""
     if request.type not in atom_service.VALID_RELATION_TYPES:
@@ -243,11 +255,11 @@ async def add_relation(
             detail=f"Invalid relation type '{request.type}'. Must be one of: {atom_service.VALID_RELATION_TYPES}",
         )
 
-    from_atom = await atom_service.get_atom_by_id(db, atom_id)
+    from_atom = await atom_service.get_atom_by_id(db, atom_id, user_id=user.id)
     if from_atom is None:
         raise HTTPException(status_code=404, detail="Source atom not found")
 
-    to_atom = await atom_service.get_atom_by_id(db, request.target_atom_id)
+    to_atom = await atom_service.get_atom_by_id(db, request.target_atom_id, user_id=user.id)
     if to_atom is None:
         raise HTTPException(status_code=404, detail="Target atom not found")
 
@@ -286,9 +298,10 @@ async def list_atoms(
     page: int = Query(default=0, ge=0),
     limit: int = Query(default=20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
 ):
     """List atoms with optional filters and pagination, including maturity scores."""
-    base_query = select(Atom)
+    base_query = select(Atom).where(Atom.user_id == user.id)
     if type:
         base_query = base_query.where(Atom.type == type)
     if search:
@@ -357,14 +370,15 @@ async def list_atoms(
 # ---------------------------------------------------------------------------
 
 @router.post("/atoms/backfill-tags")
-async def backfill_tags(db: AsyncSession = Depends(get_db)):
+async def backfill_tags(db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
     """Derive tags from jlpt_level / part_of_speech / register properties for all existing atoms."""
     from app.services.atom_service import _normalize_pos, _normalize_register
 
     props_res = await db.execute(
-        select(AtomProperty).where(
-            AtomProperty.kind.in_(["jlpt_level", "part_of_speech", "register"])
-        )
+        select(AtomProperty)
+        .join(Atom, Atom.id == AtomProperty.atom_id)
+        .where(Atom.user_id == user.id)
+        .where(AtomProperty.kind.in_(["jlpt_level", "part_of_speech", "register"]))
     )
     created = 0
     skipped = 0
@@ -399,12 +413,16 @@ _JLPT_LEVELS = {"N1", "N2", "N3", "N4", "N5"}
 
 
 @router.get("/atoms/graph")
-async def get_atom_graph(db: AsyncSession = Depends(get_db)):
+async def get_atom_graph(db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
     """Return all atoms and relations for knowledge graph visualisation."""
-    atoms_res = await db.execute(select(Atom).order_by(Atom.created_at))
+    atoms_res = await db.execute(select(Atom).where(Atom.user_id == user.id).order_by(Atom.created_at))
     atoms = atoms_res.scalars().all()
 
-    rels_res = await db.execute(select(AtomRelation))
+    rels_res = await db.execute(
+        select(AtomRelation)
+        .join(Atom, Atom.id == AtomRelation.from_id)
+        .where(Atom.user_id == user.id)
+    )
     rels = rels_res.scalars().all()
 
     atom_ids = [a.id for a in atoms]
@@ -446,9 +464,9 @@ async def get_atom_graph(db: AsyncSession = Depends(get_db)):
 # ---------------------------------------------------------------------------
 
 @router.get("/atoms/{atom_id}")
-async def get_atom(atom_id: UUID, db: AsyncSession = Depends(get_db)):
+async def get_atom(atom_id: UUID, db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
     """Return full atom detail with properties, relations, analyses, and trace summary."""
-    atom = await atom_service.get_atom_by_id(db, atom_id)
+    atom = await atom_service.get_atom_by_id(db, atom_id, user_id=user.id)
     if atom is None:
         raise HTTPException(status_code=404, detail="Atom not found")
 
@@ -543,9 +561,9 @@ async def get_atom(atom_id: UUID, db: AsyncSession = Depends(get_db)):
 # ---------------------------------------------------------------------------
 
 @router.get("/atoms/{atom_id}/relations")
-async def get_atom_relations(atom_id: UUID, db: AsyncSession = Depends(get_db)):
+async def get_atom_relations(atom_id: UUID, db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
     """Return all relations (both directions) for an atom."""
-    atom = await atom_service.get_atom_by_id(db, atom_id)
+    atom = await atom_service.get_atom_by_id(db, atom_id, user_id=user.id)
     if atom is None:
         raise HTTPException(status_code=404, detail="Atom not found")
 
@@ -572,13 +590,13 @@ async def get_atom_relations(atom_id: UUID, db: AsyncSession = Depends(get_db)):
 # ---------------------------------------------------------------------------
 
 @router.post("/atoms/{atom_id}/tags")
-async def add_tag(atom_id: UUID, body: dict, db: AsyncSession = Depends(get_db)):
+async def add_tag(atom_id: UUID, body: dict, db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
     """Add a tag to an atom."""
     tag = body.get("tag", "").strip()
     if not tag:
         raise HTTPException(status_code=400, detail="Tag must not be empty")
 
-    atom = await atom_service.get_atom_by_id(db, atom_id)
+    atom = await atom_service.get_atom_by_id(db, atom_id, user_id=user.id)
     if atom is None:
         raise HTTPException(status_code=404, detail="Atom not found")
 
@@ -592,9 +610,9 @@ async def add_tag(atom_id: UUID, body: dict, db: AsyncSession = Depends(get_db))
 # ---------------------------------------------------------------------------
 
 @router.delete("/atoms/{atom_id}/tags/{tag}", status_code=204)
-async def remove_tag(atom_id: UUID, tag: str, db: AsyncSession = Depends(get_db)):
+async def remove_tag(atom_id: UUID, tag: str, db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
     """Remove a tag from an atom."""
-    atom = await atom_service.get_atom_by_id(db, atom_id)
+    atom = await atom_service.get_atom_by_id(db, atom_id, user_id=user.id)
     if atom is None:
         raise HTTPException(status_code=404, detail="Atom not found")
 
@@ -609,9 +627,9 @@ async def remove_tag(atom_id: UUID, tag: str, db: AsyncSession = Depends(get_db)
 # ---------------------------------------------------------------------------
 
 @router.delete("/atoms/{atom_id}", status_code=204)
-async def delete_atom(atom_id: UUID, db: AsyncSession = Depends(get_db)):
+async def delete_atom(atom_id: UUID, db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
     """Delete an atom and cascade to all related records."""
-    atom = await atom_service.get_atom_by_id(db, atom_id)
+    atom = await atom_service.get_atom_by_id(db, atom_id, user_id=user.id)
     if atom is None:
         raise HTTPException(status_code=404, detail="Atom not found")
 

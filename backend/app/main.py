@@ -6,14 +6,19 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import httpx
-from fastapi import FastAPI
+from urllib.parse import urlsplit
+
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.api import admin as admin_api
-from app.api import analysis, atoms, dictionary, exam, internalize, tts, video
+from app.api import analysis, atoms, auth, dictionary, exam, internalize, tts, video
+from app.api.deps import current_user, require_admin
 from fastapi.staticfiles import StaticFiles
 from app.config import get_settings
-from app.models.db import async_engine, Base
+from app.models.db import async_engine, async_session_factory, Base
+from app.services import auth_service
 from app.services.qdrant_service import qdrant_service
 
 logger = logging.getLogger(__name__)
@@ -64,8 +69,16 @@ async def lifespan(app: FastAPI):
     async with async_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
+    # The first admin, and the hand-over of data from before accounts.
+    async with async_session_factory() as session:
+        admin = await auth_service.ensure_admin(session)
+        await auth_service.purge_expired_sessions(session)
+        await session.commit()
+
     # Ensure Qdrant collection exists
     await qdrant_service.ensure_collection()
+    if admin is not None:
+        await qdrant_service.claim_unowned(admin.id)
 
     # Download JMdict in background (non-blocking startup)
     asyncio.create_task(ensure_jmdict())
@@ -87,14 +100,37 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(analysis.router, prefix="/api")
-app.include_router(atoms.router, prefix="/api")
-app.include_router(dictionary.router, prefix="/api")
-app.include_router(exam.router, prefix="/api")
-app.include_router(tts.router, prefix="/api")
-app.include_router(video.router, prefix="/api")
-app.include_router(internalize.router, prefix="/api")
-app.include_router(admin_api.router, prefix="/api")
+_SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+
+
+@app.middleware("http")
+async def reject_cross_site_writes(request: Request, call_next):
+    """A page on another site must not be able to make a signed-in browser
+    change anything. SameSite=Lax already keeps the cookie off cross-site
+    POSTs from modern browsers; this refuses them outright whenever the
+    browser says where the request came from."""
+    if request.method not in _SAFE_METHODS:
+        origin = request.headers.get("origin")
+        if origin and origin != "null":
+            trusted = {o.strip() for o in get_settings().TRUSTED_ORIGINS.split(",") if o.strip()}
+            host = request.headers.get("x-forwarded-host") or request.headers.get("host", "")
+            if urlsplit(origin).netloc != host and origin not in trusted:
+                return JSONResponse({"detail": "跨站请求被拒绝"}, status_code=403)
+    return await call_next(request)
+
+
+# Signing in needs no session; everything else does, and the admin pages need
+# an admin. Handlers that touch personal data also take the user themselves.
+_signed_in = [Depends(current_user)]
+app.include_router(auth.router, prefix="/api")
+app.include_router(analysis.router, prefix="/api", dependencies=_signed_in)
+app.include_router(atoms.router, prefix="/api", dependencies=_signed_in)
+app.include_router(dictionary.router, prefix="/api", dependencies=_signed_in)
+app.include_router(exam.router, prefix="/api", dependencies=_signed_in)
+app.include_router(tts.router, prefix="/api", dependencies=_signed_in)
+app.include_router(video.router, prefix="/api", dependencies=_signed_in)
+app.include_router(internalize.router, prefix="/api", dependencies=_signed_in)
+app.include_router(admin_api.router, prefix="/api", dependencies=[Depends(require_admin)])
 
 _media_dir = Path(__file__).parent.parent / "media"
 _media_dir.mkdir(exist_ok=True)
