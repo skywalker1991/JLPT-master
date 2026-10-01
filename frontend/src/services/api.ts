@@ -12,6 +12,10 @@ import {
   ItemReview,
   ItemAskEntry,
   Recitation,
+  KbOverview,
+  KbEntryRow,
+  KbSourceGroup,
+  KbEntry,
   CreateAtomRequest,
   CreateAtomResponse,
   AddPropertiesRequest,
@@ -36,7 +40,6 @@ import {
   DraftDetail,
   ReviewToday,
   ReviewSettings,
-  AtomGraphResponse,
 } from '../types'
 
 const BASE_URL = import.meta.env.VITE_API_URL || ''
@@ -239,10 +242,6 @@ export async function removeTag(atomId: string, tag: string): Promise<void> {
 
 export async function deleteAtom(id: string): Promise<void> {
   await request<void>(`/api/atoms/${id}`, { method: 'DELETE' })
-}
-
-export async function getAtomGraph(): Promise<AtomGraphResponse> {
-  return request<AtomGraphResponse>('/api/atoms/graph')
 }
 
 // ---- Dictionary ----
@@ -772,4 +771,35 @@ export async function reorderRecitations(ids: string[]): Promise<void> {
 
 export async function removeRecitation(id: string): Promise<void> {
   await request(`/api/recite/${id}`, { method: 'DELETE' })
+}
+
+// ---- Knowledge base (知识库) ----
+
+export async function getKbOverview(): Promise<KbOverview> {
+  return request<KbOverview>(`/api/kb/overview?tz=${new Date().getTimezoneOffset()}`)
+}
+
+export async function getKbEntries(params: { type?: string; fam?: string; level?: string; q?: string }): Promise<{ items: KbEntryRow[]; total: number }> {
+  const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v) as [string, string][])
+  return request(`/api/kb/entries?${qs}`)
+}
+
+export async function getKbSources(): Promise<KbSourceGroup[]> {
+  return request<KbSourceGroup[]>('/api/kb/sources')
+}
+
+export async function getKbEntry(id: string): Promise<KbEntry> {
+  return request<KbEntry>(`/api/kb/entries/${id}`)
+}
+
+export async function editKbEntry(id: string, body: { reading?: string; meaning?: string; level?: string }): Promise<KbEntry> {
+  return request<KbEntry>(`/api/kb/entries/${id}`, { method: 'PATCH', body: JSON.stringify(body) })
+}
+
+export async function removeKbSentence(occurrenceId: string): Promise<void> {
+  await request(`/api/kb/occurrences/${occurrenceId}`, { method: 'DELETE' })
+}
+
+export async function mergeKbEntry(id: string, into: string): Promise<{ id: string }> {
+  return request(`/api/kb/entries/${id}/merge`, { method: 'POST', body: JSON.stringify({ into }) })
 }

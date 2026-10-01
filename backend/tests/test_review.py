@@ -48,3 +48,22 @@ def test_front_of_card():
 def test_sentences_rotate():
     assert [rs.pick_sentence(3, r) for r in range(5)] == [0, 1, 2, 0, 1]
     assert rs.pick_sentence(0, 4) == -1
+
+
+def test_familiarity_bands():
+    from app.api.kb import familiarity
+    assert familiarity(None) == "new"
+    assert familiarity(AtomSrsState(stability=None)) == "new"
+    assert familiarity(AtomSrsState(stability=3.0)) == "learning"
+    assert familiarity(AtomSrsState(stability=9.0)) == "familiar"
+
+
+def test_a_value_you_wrote_wins_over_the_ai():
+    from datetime import datetime, timezone
+    from app.api.kb import _pick
+    from app.models.db import AtomProperty
+    t = datetime(2026, 10, 1, tzinfo=timezone.utc)
+    props = [AtomProperty(kind="meaning", value="ai", source_type="ai", created_at=t),
+             AtomProperty(kind="meaning", value="mine", source_type="user", created_at=t)]
+    assert _pick(props, "meaning") == ("mine", True)
+    assert _pick(props[:1], "meaning") == ("ai", False)

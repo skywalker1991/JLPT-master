@@ -805,5 +805,8 @@ async def delete_atom(atom_id: UUID, db: AsyncSession = Depends(get_db), user: U
     if atom is None:
         raise HTTPException(status_code=404, detail="Atom not found")
 
+    grammar = atom.type == "grammar"
     await db.delete(atom)
     await db.commit()
+    if grammar:
+        await qdrant_service.delete_atoms([atom_id])

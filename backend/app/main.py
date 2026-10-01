@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api import admin as admin_api
-from app.api import analysis, atoms, auth, cards, dictionary, exam, internalize, jlpt, recite, tts, video
+from app.api import analysis, atoms, auth, cards, dictionary, exam, internalize, jlpt, kb, recite, tts, video
 from app.api.deps import current_user, require_admin
 from fastapi.staticfiles import StaticFiles
 from app.config import get_settings
@@ -125,6 +125,7 @@ _signed_in = [Depends(current_user)]
 app.include_router(auth.router, prefix="/api")
 app.include_router(analysis.router, prefix="/api", dependencies=_signed_in)
 app.include_router(atoms.router, prefix="/api", dependencies=_signed_in)
+app.include_router(kb.router, prefix="/api", dependencies=_signed_in)
 app.include_router(cards.router, prefix="/api", dependencies=_signed_in)
 app.include_router(dictionary.router, prefix="/api", dependencies=_signed_in)
 app.include_router(exam.router, prefix="/api", dependencies=_signed_in)

@@ -541,26 +541,6 @@ export interface ReviewSettings {
   desired_retention: number
 }
 
-// Knowledge graph
-export interface GraphNode {
-  id: string
-  key: string
-  type: string
-  jlpt: string | null
-  pos: string | null
-}
-
-export interface GraphEdge {
-  from_id: string
-  to_id: string
-  type: string
-}
-
-export interface AtomGraphResponse {
-  nodes: GraphNode[]
-  edges: GraphEdge[]
-}
-
 // Follow-up questions on a sentence, optionally about some of its vocab / grammar items
 export interface AskTarget {
   kind: 'vocab' | 'grammar'
@@ -790,4 +770,57 @@ export interface Recitation {
   times_done: number
   created_at: string | null
   done_at: string | null
+}
+
+// Knowledge base (知识库)
+export type Familiarity = 'new' | 'learning' | 'familiar'
+
+export interface KbOverview {
+  total: number
+  vocab: number
+  grammar: number
+  familiarity: Record<Familiarity, number>
+  added_30: number
+  familiar_30: number
+  added_per_day: number[]
+  forgotten: { id: string; key: string; lapses: number }[]
+}
+
+export interface KbEntryRow {
+  id: string
+  type: 'vocabulary' | 'grammar'
+  key: string
+  reading: string | null
+  meaning: string | null
+  level: string | null
+  sentences: number
+  familiarity: Familiarity
+  created_at: string
+}
+
+export interface KbSourceGroup {
+  analysis_id: string | null
+  title: string
+  source: string
+  date: string
+  entries: { id: string; key: string }[]
+}
+
+export interface KbField { value: string | null; edited: boolean }
+
+export interface KbEntry {
+  id: string
+  type: 'vocabulary' | 'grammar'
+  key: string
+  created_at: string
+  fields: Record<'reading' | 'meaning' | 'jlpt_level' | 'usage' | 'connection' | 'part_of_speech', KbField>
+  meanings: string[]
+  sentences: { id: string; text: string; translation: string | null; surface: string | null; meaning_here: string | null; date: string; source: string; analysis_id: string | null }[]
+  review: { familiarity: Familiarity; stability: number | null; due: string | null; lapses: number }
+  relations: {
+    id: string
+    type: string
+    note: string | null
+    other: { id: string; key: string; reading: string | null; meaning: string | null; sentence: { text: string; date: string; source: string } | null }
+  }[]
 }

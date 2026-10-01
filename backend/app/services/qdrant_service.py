@@ -76,6 +76,20 @@ class QdrantService:
         except Exception as e:
             logger.warning("Qdrant upsert_grammar_atom failed for '%s': %s", key, e)
 
+    async def delete_atoms(self, atom_ids: list[UUID]) -> None:
+        """Forget grammar points that were deleted or merged away, so they are
+        not offered as 「相似的语法」 any more. Failures are non-blocking."""
+        if not atom_ids:
+            return
+        try:
+            from qdrant_client.models import PointIdsList
+            await self._get_client().delete(
+                collection_name=get_settings().QDRANT_COLLECTION,
+                points_selector=PointIdsList(points=[str(i) for i in atom_ids]),
+            )
+        except Exception as e:
+            logger.warning("Qdrant delete failed for %s: %s", atom_ids, e)
+
     async def search_similar(
         self,
         query: str,
