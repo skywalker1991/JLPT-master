@@ -15,6 +15,7 @@ import ReportItemButton from '../exam/ReportItemButton'
 import ReadingReview from './ReadingReview'
 import SavePair from '../shared/SavePair'
 import { NewItemChip } from '../analysis/AskPanel'
+import { Thinking } from '../shared/Motion'
 
 const WORD_TYPES = new Set(['vocab_fill', 'synonym', 'usage', 'kanji_reading', 'kanji_writing', 'word_formation', 'grammar_fill'])
 /** Questions understood by reading: reviewed with the 語料分析 reader. */
@@ -190,7 +191,7 @@ function Body({ data, itemId, chosen, correct, skipped }: {
           {optionNotes}
           {analysis ? <DiffBox itemId={item.id} type={type} chosen={chosen} correct={correct} /> : (
             <div className="rounded-xl bg-accent-light px-5 py-4 flex items-center gap-3 text-sm text-fg-muted">
-              <Loader2 className="w-4 h-4 animate-spin" />正在准备这道题的解析……
+              <Thinking className="w-5 h-5" />正在准备这道题的解析……
             </div>
           )}
           <div className="md:hidden">
@@ -267,7 +268,7 @@ function ItemAsk({ itemId, chosen, initial, targets: initialTargets }: {
   return (
     <div className="flex flex-col gap-3 pt-2">
       {thread.map((e, i) => (
-        <article key={i} className="rounded-xl bg-accent-light px-4 py-3.5 flex flex-col gap-2">
+        <article key={i} className="rounded-xl bg-accent-light px-4 py-3.5 flex flex-col gap-2 animate-rise-in">
           <p className="text-sm text-fg-muted">{e.question}</p>
           <p className="text-[0.9375rem] text-fg leading-relaxed whitespace-pre-wrap">{e.result.response}</p>
           {e.result.pair && (

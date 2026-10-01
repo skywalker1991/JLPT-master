@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import clsx from 'clsx'
-import { Check, Loader2 } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import type { ComparedPair } from '../../types'
 import { savePair } from '../../services/api'
 import { useToast } from '../../context/ToastContext'
 import { RELATION_LABEL } from '../review/ReviewCard'
+import { Connected } from './Motion'
 
 /** The pair glyph: two entries joined by an arc. */
 export function PairMark({ className }: { className?: string }) {
@@ -49,7 +50,7 @@ export default function SavePair({ pair, source, analysisId, sentenceIndex, item
       <button type="button" onClick={() => void save()} disabled={state !== 'idle'}
               className={clsx('inline-flex items-center gap-2 h-9 pl-3 pr-3.5 rounded-full border text-sm',
                 state === 'saved' ? 'border-success/40 text-success-fg' : 'border-border bg-surface text-fg hover:border-fg-subtle')}>
-        {state === 'saving' ? <Loader2 className="w-4 h-4 animate-spin" /> : state === 'saved' ? <Check className="w-4 h-4" /> : <PairMark />}
+        {state === 'saving' ? <Loader2 className="w-4 h-4 animate-spin" /> : state === 'saved' ? <Connected className="w-4 h-4" /> : <PairMark />}
         {state === 'saved' ? '已存成关系' : '存成关系'}：
         <span className="font-jp">{pair.a.key}</span><span className="text-fg-subtle">⌒</span><span className="font-jp">{pair.b.key}</span>
         <span className="text-xs rounded-full bg-accent-light px-2 py-0.5 text-fg-muted">{RELATION_LABEL[pair.type] ?? pair.type}</span>

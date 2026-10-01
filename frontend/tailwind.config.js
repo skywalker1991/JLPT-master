@@ -181,8 +181,30 @@ export default {
           '0%': { transform: 'translateX(-24%)', opacity: '0' },
           '100%': { transform: 'translateX(0)', opacity: '1' },
         },
+        // Panels arriving: a sheet from the bottom, a dialog or card settling in
+        'sheet-up': { '0%': { transform: 'translateY(100%)' }, '100%': { transform: 'translateY(0)' } },
+        'drawer-in': { '0%': { transform: 'translateX(-100%)' }, '100%': { transform: 'translateX(0)' } },
+        'fade-in': { '0%': { opacity: '0' }, '100%': { opacity: '1' } },
+        'pop-in': { '0%': { opacity: '0', transform: 'scale(.96) translateY(6px)' }, '100%': { opacity: '1', transform: 'none' } },
+        'rise-in': { '0%': { opacity: '0', transform: 'translateY(8px)' }, '100%': { opacity: '1', transform: 'none' } },
+        // Answers: a wrong pick shakes once, a right one glows once
+        'nope': { '0%,100%': { transform: 'translateX(0)' }, '20%,60%': { transform: 'translateX(-5px)' }, '40%,80%': { transform: 'translateX(5px)' } },
+        'yes': { '0%': { boxShadow: '0 0 0 0 rgb(var(--c-success) / .45)' }, '100%': { boxShadow: '0 0 0 10px rgb(var(--c-success) / 0)' } },
+        // 逐块揭示: the text floats up as its cover fades
+        'reveal': { '0%': { opacity: '0', transform: 'translateY(4px)', filter: 'blur(3px)' }, '100%': { opacity: '1', transform: 'none', filter: 'none' } },
+        // A gap line drawn in when a sentence's analysis arrives
+        'mark-in': { '0%': { textDecorationColor: 'transparent' }, '100%': {} },
       },
       animation: {
+        'sheet-up': 'sheet-up .28s cubic-bezier(.2,.9,.3,1)',
+        'drawer-in': 'drawer-in .26s cubic-bezier(.2,.9,.3,1)',
+        'fade-in': 'fade-in .2s ease-out',
+        'pop-in': 'pop-in .22s cubic-bezier(.2,.9,.3,1)',
+        'rise-in': 'rise-in .3s cubic-bezier(.2,.9,.3,1) both',
+        'nope': 'nope .38s ease-in-out',
+        'yes': 'yes .7s ease-out',
+        'reveal': 'reveal .35s cubic-bezier(.2,.9,.3,1)',
+        'mark-in': 'mark-in .6s ease-out',
         shimmer: 'shimmer 2s ease-in-out infinite',
         'slide-from-right': 'slide-from-right 0.22s ease-out',
         'slide-from-left': 'slide-from-left 0.22s ease-out',

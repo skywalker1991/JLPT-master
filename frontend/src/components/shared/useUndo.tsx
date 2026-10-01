@@ -52,10 +52,12 @@ export function useUndo() {
   }
 
   const toast = pending && (
-    <div role="status" className="fixed left-1/2 -translate-x-1/2 bottom-24 md:bottom-8 z-[70] flex items-center gap-3 rounded-2xl bg-fg text-bg pl-5 pr-3 py-3 shadow-lg">
-      <span className="text-sm">{pending.label}</span>
-      <button type="button" onClick={undo} className="h-8 px-3 rounded-lg border border-bg/30 text-sm font-semibold">撤销</button>
-      <span className="text-xs opacity-70 tabular-nums w-8">{left} 秒</span>
+    <div className="fixed inset-x-0 bottom-24 md:bottom-8 z-[70] flex justify-center px-4 pointer-events-none">
+      <div role="status" className="pointer-events-auto flex items-center gap-3 rounded-2xl bg-fg text-bg pl-5 pr-3 py-3 shadow-lg animate-rise-in">
+        <span className="text-sm">{pending.label}</span>
+        <button type="button" onClick={undo} className="h-8 px-3 rounded-lg border border-bg/30 text-sm font-semibold">撤销</button>
+        <span className="text-xs opacity-70 tabular-nums w-8">{left} 秒</span>
+      </div>
     </div>
   )
 

@@ -7,8 +7,8 @@ import { finishRecitation, preprocessBatch, setRecitationProgress } from '../../
 import { tokensFor } from '../../utils/tokens'
 import { speak } from '../../utils/speech'
 import TokenText from '../shared/TokenText'
-import Logo from '../shared/Logo'
 import { useSettings } from '../../context/SettingsContext'
+import { Connected } from '../shared/Motion'
 
 type Stage = 'line' | 'chain' | 'done'
 
@@ -94,7 +94,7 @@ export default function ReciteSession({ item, next, onFinished, onProgress }: {
     return (
       <div className="flex-1 flex flex-col">
         <div className="flex-1 overflow-y-auto px-5 md:px-0 py-8 flex flex-col items-center gap-5 max-w-xl mx-auto w-full">
-          <Logo className="w-12 h-12 text-fg" />
+          <Connected className="w-12 h-12" />
           <div className="text-center flex flex-col gap-1">
             <h2 className="text-xl font-bold text-fg">这一段背完了</h2>
             <p className="text-sm text-fg-muted">收进「已背完」，随时可以再背一遍</p>
@@ -130,7 +130,7 @@ export default function ReciteSession({ item, next, onFinished, onProgress }: {
             <div className="border-t border-border pt-4 flex flex-col gap-3">
               <p className="text-xs font-semibold text-fg-subtle">{shown ? '点出卡住的句子' : '背完点「显示」对照'}</p>
               {shown ? (
-                <p className="font-jp text-lg leading-[2] text-fg">
+                <p className="font-jp text-lg leading-[2] text-fg animate-reveal">
                   {item.sentences.map((s, i) => (
                     <span key={i} role="button" tabIndex={0} aria-pressed={stuck.has(i)}
                           onClick={() => setStuck(prev => { const x = new Set(prev); if (x.has(i)) x.delete(i); else x.add(i); return x })}
@@ -178,10 +178,10 @@ export default function ReciteSession({ item, next, onFinished, onProgress }: {
             const said = only ? !order.includes(i) || pos < at : i < at
             if (i === current) {
               return (
-                <section key={i} className="rounded-2xl border-[1.5px] border-fg bg-surface px-5 md:px-7 py-5 flex flex-col gap-4">
+                <section key={i} className="rounded-2xl border-[1.5px] border-fg bg-surface px-5 md:px-7 py-5 flex flex-col gap-4 animate-rise-in">
                   <p className="text-lg md:text-xl font-semibold text-fg leading-relaxed">{s.translation || '（没有译文）'}</p>
                   {shown ? (
-                    <div className="font-jp text-xl md:text-2xl leading-[2] text-fg">
+                    <div className="font-jp text-xl md:text-2xl leading-[2] text-fg animate-reveal">
                       <TokenText tokens={tokens[i] ?? []} fallback={x.text} furigana={kana} className="text-xl md:text-2xl leading-[2.2]" />
                     </div>
                   ) : (

@@ -72,3 +72,34 @@
 /* 日文字号 (设置 → 外观): scales the Japanese text — passages, sentences, cards. */
 html[data-jp="sm"] .font-jp { zoom: 0.9; }
 html[data-jp="lg"] .font-jp { zoom: 1.15; }
+
+/* ── Motion ────────────────────────────────────────────────────────────────
+   Three brand motions, each saying one thing: 思考中 (the two arcs drawn and
+   withdrawn, never meeting), 连接成立 (the arcs drawn together, the dots
+   giving one hop — played once), 逐块揭示 (text floating up as its cover
+   goes). Everything else is small and quick: a press, a shake, a glow. */
+.logo-arc { stroke-dasharray: 18; }
+.thinking .logo-arc { animation: logo-draw 2.4s ease-in-out infinite; }
+.thinking .logo-arc + .logo-arc { animation-delay: .6s; }
+.thinking .logo-dot { animation: logo-blink 2.4s ease-in-out infinite; }
+.thinking .logo-bar { opacity: .3; }
+.connected .logo-arc { animation: logo-meet .9s cubic-bezier(.2,.9,.3,1) both; }
+.connected .logo-arc + .logo-arc { animation-delay: .08s; }
+.connected .logo-dot { transform-box: fill-box; transform-origin: center; animation: logo-pop .9s ease-out both; }
+@keyframes logo-draw { 0% { stroke-dashoffset: 18 } 35%, 65% { stroke-dashoffset: 0 } 100% { stroke-dashoffset: -18 } }
+@keyframes logo-blink { 0%, 100% { opacity: .3 } 50% { opacity: 1 } }
+@keyframes logo-meet { 0% { stroke-dashoffset: 18 } 45%, 100% { stroke-dashoffset: 0 } }
+@keyframes logo-pop { 0%, 40% { transform: scale(1) } 55% { transform: scale(1.35) } 75%, 100% { transform: scale(1) } }
+
+/* A press: buttons give a little under the finger */
+.btn { transition-property: color, background-color, border-color, transform, opacity; }
+.btn:active:not(:disabled) { transform: scale(.97); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: .01ms !important; animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+  .logo-arc { stroke-dasharray: none; animation: none !important; }
+  .thinking .logo-dot { opacity: .5; animation: none !important; }
+}

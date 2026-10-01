@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { motion } from 'framer-motion'
 import { Loader2 } from 'lucide-react'
 import type { Recitation, ReviewSettings, ReviewToday } from '../types'
 import { getRecitations, getReviewSettings, getReviewToday, updateReviewSettings } from '../services/api'
@@ -8,6 +7,7 @@ import { useToast } from '../context/ToastContext'
 import ReviewSession from '../components/review/ReviewSession'
 import ReciteView from '../components/recite/ReciteView'
 import Logo from '../components/shared/Logo'
+import { Connected } from '../components/shared/Motion'
 
 const SECONDS_PER_CARD = 10
 
@@ -103,10 +103,7 @@ export default function InternalizePage() {
           <Empty />
         ) : left === 0 ? (
           <section className="rounded-2xl border border-border bg-surface p-6 flex flex-col items-center gap-4 text-center">
-            <motion.div initial={justFinished ? { scale: 0.6, opacity: 0, rotate: -20 } : false}
-                        animate={{ scale: 1, opacity: 1, rotate: 0 }} transition={{ type: 'spring', stiffness: 200, damping: 14 }}>
-              <Logo className="w-12 h-12 text-fg" />
-            </motion.div>
+            {justFinished ? <Connected className="w-12 h-12" /> : <Logo className="w-12 h-12 text-fg" />}
             <div className="flex flex-col gap-1">
               <h2 className="text-lg font-bold text-fg">{today.done_today > 0 ? '今天完成' : '今天没有要复习的'}</h2>
               <p className="text-sm text-fg-muted">

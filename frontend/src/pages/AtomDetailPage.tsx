@@ -186,7 +186,7 @@ function Relations({ entry: e }: { entry: KbEntry }) {
             {RELATION_LABEL[type] ?? type}
           </h3>
           {rs.map(r => open === r.id ? (
-            <div key={r.id} className="rounded-2xl border-[1.5px] border-fg bg-surface p-5 flex flex-col gap-4">
+            <div key={r.id} className="rounded-2xl border-[1.5px] border-fg bg-surface p-5 flex flex-col gap-4 animate-pop-in">
               <div className="flex items-center">
                 <span className="text-xs rounded-full bg-accent-light px-2.5 py-0.5 text-fg-muted">{RELATION_LABEL[r.type] ?? r.type}</span>
                 <button type="button" onClick={() => setOpen(null)} aria-label="收起" className="ml-auto p-1 text-fg-subtle hover:text-fg"><X className="w-4 h-4" /></button>
@@ -300,7 +300,7 @@ function MergeBox({ entry: e, onDone, onCancel }: { entry: KbEntry; onDone: (id:
     }
   }
   return (
-    <div className="rounded-2xl border border-border bg-surface p-4 flex flex-col gap-3 shadow-card">
+    <div className="rounded-2xl border border-border bg-surface p-4 flex flex-col gap-3 shadow-card animate-pop-in">
       <h3 className="text-sm font-semibold text-fg">合并到另一个词条</h3>
       <input value={q} onChange={ev => { setQ(ev.target.value); setPick(null) }} placeholder="搜写法或读音" className="input h-10" aria-label="搜要合并到的词条" />
       {hits.map(h => (

@@ -4,6 +4,7 @@ import type { ItemSchema } from '../../types'
 import QuestionText from '../exam/QuestionText'
 import SentenceOrderStem from '../exam/SentenceOrderStem'
 import Stem from '../exam/Stem'
+import { Connected } from '../shared/Motion'
 
 const BLANK = /（\s*）|\(\s*\)|（　+）/
 
@@ -67,7 +68,8 @@ export default function QuestionBlock({
               className={clsx(
                 'flex items-center gap-3 rounded-xl border px-4 py-3 text-left transition-colors min-h-[3.25rem]',
                 isCorrect && 'border-fg border-[1.5px]',
-                isWrongPick && 'border-danger/40 bg-danger-light',
+                isCorrect && key === selected && 'animate-yes',
+                isWrongPick && 'border-danger/40 bg-danger-light animate-nope',
                 isPicked && 'border-fg border-[1.5px] bg-accent-light',
                 !isCorrect && !isWrongPick && !isPicked && 'border-border bg-surface',
                 !revealed && onSelect && !isPicked && 'hover:border-fg-subtle',
@@ -76,7 +78,7 @@ export default function QuestionBlock({
             >
               <span className="text-sm font-semibold tabular-nums text-fg-muted w-4 shrink-0">{key}</span>
               <span className="font-jp text-base md:text-lg flex-1"><Stem text={text} /></span>
-              {isCorrect && <span className="flex items-center gap-1 text-xs text-success-fg shrink-0"><Check className="w-3.5 h-3.5" />正解</span>}
+              {isCorrect && <span className="flex items-center gap-1 text-xs text-success-fg shrink-0">{key === selected ? <Connected className="w-4 h-4" /> : <Check className="w-3.5 h-3.5" />}正解</span>}
               {isWrongPick && <span className="flex items-center gap-1 text-xs text-danger-fg shrink-0"><X className="w-3.5 h-3.5" />你选的</span>}
             </button>
           )

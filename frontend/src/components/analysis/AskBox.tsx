@@ -5,6 +5,7 @@ import { ask } from '../../services/api'
 import { useToast } from '../../context/ToastContext'
 import { AskContext, NewItemChip } from './AskPanel'
 import SavePair from '../shared/SavePair'
+import { Thinking } from '../shared/Motion'
 
 const sameTarget = (a: AskTarget, b: AskTarget) => a.kind === b.kind && a.key === b.key
 
@@ -17,7 +18,7 @@ export function AskThread() {
   return (
     <div className="flex flex-col gap-3">
       {thread.map((entry, i) => (
-        <article key={i} className="rounded-xl bg-accent-light px-4 py-3.5 flex flex-col gap-2">
+        <article key={i} className="rounded-xl bg-accent-light px-4 py-3.5 flex flex-col gap-2 animate-rise-in">
           <div className="flex flex-wrap items-center gap-1.5 text-xs">
             <span className="rounded-md bg-surface px-2 py-0.5 text-fg-muted">第 {(entry.params.sentence_index ?? 0) + 1} 句</span>
             {askTargets(entry).map(t => (
@@ -108,7 +109,7 @@ export function AskComposer() {
           {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : '问'}
         </button>
       </div>
-      {sending && <p className="text-xs text-fg-subtle">思考中…</p>}
+      {sending && <p className="flex items-center gap-2 text-xs text-fg-subtle"><Thinking className="w-4 h-4" />思考中</p>}
     </form>
   )
 }

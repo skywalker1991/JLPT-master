@@ -16,6 +16,7 @@ import { AskComposer, AskThread } from '../components/analysis/AskBox'
 import type { AnalysisRecord, AskTarget } from '../types'
 import type { Mark } from '../utils/marks'
 import { getAnalyses, getAnalysis, deleteAnalysis, retrySentence, addRecitation, getRecitations } from '../services/api'
+import { Thinking } from '../components/shared/Motion'
 
 /**
  * 语料分析: paste a passage, read it whole with the gaps marked, pick a
@@ -261,8 +262,8 @@ export default function AnalysisPage() {
       {/* ── History (phone) ── */}
       {historyOpen && (
         <div className="md:hidden fixed inset-0 z-50 flex">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setHistoryOpen(false)} />
-          <div className="relative w-[82%] max-w-xs bg-surface flex flex-col"
+          <div className="absolute inset-0 bg-black/40 animate-fade-in" onClick={() => setHistoryOpen(false)} />
+          <div className="relative w-[82%] max-w-xs bg-surface flex flex-col animate-drawer-in"
                style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
             <div className="flex items-center justify-between px-4 h-14 border-b border-border">
               <span className="font-semibold text-fg">最近的语料</span>
@@ -312,7 +313,7 @@ export default function AnalysisPage() {
                   </span>
                   {isStreaming ? (
                     <span className="ml-auto flex items-center gap-2 text-sm text-fg-muted">
-                      <Loader2 className="w-4 h-4 animate-spin" />还在分析，先读着
+                      <Thinking className="w-4 h-4" />还在分析，先读着
                     </span>
                   ) : <span className="ml-auto">{reciteButton}</span>}
                 </div>
@@ -346,8 +347,8 @@ export default function AnalysisPage() {
       {/* ── Selected sentence (phone): bottom sheet ── */}
       {hasResults && sheetOpen && panel && selectedIndex !== null && (
         <div className="md:hidden fixed inset-0 z-50 flex flex-col justify-end">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setSheetOpen(false)} />
-          <div className="relative bg-surface rounded-t-2xl max-h-[85dvh] flex flex-col"
+          <div className="absolute inset-0 bg-black/40 animate-fade-in" onClick={() => setSheetOpen(false)} />
+          <div className="relative bg-surface rounded-t-2xl max-h-[85dvh] flex flex-col animate-sheet-up"
                style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
             <button type="button" onClick={() => setSheetOpen(false)} aria-label="收起"
                     className="mx-auto mt-2 mb-1 w-12 h-1.5 rounded-full bg-border shrink-0" />

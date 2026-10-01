@@ -30,7 +30,7 @@ export default function JlptHome({ data, onPractice, onPaper, onMistakes }: {
             const weak = c.accuracy != null && c.accuracy < WEAK
             return (
               <button key={c.id} type="button" onClick={() => onPractice(c)}
-                      className="text-left rounded-xl border border-border bg-surface px-4 py-3.5 flex flex-col gap-2.5 hover:border-fg-subtle transition-colors">
+                      className="text-left rounded-xl border border-border bg-surface px-4 py-3.5 flex flex-col gap-2.5 hover:border-fg-subtle hover:-translate-y-0.5 transition-[border-color,transform] duration-150">
                 <span className="flex items-baseline gap-2">
                   <span className="font-jp text-base text-fg">{c.label}</span>
                   <span className="ml-auto text-[11px] text-fg-subtle">{c.listening ? `聴解 ${c.number}` : `問題${c.number}`}</span>

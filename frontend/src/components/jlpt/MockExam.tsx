@@ -147,7 +147,7 @@ export default function MockExam({ attemptId, onExit, onDone }: {
           </section>
         )}
 
-        <main className={clsx('flex-1 min-h-0 overflow-y-auto px-4 md:px-12 py-5 md:py-8 flex flex-col gap-5', !side && 'md:items-center')}>
+        <main key={item.id} className={clsx('flex-1 min-h-0 overflow-y-auto px-4 md:px-12 py-5 md:py-8 flex flex-col gap-5 animate-fade-in', !side && 'md:items-center')}>
           <div className={clsx('w-full flex flex-col gap-5', !side && 'max-w-3xl')}>
             {!side && <p className="text-xs text-fg-subtle">{problem.name}{problem.instruction ? ` · ${problem.instruction}` : ''}</p>}
             {listening && <PlayAudio itemId={slots[banStart >= 0 ? banStart : at].item.id} />}
@@ -175,8 +175,8 @@ export default function MockExam({ attemptId, onExit, onDone }: {
 
       {sheet && (
         <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setSheet(false)} />
-          <div className="relative w-full md:w-[40rem] max-h-[80dvh] overflow-y-auto bg-surface rounded-t-2xl md:rounded-2xl p-5 flex flex-col gap-4">
+          <div className="absolute inset-0 bg-black/40 animate-fade-in" onClick={() => setSheet(false)} />
+          <div className="relative w-full md:w-[40rem] max-h-[80dvh] overflow-y-auto bg-surface rounded-t-2xl md:rounded-2xl p-5 flex flex-col gap-4 animate-sheet-up md:animate-pop-in">
             <div className="flex items-center">
               <h2 className="font-bold text-fg">答题卡</h2>
               <span className="ml-3 text-xs text-fg-muted">已答 {answered} / {slots.length} · 不确定 {state.flags.length}</span>
@@ -207,8 +207,8 @@ export default function MockExam({ attemptId, onExit, onDone }: {
 
       {confirm && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center px-6">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setConfirm(false)} />
-          <div role="dialog" aria-modal="true" className="relative w-full max-w-sm bg-surface rounded-2xl p-6 flex flex-col gap-4">
+          <div className="absolute inset-0 bg-black/40 animate-fade-in" onClick={() => setConfirm(false)} />
+          <div role="dialog" aria-modal="true" className="relative w-full max-w-sm bg-surface rounded-2xl p-6 flex flex-col gap-4 animate-pop-in">
             <h2 className="text-lg font-bold text-fg">{state.stage === 'written' ? '交言語知識・読解？' : '交卷？'}</h2>
             <p className="text-sm text-fg-muted leading-relaxed">
               {unanswered > 0 ? `还有 ${unanswered} 题没答` : '都答完了'}

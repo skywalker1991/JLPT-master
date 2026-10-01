@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Check, Loader2, Plus } from 'lucide-react'
+import { Loader2, Plus } from 'lucide-react'
 import type { KnowledgePoint } from '../../types'
 import { addOccurrence, createAtom, lookupAtoms } from '../../services/api'
 import { useToast } from '../../context/ToastContext'
+import { Connected } from '../shared/Motion'
 
 const LEVEL_CLASS: Record<string, string> = {
   N1: 'badge-n1', N2: 'badge-n2', N3: 'badge-n3', N4: 'badge-n4', N5: 'badge-n5',
@@ -126,7 +127,7 @@ function Row({ point, atomId, sentence, translation, onAdded }: {
       {atomId ? (
         <button type="button" onClick={() => navigate(`/kb/${atomId}`)}
                 className={added ? 'btn h-8 text-xs text-success-fg' : 'btn h-8 text-xs bg-accent-light text-fg-muted hover:text-fg'}>
-          {added ? <><Check className="w-3.5 h-3.5" />已入库</> : '已在库'}
+          {added ? <><Connected className="w-4 h-4" />已入库</> : '已在库'}
         </button>
       ) : (
         <button type="button" onClick={() => void add()} disabled={busy} className="btn h-8 text-xs border border-border text-fg">

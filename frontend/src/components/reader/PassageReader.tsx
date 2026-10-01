@@ -29,9 +29,9 @@ interface Props {
 }
 
 const MARK_CLASS: Record<MarkKind, string> = {
-  new: 'underline decoration-accent decoration-[3px] underline-offset-[0.32em]',
-  known: 'underline decoration-fg-subtle/70 decoration-1 underline-offset-[0.32em]',
-  grammar: 'underline decoration-dashed decoration-fg-muted decoration-1 underline-offset-[0.32em]',
+  new: 'underline decoration-accent decoration-[3px] underline-offset-[0.32em] animate-mark-in transition-[text-decoration-color]',
+  known: 'underline decoration-fg-subtle/70 decoration-1 underline-offset-[0.32em] animate-mark-in transition-[text-decoration-color]',
+  grammar: 'underline decoration-dashed decoration-fg-muted decoration-1 underline-offset-[0.32em] animate-mark-in',
 }
 
 const KANJI = /[一-鿿㐀-䶿々〆]/

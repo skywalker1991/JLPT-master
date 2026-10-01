@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
-import { Check, Loader2, RotateCcw, X } from 'lucide-react'
+import { Check, RotateCcw, X } from 'lucide-react'
 import type { AskTarget, ItemReview, SentenceAnalysis, TokenInfo } from '../../types'
 import { getItemReading, preprocessBatch } from '../../services/api'
 import { useSettings } from '../../context/SettingsContext'
@@ -15,6 +15,7 @@ import Stem from '../exam/Stem'
 import SentenceOrderStem from '../exam/SentenceOrderStem'
 import DiffBox, { useItemAnalysis } from './DiffBox'
 import type { Mark } from '../../utils/marks'
+import { Thinking } from '../shared/Motion'
 
 const KIND_LABEL = { passage: '文章', script: '听力原文', sentence: '正确顺序' }
 
@@ -81,7 +82,7 @@ export default function ReadingReview({ data, itemId, chosen, correct, ask }: {
             </button>
           ) : !reading ? (
             <div className="rounded-xl bg-accent-light px-5 py-4 flex items-center gap-3 text-sm text-fg-muted">
-              <Loader2 className="w-4 h-4 animate-spin" />正在逐句分析这段{prob.type === 'listening' ? '原文' : '文章'}……第一次要半分钟左右
+              <Thinking className="w-5 h-5" />正在逐句分析这段{prob.type === 'listening' ? '原文' : '文章'}……第一次要半分钟左右
             </div>
           ) : (
             <AskContext.Provider value={{

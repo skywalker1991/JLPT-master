@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
-import { Loader2, RotateCcw } from 'lucide-react'
+import { RotateCcw } from 'lucide-react'
 import type { ComparedPair, ItemAnalysis, KnowledgePoint } from '../../types'
 import { getItemAnalysis } from '../../services/api'
 import SavePair, { PairMark } from '../shared/SavePair'
 import { RELATION_LABEL } from '../review/ReviewCard'
+import { Thinking } from '../shared/Motion'
 
 const WORD_TYPES = new Set(['vocab_fill', 'synonym', 'usage', 'kanji_reading', 'kanji_writing', 'word_formation', 'grammar_fill'])
 
@@ -66,7 +67,7 @@ export default function DiffBox({ itemId, type, chosen, correct }: {
   if (!analysis) {
     return (
       <div className="rounded-xl bg-accent-light px-5 py-4 flex items-center gap-3 text-sm text-fg-muted">
-        <Loader2 className="w-4 h-4 animate-spin" />正在想差在哪……
+        <Thinking className="w-5 h-5" />正在想差在哪……
       </div>
     )
   }
@@ -80,7 +81,7 @@ export default function DiffBox({ itemId, type, chosen, correct }: {
   const pair = other && WORD_TYPES.has(type) ? pairOf(analysis, correct, other, row?.vs_correct ?? '', row?.relation_type) : null
 
   return (
-    <div className="rounded-xl bg-accent-light px-5 py-4 flex flex-col gap-2.5">
+    <div className="rounded-xl bg-accent-light px-5 py-4 flex flex-col gap-2.5 animate-rise-in">
       <p className="flex items-center gap-2 text-sm">
         <PairMark className="text-fg" />
         <span className="font-semibold text-fg">差在哪</span>

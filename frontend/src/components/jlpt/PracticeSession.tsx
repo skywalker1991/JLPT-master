@@ -8,7 +8,7 @@ import Passage from '../exam/Passage'
 import PlayAudio from '../exam/PlayAudio'
 import QuestionBlock from './QuestionBlock'
 import DiffBox from './DiffBox'
-import Logo from '../shared/Logo'
+import { Connected } from '../shared/Motion'
 
 interface Result { chosen: string; correct: string; right: boolean }
 
@@ -80,7 +80,7 @@ export default function PracticeSession({ category, label, onExit, onOpenAnalysi
       <div className="flex-1 flex flex-col">
         {header}
         <div className="flex-1 flex flex-col items-center justify-center gap-5 px-6 text-center">
-          <Logo className="w-12 h-12 text-fg" />
+          <Connected className="w-12 h-12" />
           <div className="flex flex-col gap-1">
             <h2 className="text-xl font-bold text-fg">这组练完了</h2>
             <p className="text-sm text-fg-muted">对 {right} 题，错 {all.length - right} 题。错的会在之后的练习里再出现。</p>
@@ -105,7 +105,7 @@ export default function PracticeSession({ category, label, onExit, onOpenAnalysi
     <div className="flex-1 min-h-0 flex flex-col">
       {header}
       <div className="flex-1 min-h-0 overflow-y-auto">
-        <div className="max-w-3xl mx-auto px-5 md:px-8 py-6 md:py-10 flex flex-col gap-6">
+        <div key={at} className="max-w-3xl mx-auto px-5 md:px-8 py-6 md:py-10 flex flex-col gap-6 animate-rise-in">
           <p className="text-xs text-fg-subtle">{unit.paper} · {prob.name}{prob.instruction ? ` · ${prob.instruction}` : ''}</p>
 
           {listening && prob.items[0] && <PlayAudio itemId={prob.items[0].id} />}

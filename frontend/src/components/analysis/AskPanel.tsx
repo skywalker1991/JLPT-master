@@ -1,12 +1,13 @@
 import { createContext, useContext, useState, type RefObject } from 'react'
 import { useNavigate } from 'react-router-dom'
 import clsx from 'clsx'
-import { Send, Loader2, Plus, Check, ExternalLink, X, MessageCircleQuestion } from 'lucide-react'
+import { Send, Loader2, Plus, ExternalLink, X, MessageCircleQuestion } from 'lucide-react'
 import type { AskEntry, AskNewItem, AskTarget, SentenceAnalysis } from '../../types'
 import { askTargets } from '../../types'
 import { ask, createAtom } from '../../services/api'
 import { useToast } from '../../context/ToastContext'
 import { useOccurrence } from './useOccurrence'
+import { Connected } from '../shared/Motion'
 
 /** Follow-up state for the sentence being shown. Provided by AnalysisPage. */
 interface AskContextValue {
@@ -258,7 +259,7 @@ export function NewItemChip({ item }: { item: AskNewItem }) {
       <span className="text-xs text-fg-muted">{item.meaning}</span>
       {state === 'loading' && <Loader2 className="w-3 h-3 animate-spin text-fg-subtle" />}
       {state === 'idle' && <Plus className="w-3 h-3 text-accent" />}
-      {state === 'done' && (atomId ? <ExternalLink className="w-3 h-3 text-success-fg" /> : <Check className="w-3 h-3 text-success-fg" />)}
+      {state === 'done' && (atomId ? <ExternalLink className="w-3 h-3 text-success-fg" /> : <Connected className="w-3.5 h-3.5" />)}
     </button>
   )
 }

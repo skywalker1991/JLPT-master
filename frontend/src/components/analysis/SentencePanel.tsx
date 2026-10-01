@@ -6,6 +6,7 @@ import type { MarkLevel } from '../../context/SettingsContext'
 import { grammarKey, isShown, vocabKey, type Known, type Mark } from '../../utils/marks'
 import { speak } from '../../utils/speech'
 import ItemRow from './ItemRow'
+import { Thinking } from '../shared/Motion'
 
 interface Props {
   index: number
@@ -102,7 +103,7 @@ export default function SentencePanel({
   )
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-5 animate-rise-in">
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-2 text-xs text-fg-subtle">
           {!tabs && <span>第 {index + 1} 句</span>}
@@ -124,7 +125,7 @@ export default function SentencePanel({
         </div>
       ) : !analysis ? (
         <div className="rounded-xl border border-dashed border-border p-6 flex flex-col items-center gap-3 text-center">
-          <Loader2 className="w-6 h-6 animate-spin text-fg-muted" />
+          <Thinking className="w-8 h-8" />
           <p className="text-sm text-fg-muted">{streaming ? '这句还在分析，先读读别的句子' : '这句没有结果'}</p>
         </div>
       ) : tabs ? (

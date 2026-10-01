@@ -89,7 +89,7 @@ export default function ReviewCard({ card, flipped }: { card: Card; flipped: boo
   }
 
   return (
-    <div className="flex-1 flex flex-col gap-4">
+    <div className="flex-1 flex flex-col gap-4 animate-reveal">
       {s && (
         <div className="flex flex-col gap-2 pb-4 border-b border-border">
           <p className="font-jp text-xl leading-[1.9] text-fg-muted">

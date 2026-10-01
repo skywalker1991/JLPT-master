@@ -1,13 +1,14 @@
 import { useContext, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import clsx from 'clsx'
-import { Check, ChevronRight, Loader2, Plus, RotateCcw } from 'lucide-react'
+import { ChevronRight, Loader2, Plus, RotateCcw } from 'lucide-react'
 import type { AtomDetail, CardDetail, GrammarItem, VocabItem } from '../../types'
 import { addOccurrence, addProperties, createAtom, createRelation, getAtom, getCardDetail } from '../../services/api'
 import { useToast } from '../../context/ToastContext'
 import { useOccurrence } from './useOccurrence'
 import { AskContext, AttachButton } from './AskPanel'
 import { grammarKey, grammarPieces, vocabKey } from '../../utils/marks'
+import { Connected } from '../shared/Motion'
 
 type Props = {
   /** Already in the library: its atom id */
@@ -140,7 +141,7 @@ export default function ItemRow(props: Props) {
       onClick={() => navigate(`/kb/${atomId}`)}
       className={clsx('btn h-8 text-xs', added ? 'text-success-fg hover:bg-success/10' : 'bg-accent-light text-fg-muted hover:text-fg')}
     >
-      {added ? <><Check className="w-3.5 h-3.5" />已入库</> : '已在库'}
+      {added ? <><Connected className="w-4 h-4" />已入库</> : '已在库'}
     </button>
   ) : (
     <button type="button" onClick={() => void add()} disabled={busy}
@@ -293,7 +294,7 @@ function CardBody(props: Props & { meaningHere: string; onSupplemented: () => vo
   )
 
   return (
-    <div className="px-3.5 pb-3.5 flex flex-col gap-4">
+    <div className="px-3.5 pb-3.5 flex flex-col gap-4 animate-rise-in">
       {/* What it is */}
       <div className="flex flex-col gap-1.5 text-sm">
         {vocab?.part_of_speech && <p className="text-xs text-fg-subtle">{vocab.part_of_speech}</p>}
