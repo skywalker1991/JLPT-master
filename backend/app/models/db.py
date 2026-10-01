@@ -634,6 +634,8 @@ class PracticeRun(Base):
     paper_id = Column(UUID(as_uuid=True), ForeignKey("exam_papers.id", ondelete="CASCADE"), nullable=False)
     kind = Column(String(20), nullable=False)
     started_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    # Handed in: answers are judged and can no longer change
+    submitted_at = Column(DateTime(timezone=True), nullable=True)
 
 
 class PracticeAnswer(Base):

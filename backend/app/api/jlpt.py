@@ -46,9 +46,12 @@ async def _answers(db: AsyncSession, user_id: UUID) -> list[tuple[UUID, bool, ob
         .join(ExamAttempt, ExamAttempt.id == AttemptAnswer.attempt_id)
         .where(ExamAttempt.user_id == user_id)
     )).all()
+    # Practice answers count once their pass is handed in
     rows += (await db.execute(
         select(PracticeAnswer.item_id, PracticeAnswer.is_correct, PracticeAnswer.created_at)
-        .where(PracticeAnswer.user_id == user_id)
+        .outerjoin(PracticeRun, PracticeRun.id == PracticeAnswer.run_id)
+        .where(PracticeAnswer.user_id == user_id,
+               (PracticeAnswer.run_id.is_(None)) | (PracticeRun.submitted_at.is_not(None)))
     )).all()
     return [tuple(r) for r in rows]
 
@@ -220,14 +223,17 @@ async def practice(
         detail.items = [i for i in detail.items if i.id in keep]
         out.append({"paper": jp.paper_label(paper.source, paper.title), "section": sec.name,
                     "problem": detail.model_dump(mode="json")})
-    answers = {}
+    chosen, correct = {}, {}
+    submitted = run is not None and run.submitted_at is not None
     if run is not None:
-        correct = {r[0].id: r[0].correct_answer for unit in units for r in unit}
         for a in (await db.execute(
             select(PracticeAnswer).where(PracticeAnswer.run_id == run.id).order_by(PracticeAnswer.created_at)
         )).scalars():
-            answers[str(a.item_id)] = {"chosen": a.user_answer, "correct": correct.get(a.item_id) or "", "right": a.is_correct}
-    return {"category": {"id": category, "label": jp.GROUP_LABEL[category]}, "units": out, "answers": answers}
+            chosen[str(a.item_id)] = a.user_answer
+        if submitted:
+            correct = {str(r[0].id): r[0].correct_answer or "" for unit in units for r in unit}
+    return {"category": {"id": category, "label": jp.GROUP_LABEL[category]}, "units": out,
+            "submitted": submitted, "chosen": chosen, "correct": correct}
 
 
 async def _own_run(db: AsyncSession, run_id: UUID, user: User) -> PracticeRun:
@@ -243,6 +249,16 @@ async def delete_run(run_id: UUID, db: AsyncSession = Depends(get_db), user: Use
     run = await _own_run(db, run_id, user)
     await db.execute(sa_delete(PracticeRun).where(PracticeRun.id == run.id))  # answers go by ON DELETE CASCADE
     await db.commit()
+
+
+@router.post("/jlpt/runs/{run_id}/submit")
+async def submit_run(run_id: UUID, db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
+    """Hand a pass in: from now on its answers are judged and shown."""
+    run = await _own_run(db, run_id, user)
+    if run.submitted_at is None:
+        run.submitted_at = datetime.now(timezone.utc)
+        await db.commit()
+    return {"ok": True}
 
 
 class RunBody(BaseModel):
@@ -273,11 +289,18 @@ async def answer(body: PracticeAnswerBody, db: AsyncSession = Depends(get_db), u
     item = await db.get(ExamItem, body.item_id)
     if item is None:
         raise HTTPException(status_code=404, detail="没有这道题")
-    if body.run_id is not None:
-        await _own_run(db, body.run_id, user)
     ok = item.correct_answer is not None and body.answer.strip() == item.correct_answer
-    db.add(PracticeAnswer(user_id=user.id, item_id=item.id, user_answer=body.answer.strip(), is_correct=ok,
-                          run_id=body.run_id))
+    if body.run_id is not None:
+        # In a pass the answer is only saved — it can still change, and is
+        # judged when the pass is handed in
+        run = await _own_run(db, body.run_id, user)
+        if run.submitted_at is not None:
+            raise HTTPException(status_code=409, detail="这一遍已经提交了")
+        await db.execute(sa_delete(PracticeAnswer).where(PracticeAnswer.run_id == run.id, PracticeAnswer.item_id == item.id))
+        db.add(PracticeAnswer(user_id=user.id, item_id=item.id, user_answer=body.answer.strip(), is_correct=ok, run_id=run.id))
+        await db.commit()
+        return {"saved": True}
+    db.add(PracticeAnswer(user_id=user.id, item_id=item.id, user_answer=body.answer.strip(), is_correct=ok))
     await db.commit()
     return {"is_correct": ok, "correct_answer": item.correct_answer, "answer_order": item.answer_order}
 
@@ -808,13 +831,12 @@ async def paper_overview(paper_id: UUID, db: AsyncSession = Depends(get_db), use
     records = []
     for r in runs:
         got = tally[r.id]
+        done = r.submitted_at is not None
         records.append({
             "type": "practice", "id": str(r.id), "at": r.started_at.isoformat(), "kind": r.kind,
             "label": jp.GROUP_LABEL.get(r.kind, r.kind), "total": totals.get(r.kind, 0),
-            "answered": len(got), "right": sum(got.values()),
+            "answered": len(got), "right": sum(got.values()) if done else None, "finished": done,
         })
-    for r in records:
-        r["finished"] = r["answered"] >= r["total"]
 
     # A kind's card shows its latest pass
     kinds = []
@@ -823,7 +845,7 @@ async def paper_overview(paper_id: UUID, db: AsyncSession = Depends(get_db), use
             continue
         last = next((r for r in records if r["kind"] == g), None)
         kinds.append({"id": g, "label": label, "total": totals[g],
-                      "answered": last["answered"] if last else 0, "right": last["right"] if last else 0,
+                      "answered": last["answered"] if last else 0, "right": last["right"] if last else None,
                       "run_id": last["id"] if last and not last["finished"] else None})
 
     lv = jp.level_of(level)

@@ -53,7 +53,7 @@ export default function PaperView({ paperId, onBack, onPractice, onMock, onRecor
           <h2 className="text-sm font-semibold text-fg-muted">分类练习</h2>
           <div className="grid grid-cols-2 gap-3">
             {p.kinds.map(k => {
-              const acc = k.answered ? Math.round((k.right / k.answered) * 100) : null
+              const acc = k.right != null && k.total ? Math.round((k.right / k.total) * 100) : null
               const weak = acc != null && acc < WEAK
               return (
                 <button key={k.id} type="button" onClick={() => onPractice(k.id, k.label, k.run_id && !hidden.includes(k.run_id) ? k.run_id : null)}
@@ -130,7 +130,7 @@ function outcome(r: PaperRecord) {
     }
     return <span className="text-fg"><b>{r.score ?? '—'}</b><span className="text-fg-muted"> / {r.max_total} 分</span></span>
   }
-  if (!r.finished) return <span className="text-fg-muted">已答 {r.answered} / {r.total}</span>
+  if (!r.finished || r.right == null) return <span className="text-fg-muted">已答 {r.answered} / {r.total}</span>
   const weak = r.total > 0 && (r.right / r.total) * 100 < WEAK
   return <span className="text-fg">对 <b className={weak ? 'text-danger-fg' : ''}>{r.right}</b><span className="text-fg-muted"> / {r.total}</span></span>
 }

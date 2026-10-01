@@ -686,12 +686,20 @@ export async function getJlptOverview(level: string): Promise<JlptOverview> {
   return request<JlptOverview>(`/api/jlpt/overview?level=${level}`)
 }
 
-export async function getPractice(category: string, level: string, runId?: string | null): Promise<{
+export async function getPractice(category: string, level: string, runId: string): Promise<{
   category: { id: string; label: string }; units: PracticeUnit[]
-  /** A run's answers so far, by item */
-  answers: Record<string, { chosen: string; correct: string; right: boolean }>
+  /** Handed in: answers are judged */
+  submitted: boolean
+  /** The pass's answers so far, by item */
+  chosen: Record<string, string>
+  /** Right answers by item, once handed in */
+  correct: Record<string, string>
 }> {
-  return request(`/api/jlpt/practice/${category}?level=${level}${runId ? `&run_id=${runId}` : ''}`)
+  return request(`/api/jlpt/practice/${category}?level=${level}&run_id=${runId}`)
+}
+
+export async function submitRun(runId: string): Promise<void> {
+  await request(`/api/jlpt/runs/${runId}/submit`, { method: 'POST' })
 }
 
 export async function deleteRecord(type: 'practice' | 'mock', id: string): Promise<void> {
@@ -706,8 +714,8 @@ export async function getPaperOverview(paperId: string): Promise<PaperOverview> 
   return request<PaperOverview>(`/api/jlpt/papers/${paperId}`)
 }
 
-export async function answerPractice(itemId: string, answer: string, runId?: string | null): Promise<{ is_correct: boolean; correct_answer: string | null; answer_order: string | null }> {
-  return request('/api/jlpt/practice/answer', { method: 'POST', body: JSON.stringify({ item_id: itemId, answer, run_id: runId ?? null }) })
+export async function answerPractice(itemId: string, answer: string, runId: string): Promise<void> {
+  await request('/api/jlpt/practice/answer', { method: 'POST', body: JSON.stringify({ item_id: itemId, answer, run_id: runId }) })
 }
 
 // ---- Mock exam ----

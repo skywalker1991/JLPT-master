@@ -672,7 +672,7 @@ export interface PaperOverview {
   label: string
   level: string
   /** Each kind as its latest pass left it; run_id is that pass when unfinished */
-  kinds: { id: JlptCategory['id']; label: string; total: number; answered: number; right: number; run_id: string | null }[]
+  kinds: { id: JlptCategory['id']; label: string; total: number; answered: number; right: number | null; run_id: string | null }[]
   /** Every pass and mock exam at this paper, newest first */
   records: PaperRecord[]
   written_minutes: number
@@ -680,7 +680,7 @@ export interface PaperOverview {
 }
 
 export type PaperRecord =
-  | { type: 'practice'; id: string; at: string; kind: JlptCategory['id']; label: string; total: number; answered: number; right: number; finished: boolean }
+  | { type: 'practice'; id: string; at: string; kind: JlptCategory['id']; label: string; total: number; answered: number; right: number | null; finished: boolean }
   | { type: 'mock'; id: string; at: string; status: 'in_progress' | 'completed'; stage: string | null; remaining: number | null; score: number | null; max_total: number }
 
 export interface JlptOverview {

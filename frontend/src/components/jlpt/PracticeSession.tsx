@@ -4,89 +4,101 @@ import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
 import type { ItemSchema, PracticeUnit } from '../../types'
 import PaperPage from './PaperPage'
 import { useIsDesktop } from '../../hooks/useIsDesktop'
-import { answerPractice, getPractice } from '../../services/api'
+import { answerPractice, getPractice, submitRun } from '../../services/api'
 import { useToast } from '../../context/ToastContext'
 import Passage from '../exam/Passage'
 import PlayAudio from '../exam/PlayAudio'
 import QuestionBlock from './QuestionBlock'
 import DiffBox from './DiffBox'
-import { Connected } from '../shared/Motion'
-
-interface Result { chosen: string; correct: string; right: boolean }
 
 /**
- * Practice one question type across papers: no clock, and each answer is
- * told at once — the right option, the one chosen, and 差在哪.
+ * One pass through a paper's questions of one kind, as printed, no clock.
+ * Answers can be changed until the pass is handed in (提交); then every
+ * question shows the right option, the one chosen, and 差在哪.
  */
 export default function PracticeSession({ category, level, runId, label, onExit, onAgain, onOpenAnalysis }: {
   category: string
   level: string
-  /** A pass through one paper's questions of this kind, as printed (otherwise a mixed set) */
-  runId?: string | null
+  runId: string
   label: string
   onExit: () => void
-  /** Start a fresh pass (with a run) */
-  onAgain?: () => void
+  /** Start a fresh pass */
+  onAgain: () => void
   onOpenAnalysis?: (unit: PracticeUnit, itemId: string) => void
 }) {
   const { toast } = useToast()
-  const [units, setUnits] = useState<PracticeUnit[] | null>(null)
-  const [at, setAt] = useState(0)
-  const [results, setResults] = useState<Record<string, Result>>({})
-  const [round, setRound] = useState(0)
   const desktop = useIsDesktop()
+  const [units, setUnits] = useState<PracticeUnit[] | null>(null)
+  const [chosen, setChosen] = useState<Record<string, string>>({})
+  const [correct, setCorrect] = useState<Record<string, string> | null>(null)
+  const [at, setAt] = useState(0)
+  const [confirm, setConfirm] = useState(false)
+  const [sending, setSending] = useState(false)
 
-  // Drawing a set also starts its explanations on the server, so draw each
-  // set once (React may run this effect twice in development).
-  const drawn = useRef<string | null>(null)
+  // Fetching a pass also starts its explanations on the server; fetch once
+  // (React may run this effect twice in development)
+  const fetched = useRef(false)
   useEffect(() => {
-    const key = `${category}#${round}`
-    if (drawn.current === key) return
-    drawn.current = key
-    setUnits(null)
-    setAt(0)
+    if (fetched.current) return
+    fetched.current = true
     getPractice(category, level, runId).then(r => {
-      // A pass left halfway opens where it stopped
-      const done = r.answers ?? {}
-      const open = (u: PracticeUnit) => u.problem.items.some(i => !done[i.id])
-      const page = pagesOf(r.units).findIndex(pg => pg.problem.items.some(i => !done[i.id]))
-      const unit = r.units.findIndex(open)
-      setResults(done)
       setUnits(r.units)
-      setAt(Object.keys(done).length === 0 ? 0 : (desktop && runId ? (page < 0 ? r.units.length : page) : (unit < 0 ? r.units.length : unit)))
+      setChosen(r.chosen)
+      if (r.submitted) { setCorrect(r.correct); return }
+      // A pass left halfway opens where it stopped
+      const open = (items: ItemSchema[]) => items.some(i => !r.chosen[i.id])
+      const i = desktop ? pagesOf(r.units).findIndex(pg => open(pg.problem.items)) : r.units.findIndex(u => open(u.problem.items))
+      setAt(Math.max(0, i))
     }).catch(() => toast('题目没取到，稍后再试', 'error'))
-  }, [category, round, toast]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const all = Object.values(results)
-  const right = all.filter(r => r.right).length
+  const items = units?.flatMap(u => u.problem.items) ?? []
+  const answered = items.filter(i => chosen[i.id]).length
+  const right = correct ? items.filter(i => chosen[i.id] && chosen[i.id] === correct[i.id]).length : 0
 
-  const answer = async (itemId: string, option: string) => {
-    if (results[itemId]) return
-    try {
-      const r = await answerPractice(itemId, option, runId)
-      setResults(prev => ({ ...prev, [itemId]: { chosen: option, correct: r.correct_answer ?? '', right: r.is_correct } }))
-    } catch {
+  const choose = async (itemId: string, option: string) => {
+    if (correct) return
+    const before = chosen[itemId]
+    setChosen(c => ({ ...c, [itemId]: option }))
+    try { await answerPractice(itemId, option, runId) } catch {
+      setChosen(c => { const n = { ...c }; if (before) n[itemId] = before; else delete n[itemId]; return n })
       toast('没记上，请再选一次', 'error')
+    }
+  }
+
+  const submit = async () => {
+    setSending(true)
+    try {
+      await submitRun(runId)
+      const r = await getPractice(category, level, runId)
+      setCorrect(r.correct)
+      setConfirm(false)
+      setAt(0)
+      document.getElementById('practice-scroll')?.scrollTo({ top: 0 })
+    } catch {
+      toast('没提交上，请再试一次', 'error')
+    } finally {
+      setSending(false)
     }
   }
 
   const header = (
     <header className="h-14 shrink-0 flex items-center gap-3 px-3 md:px-6 border-b border-border">
       <button type="button" onClick={onExit} className="flex items-center gap-0.5 text-sm text-fg-muted hover:text-fg h-10 pr-2">
-        <ChevronLeft className="w-4 h-4" />{runId ? '回到试卷' : '结束练习'}
+        <ChevronLeft className="w-4 h-4" />回到试卷
       </button>
       <span className="text-xs font-semibold rounded-full border border-fg px-2.5 py-0.5 text-fg">练习 · {label}</span>
-      {units && units.length > 0 && (
+      {units && (
         <span className="ml-auto flex items-center gap-3 text-xs text-fg-muted tabular-nums">
-          <span>{desktop && runId
-            ? `已答 ${all.length} / ${units.reduce((n, u) => n + u.problem.items.length, 0)}`
-            : `${Math.min(at + 1, units.length)} / ${units.length}`}</span>
-          <span className="hidden sm:block w-40 h-1.5 rounded-full bg-border overflow-hidden">
-            <span className="block h-full bg-fg" style={{ width: `${(desktop && runId
-              ? all.length / Math.max(1, units.reduce((n, u) => n + u.problem.items.length, 0))
-              : Math.min(at, units.length) / units.length) * 100}%` }} />
-          </span>
-          <span>对 {right} · 错 {all.length - right}</span>
+          {correct
+            ? <span className="text-sm">对 <b className="text-fg">{right}</b> / {items.length}</span>
+            : <>
+                <span>已答 {answered} / {items.length}</span>
+                <span className="hidden sm:block w-32 h-1.5 rounded-full bg-border overflow-hidden">
+                  <span className="block h-full bg-fg" style={{ width: `${(answered / Math.max(1, items.length)) * 100}%` }} />
+                </span>
+                <button type="button" onClick={() => setConfirm(true)} className="btn-primary h-9">提交</button>
+              </>}
         </span>
       )}
     </header>
@@ -96,116 +108,126 @@ export default function PracticeSession({ category, level, runId, label, onExit,
     return <div className="flex-1 flex flex-col">{header}<div className="flex-1 flex items-center justify-center"><Loader2 className="w-5 h-5 animate-spin text-fg-subtle" /></div></div>
   }
 
-  if (at >= units.length) {
-    return (
-      <div className="flex-1 flex flex-col">
-        {header}
-        <div className="flex-1 flex flex-col items-center justify-center gap-5 px-6 text-center">
-          <Connected className="w-12 h-12" />
-          <div className="flex flex-col gap-1">
-            <h2 className="text-xl font-bold text-fg">{runId ? '这一类做完了' : '这组练完了'}</h2>
-            <p className="text-sm text-fg-muted">对 {right} 题，错 {all.length - right} 题。错的会在之后的练习里再出现。</p>
-          </div>
-          <div className="flex gap-3">
-            <button type="button" onClick={onExit} className="btn h-11 px-5 border border-border text-fg">{runId ? '回到试卷' : '回到 JLPT'}</button>
-            <button type="button" onClick={() => { if (onAgain) { onAgain(); return } setResults({}); setRound(r => r + 1) }} className="btn-primary h-11 px-5">{runId ? '再做一遍' : '再练一组'}</button>
-          </div>
+  const summary = correct && (
+    <div className="rounded-2xl border-[1.5px] border-fg bg-surface px-5 py-4 flex flex-wrap items-center gap-4 font-sans animate-pop-in">
+      <span className="text-lg font-bold text-fg">对 {right} / {items.length}</span>
+      {answered < items.length && <span className="text-sm text-fg-muted">{items.length - answered} 题没答</span>}
+      <span className="ml-auto flex gap-2">
+        <button type="button" onClick={onExit} className="btn h-10 border border-border text-fg">回到试卷</button>
+        <button type="button" onClick={onAgain} className="btn-primary h-10">再做一遍</button>
+      </span>
+    </div>
+  )
+
+  const confirmDialog = confirm && (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center px-6">
+      <div className="absolute inset-0 bg-black/40 animate-fade-in" onClick={() => setConfirm(false)} />
+      <div role="dialog" aria-modal="true" className="relative w-full max-w-sm bg-surface rounded-2xl p-6 flex flex-col gap-4 animate-pop-in">
+        <h2 className="text-lg font-bold text-fg">提交？</h2>
+        <p className="text-sm text-fg-muted">{answered < items.length ? `还有 ${items.length - answered} 题没答。` : '都答完了。'}提交后不能再改。</p>
+        <div className="flex gap-3 justify-end">
+          <button type="button" onClick={() => setConfirm(false)} className="btn h-10 border border-border text-fg">再看看</button>
+          <button type="button" disabled={sending} onClick={() => void submit()} className="btn-primary h-10">提交</button>
         </div>
       </div>
-    )
-  }
+    </div>
+  )
 
-  // Desktop, one paper: its 問題 as printed pages, right / wrong under each answer
-  if (desktop && runId) {
+  const after = (unit: { paper: string; problem: PracticeUnit['problem'] }) => (it: ItemSchema) => correct && (
+    <div className="flex flex-col gap-2 pt-1">
+      {chosen[it.id] && <DiffBox itemId={it.id} type={unit.problem.type} chosen={chosen[it.id]} correct={correct[it.id]} />}
+      {onOpenAnalysis && (
+        <button type="button" onClick={() => onOpenAnalysis({ paper: unit.paper, section: '', problem: unit.problem }, it.id)}
+                className="self-start text-sm text-fg underline underline-offset-4">看完整解析 ›</button>
+      )}
+    </div>
+  )
+
+  // Desktop: the paper's 問題 as printed pages
+  if (desktop) {
     const pages = pagesOf(units)
     const page = pages[Math.min(at, pages.length - 1)]
-    const chosen = Object.fromEntries(Object.entries(results).map(([k, r]) => [k, r.chosen]))
-    const correct = Object.fromEntries(Object.entries(results).map(([k, r]) => [k, r.correct]))
     const firstOfBan = (it: ItemSchema) => page.problem.items.find(x => (x.meta?.ban ?? x.id) === (it.meta?.ban ?? it.id))?.id === it.id
+    const last = at + 1 >= pages.length
     return (
       <div className="flex-1 min-h-0 flex flex-col">
         {header}
-        <div className="flex-1 min-h-0 overflow-y-auto bg-accent-light/50 px-8 py-8">
-          <div key={page.problem.id} className="max-w-3xl mx-auto flex flex-col gap-5 animate-fade-in">
-            <PaperPage problem={page.problem} answers={chosen} correct={correct} listeningFirstOf={firstOfBan}
-                       onChoose={(id, o) => void answer(id, o)}
-                       after={it => results[it.id] && (
-                         <div className="flex flex-col gap-2 pt-1">
-                           <DiffBox itemId={it.id} type={page.problem.type} chosen={results[it.id].chosen} correct={results[it.id].correct} />
-                           {onOpenAnalysis && (
-                             <button type="button" onClick={() => onOpenAnalysis({ paper: page.paper, section: '', problem: page.problem }, it.id)}
-                                     className="self-start text-sm text-fg underline underline-offset-4">看完整解析 ›</button>
-                           )}
-                         </div>
-                       )} />
+        <div id="practice-scroll" className="flex-1 min-h-0 overflow-y-auto bg-accent-light/50 px-8 py-8">
+          <div className="max-w-3xl mx-auto flex flex-col gap-5">
+            {summary}
+            <div key={page.problem.id} className="animate-fade-in">
+              <PaperPage problem={page.problem} answers={chosen} correct={correct ?? undefined} listeningFirstOf={firstOfBan}
+                         onChoose={(id, o) => void choose(id, o)} after={after(page)} />
+            </div>
             <div className="flex items-center gap-3">
               <button type="button" disabled={at === 0} onClick={() => setAt(a => a - 1)}
                       className="btn h-10 border border-border bg-surface text-fg disabled:opacity-30"><ChevronLeft className="w-4 h-4" />上一个大题</button>
-              <button type="button" onClick={() => setAt(a => (a + 1 >= pages.length ? units.length : a + 1))} className="ml-auto btn-primary h-10 px-5">
-                {at + 1 < pages.length ? <>下一个大题（{pages[at + 1].problem.name}）<ChevronRight className="w-4 h-4" /></> : '做完了'}
-              </button>
+              {!last ? (
+                <button type="button" onClick={() => { setAt(a => a + 1); document.getElementById('practice-scroll')?.scrollTo({ top: 0 }) }}
+                        className="ml-auto btn-primary h-10 px-5">下一个大题（{pages[at + 1].problem.name}）<ChevronRight className="w-4 h-4" /></button>
+              ) : !correct && (
+                <button type="button" onClick={() => setConfirm(true)} className="ml-auto btn-primary h-10 px-5">提交</button>
+              )}
             </div>
           </div>
         </div>
+        {confirmDialog}
       </div>
     )
   }
 
-  const unit = units[at]
+  // Phone: one question (or one passage with its questions) to a screen
+  const unit = units[Math.min(at, units.length - 1)]
   const prob = unit.problem
   const listening = prob.type === 'listening'
   const passage = prob.items[0]?.passage || prob.passage
-  const pages = prob.media.filter(m => m.caption?.includes('試験用紙'))
-  const done = prob.items.every(i => results[i.id])
+  const pageImgs = prob.media.filter(m => m.caption?.includes('試験用紙'))
+  const lastUnit = at + 1 >= units.length
 
   return (
     <div className="flex-1 min-h-0 flex flex-col">
       {header}
-      <div className="flex-1 min-h-0 overflow-y-auto">
-        <div key={at} className="max-w-3xl mx-auto px-5 md:px-8 py-6 md:py-10 flex flex-col gap-6 animate-rise-in">
-          <p className="text-xs text-fg-subtle">{unit.paper} · {prob.name}{prob.instruction ? ` · ${prob.instruction}` : ''}</p>
-
-          {listening && prob.items[0] && <PlayAudio itemId={prob.items[0].id} />}
-          {pages.length > 0 ? pages.map(m => (
-            <img key={m.id} src={m.url} alt={m.caption ?? '试卷页面'} className="max-w-full rounded-lg border border-border" />
-          )) : passage && !listening && (
-            <div className="rounded-2xl bg-accent-light/60 px-5 py-5 font-jp text-lg leading-[2] text-fg">
-              <Passage text={passage} />
-            </div>
-          )}
-
-          {prob.items.map(item => {
-            const r = results[item.id]
-            return (
+      <div id="practice-scroll" className="flex-1 min-h-0 overflow-y-auto">
+        <div className="max-w-3xl mx-auto px-5 py-6 flex flex-col gap-6">
+          {at === 0 && summary}
+          <div key={at} className="flex flex-col gap-6 animate-rise-in">
+            <p className="text-xs text-fg-subtle">{prob.name} · {at + 1} / {units.length}</p>
+            {listening && prob.items[0] && <PlayAudio itemId={prob.items[0].id} />}
+            {pageImgs.length > 0 ? pageImgs.map(m => (
+              <img key={m.id} src={m.url} alt={m.caption ?? '试卷页面'} className="max-w-full rounded-lg border border-border" />
+            )) : passage && !listening && (
+              <div className="rounded-2xl bg-accent-light/60 px-5 py-5 font-jp text-lg leading-[2] text-fg"><Passage text={passage} /></div>
+            )}
+            {prob.items.map(item => (
               <section key={item.id} className="flex flex-col gap-4">
-                <QuestionBlock item={item} type={prob.type} selected={r?.chosen ?? null} correct={r?.correct}
-                               onSelect={opt => void answer(item.id, opt)} size={prob.items.length > 1 ? 'md' : 'lg'} />
-                {r && <DiffBox itemId={item.id} type={prob.type} chosen={r.chosen} correct={r.correct} />}
-                {r && onOpenAnalysis && (
-                  <button type="button" onClick={() => onOpenAnalysis(unit, item.id)}
-                          className="self-start text-sm text-fg underline underline-offset-4">
-                    看完整解析 ›
-                  </button>
-                )}
+                <QuestionBlock item={item} type={prob.type} selected={chosen[item.id] ?? null} correct={correct ? correct[item.id] : null}
+                               onSelect={correct ? undefined : opt => void choose(item.id, opt)} size={prob.items.length > 1 ? 'md' : 'lg'} />
+                {after(unit)(item)}
               </section>
-            )
-          })}
-
-          {listening && done && prob.items[0]?.transcript && (
-            <details className="rounded-xl border border-border px-4 py-3">
-              <summary className="text-sm text-fg-muted cursor-pointer">听力原文</summary>
-              <p className="mt-3 font-jp text-base leading-[1.9] text-fg whitespace-pre-wrap">{prob.items[0].transcript}</p>
-            </details>
-          )}
-
-          <div className="flex justify-end pt-2">
-            <button type="button" disabled={!done} onClick={() => setAt(a => a + 1)}
-                    className={clsx('btn-primary h-12 px-6 text-base font-semibold', !done && 'opacity-40')}>
-              {at + 1 < units.length ? (prob.items.length > 1 ? '下一篇' : '下一题') : '看结果'}<ChevronRight className="w-4 h-4" />
-            </button>
+            ))}
+            {listening && correct && prob.items[0]?.transcript && (
+              <details className="rounded-xl border border-border px-4 py-3">
+                <summary className="text-sm text-fg-muted cursor-pointer">听力原文</summary>
+                <p className="mt-3 font-jp text-base leading-[1.9] text-fg whitespace-pre-wrap">{prob.items[0].transcript}</p>
+              </details>
+            )}
+          </div>
+          <div className="flex items-center gap-3 pt-2">
+            <button type="button" disabled={at === 0} onClick={() => setAt(a => a - 1)}
+                    className="btn h-12 px-4 border border-border text-fg disabled:opacity-30"><ChevronLeft className="w-4 h-4" />上一题</button>
+            {!lastUnit ? (
+              <button type="button" onClick={() => setAt(a => a + 1)} className="ml-auto btn-primary h-12 px-6 text-base font-semibold">
+                下一题<ChevronRight className="w-4 h-4" />
+              </button>
+            ) : correct ? (
+              <button type="button" onClick={onExit} className="ml-auto btn h-12 px-6 border border-border text-fg">回到试卷</button>
+            ) : (
+              <button type="button" onClick={() => setConfirm(true)} className={clsx('ml-auto btn-primary h-12 px-6 text-base font-semibold')}>提交</button>
+            )}
           </div>
         </div>
       </div>
+      {confirmDialog}
     </div>
   )
 }
