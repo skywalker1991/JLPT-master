@@ -643,12 +643,10 @@ export interface CardDetail {
 }
 
 // JLPT home & practice
+/** One of the four kinds: 文字・語彙, 文法, 読解, 聴解 */
 export interface JlptCategory {
-  id: string
+  id: 'vocab' | 'grammar' | 'reading' | 'listening'
   label: string
-  part: '言語知識' | '読解' | '聴解'
-  number: number
-  listening: boolean
   per_paper: number
   answered: number
   accuracy: number | null

@@ -119,6 +119,28 @@ LEVELS: dict[str, Level] = {
 LEVEL_ORDER = ["N1", "N2", "N3", "N4", "N5"]
 
 
+# What a learner sees: four kinds of question. The finer types above stay
+# underneath, to find each question's kind; they are not shown.
+GROUPS: list[tuple[str, str]] = [
+    ("vocab", "文字・語彙"), ("grammar", "文法"), ("reading", "読解"), ("listening", "聴解"),
+]
+_VOCAB = {"漢字読み", "表記", "語形成", "文脈規定", "言い換え類義", "用法"}
+_GRAMMAR = {"文法形式", "文の組み立て", "文章の文法"}
+
+
+def group_of(cat: Category) -> str:
+    if cat.listening:
+        return "listening"
+    if cat.label in _VOCAB:
+        return "vocab"
+    if cat.label in _GRAMMAR:
+        return "grammar"
+    return "reading"
+
+
+GROUP_LABEL = dict(GROUPS)
+
+
 def level_of(level: str | None) -> Level:
     return LEVELS.get((level or "N1").upper(), LEVELS["N1"])
 

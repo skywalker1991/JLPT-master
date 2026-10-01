@@ -29,7 +29,7 @@ export default function MistakesView({ level, onBack, onOpen }: {
           <section key={g.id} className="flex flex-col gap-2">
             <h2 className="flex items-baseline gap-2">
               <span className="font-jp text-base font-semibold text-fg">{g.label}</span>
-              <span className="text-xs text-fg-subtle">{g.part} · {g.items.length} 题</span>
+              <span className="text-xs text-fg-subtle">{g.items.length} 题</span>
               <button type="button" onClick={() => onOpen(g.items.map(i => i.item_id), 0)} className="ml-auto text-sm text-fg underline underline-offset-4">
                 从头看
               </button>

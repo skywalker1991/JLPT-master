@@ -81,9 +81,10 @@ async def overview(
         cat = jp.category_of(sec.name, prob.name, level)
         if cat is None:
             continue
-        category_of_item[item.id] = cat.id
-        items_per_cat[cat.id] += 1
-        papers_per_cat[cat.id].add(paper.id)
+        g = jp.group_of(cat)
+        category_of_item[item.id] = g
+        items_per_cat[g] += 1
+        papers_per_cat[g].add(paper.id)
 
     tried: dict[str, int] = defaultdict(int)
     right: dict[str, int] = defaultdict(int)
@@ -94,11 +95,11 @@ async def overview(
             right[cat] += int(ok)
 
     categories = [{
-        "id": c.id, "label": c.label, "part": c.part, "number": c.number, "listening": c.listening,
-        "per_paper": round(items_per_cat[c.id] / max(1, len(papers_per_cat[c.id]))),
-        "answered": tried[c.id],
-        "accuracy": round(right[c.id] / tried[c.id] * 100) if tried[c.id] else None,
-    } for c in lv.categories if items_per_cat[c.id]]
+        "id": g, "label": label,
+        "per_paper": round(items_per_cat[g] / max(1, len(papers_per_cat[g]))),
+        "answered": tried[g],
+        "accuracy": round(right[g] / tried[g] * 100) if tried[g] else None,
+    } for g, label in jp.GROUPS if items_per_cat[g]]
 
     mocks = (await db.execute(
         select(ExamAttempt).where(ExamAttempt.user_id == user.id).order_by(ExamAttempt.started_at.desc())
@@ -136,14 +137,17 @@ async def overview(
     }
 
 
-def _units(rows, grouped: bool) -> list[list]:
-    """What is answered together: a single question, or a text / 番 with its questions."""
-    if not grouped:
-        return [[r] for r in rows]
+def _units(rows, level: str) -> list[list]:
+    """What is answered together: a single question, or a text / 番 with its
+    questions — decided per question type, since a kind can mix the two
+    (文法 holds 文章の文法's passages among single questions)."""
     groups: dict[tuple, list] = defaultdict(list)
     for r in rows:
-        item, prob = r[0], r[1]
-        if prob.section_id and "聴解" in r[2].name:
+        item, prob, sec = r[0], r[1], r[2]
+        cat = jp.category_of(sec.name, prob.name, level)
+        if cat is None or not cat.grouped:
+            key = ("one", item.id)
+        elif cat.listening:
             key = (prob.id, (item.meta or {}).get("ban") or str(item.id))
         else:
             key = (prob.id, item.passage or "")
@@ -161,11 +165,10 @@ async def practice(
 ):
     """Questions of one type from all papers: ones never answered first, then
     ones last answered wrong, then the rest — each group shuffled."""
-    cat = jp.category_by_id(level, category)
-    if cat is None:
-        raise HTTPException(status_code=404, detail="没有这个题型")
+    if category not in jp.GROUP_LABEL:
+        raise HTTPException(status_code=404, detail="没有这一类")
     rows = [r for r in await _bank(db) if (r[3].level or "N1").upper() == level
-            and (c := jp.category_of(r[2].name, r[1].name, level)) and c.id == cat.id]
+            and (c := jp.category_of(r[2].name, r[1].name, level)) and jp.group_of(c) == category]
     latest = _latest(await _answers(db, user.id))
 
     def rank(unit) -> int:
@@ -174,10 +177,10 @@ async def practice(
             return 0
         return 1 if any(s is False for s in seen) else 2
 
-    units = _units(rows, cat.grouped)
+    units = _units(rows, level)
     random.shuffle(units)
     units.sort(key=rank)
-    units = units[: count or (3 if cat.grouped else 10)]
+    units = units[: count or (3 if category in ("reading", "listening") else 10)]
 
     # Practice shows the explanation right after each answer; start on them
     # now so most are ready by then. Explanations are shared and kept, so
@@ -194,7 +197,7 @@ async def practice(
         detail.items = [i for i in detail.items if i.id in keep]
         out.append({"paper": jp.paper_label(paper.source, paper.title), "section": sec.name,
                     "problem": detail.model_dump(mode="json")})
-    return {"category": {"id": cat.id, "label": cat.label, "part": cat.part}, "units": out}
+    return {"category": {"id": category, "label": jp.GROUP_LABEL[category]}, "units": out}
 
 
 class PracticeAnswerBody(BaseModel):
@@ -322,7 +325,8 @@ async def _result(db: AsyncSession, a: ExamAttempt) -> dict:
         parts[part]["total"] += 1
         parts[part]["correct"] += int(right)
         if cat:
-            c = cats.setdefault(cat.id, {"id": cat.id, "label": cat.label, "part": cat.part, "correct": 0, "total": 0})
+            g = jp.group_of(cat)
+            c = cats.setdefault(g, {"id": g, "label": jp.GROUP_LABEL[g], "correct": 0, "total": 0})
             c["total"] += 1
             c["correct"] += int(right)
         if not right:
@@ -337,7 +341,7 @@ async def _result(db: AsyncSession, a: ExamAttempt) -> dict:
     total = sum(p["score"] for p in out_parts)
     return {"total": total, "max_total": sum(p.max for p in lv.parts), "pass_line": lv.pass_total,
             "passed": total >= lv.pass_total and all(p["passed_min"] for p in out_parts),
-            "parts": out_parts, "categories": [cats[c.id] for c in lv.categories if c.id in cats],
+            "parts": out_parts, "categories": [cats[g] for g, _ in jp.GROUPS if g in cats],
             "wrong": len(wrong), "wrong_items": wrong}
 
 
@@ -381,7 +385,7 @@ async def mock_result(attempt_id: UUID, db: AsyncSession = Depends(get_db), user
     order = {}
     for item, prob, sec, _ in [r for r in await _bank(db) if r[3].id == a.paper_id]:
         cat = jp.category_of(sec.name, prob.name, paper.level)
-        order[str(item.id)] = (rate.get(cat.id if cat else "", 1), sec.seq, prob.seq, item.seq)
+        order[str(item.id)] = (rate.get(jp.group_of(cat) if cat else "", 1), sec.seq, prob.seq, item.seq)
     result["wrong_items"].sort(key=lambda i: order.get(i, (1, 0, 0, 0)))
     minutes = int(((a.completed_at or a.started_at) - a.started_at).total_seconds() // 60)
     return {**result, "label": jp.paper_label(paper.source, paper.title), "level": paper.level,
@@ -488,7 +492,7 @@ async def review_item(
     return {
         "paper": jp.paper_label(paper.source, paper.title),
         "section": sec.name,
-        "category": {"id": cat.id, "label": cat.label} if cat else None,
+        "category": {"id": jp.group_of(cat), "label": jp.GROUP_LABEL[jp.group_of(cat)]} if cat else None,
         "problem": {
             **detail.model_dump(mode="json", exclude={"items": {"__all__": {"answer_votes", "confidence",
                                                                             "source_file", "source_page",
@@ -687,11 +691,12 @@ async def mistakes(
         cat = jp.category_of(sec.name, prob.name, level)
         if cat is None:
             continue
-        g = groups.setdefault(cat.id, {"id": cat.id, "label": cat.label, "part": cat.part, "items": []})
+        gid = jp.group_of(cat)
+        g = groups.setdefault(gid, {"id": gid, "label": jp.GROUP_LABEL[gid], "part": "", "items": []})
         g["items"].append({"item_id": str(item.id), "paper": jp.paper_label(paper.source, paper.title),
                            "num": item.num, "stem": (item.stem or "").replace("__", "")[:60],
                            "misses": misses[item.id]})
-    out = [groups[c.id] for c in jp.level_of(level).categories if c.id in groups]
+    out = [groups[g] for g, _ in jp.GROUPS if g in groups]
     for g in out:
         g["items"].sort(key=lambda x: -x["misses"])
     return out

@@ -38,22 +38,21 @@ export default function JlptHome({ data, onPractice, onPaper, onMistakes, onLeve
         <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h1 className="text-2xl font-bold text-fg">练习</h1>
         </header>
-        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {data.categories.map(c => {
             const weak = c.accuracy != null && c.accuracy < WEAK
             return (
               <button key={c.id} type="button" onClick={() => onPractice(c)}
-                      className="text-left rounded-xl border border-border bg-surface px-4 py-3.5 flex flex-col gap-2.5 hover:border-fg-subtle hover:-translate-y-0.5 transition-[border-color,transform] duration-150">
-                <span className="flex items-baseline gap-2">
-                  <span className="font-jp text-base text-fg">{c.label}</span>
-                  <span className="ml-auto text-[11px] text-fg-subtle">{c.listening ? `聴解 ${c.number}` : `問題${c.number}`}</span>
+                      className="text-left rounded-2xl border border-border bg-surface px-5 py-5 flex flex-col gap-3.5 hover:border-fg-subtle hover:-translate-y-0.5 transition-[border-color,transform] duration-150">
+                <span className="flex items-baseline">
+                  <span className="font-jp text-xl text-fg">{c.label}</span>
+                  <span className="ml-auto text-xs text-fg-subtle">每套 {c.per_paper} 题</span>
                 </span>
-                <span className="h-1 rounded-full bg-border overflow-hidden">
+                <span className="h-1.5 rounded-full bg-border overflow-hidden">
                   <span className={clsx('block h-full', weak ? 'bg-danger' : 'bg-fg')} style={{ width: `${c.accuracy ?? 0}%` }} />
                 </span>
-                <span className="flex items-baseline text-xs text-fg-muted">
+                <span className="text-sm text-fg-muted">
                   {c.accuracy == null ? '还没练过' : <>正确率 <b className={clsx('ml-1', weak ? 'text-danger-fg' : 'text-fg')}>{c.accuracy}%</b></>}
-                  <span className="ml-auto">每套 {c.per_paper} 题</span>
                 </span>
               </button>
             )
@@ -94,7 +93,7 @@ export default function JlptHome({ data, onPractice, onPaper, onMistakes, onLeve
         <button type="button" onClick={onMistakes}
                 className="rounded-xl border border-border bg-surface px-4 py-3.5 flex items-center gap-3 text-left hover:border-fg-subtle">
           <span className="font-semibold text-fg">错题</span>
-          <span className="text-sm text-fg-muted">{data.mistakes} 题 · 按题型看</span>
+          <span className="text-sm text-fg-muted">{data.mistakes} 题</span>
           <ChevronRight className="w-4 h-4 ml-auto text-fg-subtle" />
         </button>
       </aside>
