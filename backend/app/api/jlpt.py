@@ -5,6 +5,7 @@ GET  /jlpt/practice/{category}       a set of questions of one type, drawn acros
 POST /jlpt/practice/answer           one answer, told at once whether it was right
 """
 import random
+import re
 from collections import defaultdict
 from uuid import UUID
 
@@ -533,3 +534,93 @@ async def ask_item(item_id: UUID, body: ItemAskBody, db: AsyncSession = Depends(
     db.add(ItemAsk(user_id=user.id, item_id=item_id, question=body.question.strip(), targets=body.targets, result=result))
     await db.commit()
     return {"question": body.question.strip(), "targets": body.targets, "result": result}
+
+
+# ── An exam text read like a pasted passage ─────────────────────────────────
+
+import hashlib  # noqa: E402
+
+from app.api.analysis import (  # noqa: E402
+    _FREE_TEXT_SCHEMA, _build_free_text_prompt, _extract_completed_sentences, _normalize_sentence,
+)
+from app.models.db import PassageAnalysis  # noqa: E402
+from app.services.preprocessor import preprocessor  # noqa: E402
+
+_passage_in_flight: dict[str, asyncio.Future] = {}
+
+
+def _clean(text: str) -> str:
+    """Exam markup out: the underline markers (blanks like 【41】 stay), and
+    the line breaks the printed page put in the middle of sentences —
+    a break stays only after a sentence's end or before a new paragraph."""
+    text = text.replace("__", "").replace("\r", "")
+    text = re.sub(r"(?<![。！？」』）\n])\n(?![\n　]|[（(]注)", "", text)
+    return text.strip()
+
+
+async def analyse_text(db: AsyncSession, text: str) -> list[dict]:
+    """Each sentence's translation, words and grammar — the same analysis
+    語料分析 makes of a pasted passage. Made once per text, for everyone."""
+    text = _clean(text)
+    h = hashlib.md5(text.encode()).hexdigest()
+    if h in _passage_in_flight:
+        await asyncio.shield(_passage_in_flight[h])
+    cached = (await db.execute(select(PassageAnalysis.sentences).where(PassageAnalysis.text_hash == h))).scalar_one_or_none()
+    if cached is not None:
+        return cached
+
+    done = asyncio.get_running_loop().create_future()
+    _passage_in_flight[h] = done
+    try:
+        source = dict(enumerate(preprocessor.split_sentences(text)))
+        results: dict[int, dict] = {}
+        llm = get_llm_client()
+        for _ in range(2):
+            missing = {i: t for i, t in source.items() if i not in results}
+            if not missing:
+                break
+            buffer = ""
+            try:
+                async for chunk in llm.analyze_stream(_build_free_text_prompt(missing), _FREE_TEXT_SCHEMA):
+                    buffer += chunk
+            except Exception:
+                pass
+            for raw in _extract_completed_sentences(buffer, 0):
+                t = (raw.get("text") or "").strip()
+                idx = next((i for i, s in missing.items() if s == t and i not in results), raw.get("index"))
+                if isinstance(idx, int) and idx in missing and idx not in results:
+                    results[idx] = _normalize_sentence(raw, idx, source[idx])
+        sentences = [results.get(i) or {"index": i, "text": t, "translation": "", "vocab": [], "grammar": [], "failed": True}
+                     for i, t in source.items()]
+        if any(not s.get("failed") for s in sentences):
+            db.add(PassageAnalysis(text_hash=h, source_text=text, sentences=sentences))
+            await db.commit()
+        return sentences
+    finally:
+        _passage_in_flight.pop(h, None)
+        done.set_result(None)
+
+
+@router.get("/jlpt/items/{item_id}/reading")
+async def item_reading(item_id: UUID, db: AsyncSession = Depends(get_db)):
+    """The text a question is read against, analysed sentence by sentence:
+    the passage (読解, 文章の文法), the script (聴解), or the ordered
+    sentence (整序)."""
+    row = (await db.execute(
+        select(ExamItem, ExamProblem).join(ExamProblem, ExamProblem.id == ExamItem.problem_id)
+        .where(ExamItem.id == item_id)
+    )).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="没有这道题")
+    item, prob = row
+    if prob.type == "listening":
+        siblings = (await db.execute(select(ExamItem).where(ExamItem.problem_id == prob.id).order_by(ExamItem.seq))).scalars().all()
+        text, kind = dialogue_for(item, siblings) or prob.transcript or "", "script"
+    elif prob.type == "sentence_order":
+        qa = (await db.execute(select(QuestionAnalysis).where(QuestionAnalysis.item_id == item_id))).scalar_one_or_none()
+        text, kind = ((qa.session_data or {}).get("correct_order") if qa else "") or "", "sentence"
+    else:
+        text, kind = item.passage or prob.passage or "", "passage"
+    if not text.strip():
+        raise HTTPException(status_code=404, detail="这道题没有可以读的文本")
+    return {"kind": kind, "sentences": await analyse_text(db, text)}

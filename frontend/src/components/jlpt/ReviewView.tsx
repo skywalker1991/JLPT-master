@@ -11,10 +11,13 @@ import SentenceOrderStem from '../exam/SentenceOrderStem'
 import QuestionBlock from './QuestionBlock'
 import DiffBox, { useItemAnalysis } from './DiffBox'
 import KnowledgeList from './KnowledgeList'
+import ReadingReview from './ReadingReview'
 import SavePair from '../shared/SavePair'
 import { NewItemChip } from '../analysis/AskPanel'
 
 const WORD_TYPES = new Set(['vocab_fill', 'synonym', 'usage', 'kanji_reading', 'kanji_writing', 'word_formation', 'grammar_fill'])
+/** Questions understood by reading: reviewed with the 語料分析 reader. */
+const READING_TYPES = new Set(['reading_comp', 'passage_fill', 'listening', 'sentence_order'])
 
 /**
  * Looking back at questions — the wrong ones after a mock exam, or one from
@@ -70,7 +73,12 @@ export default function ReviewView({ itemIds, attemptId, backLabel, onBack }: {
         </div>
       </header>
 
-      <Body key={item.id} data={data} itemId={item.id} chosen={ans?.chosen ?? null} correct={correct} skipped={!!attemptId && !ans} />
+      {READING_TYPES.has(prob.type) ? (
+        <ReadingReview key={item.id} data={data} itemId={item.id} chosen={ans?.chosen ?? null} correct={correct}
+                       ask={<ItemAsk itemId={item.id} chosen={ans?.chosen ?? null} initial={data.asks} targets={[]} />} />
+      ) : (
+        <Body key={item.id} data={data} itemId={item.id} chosen={ans?.chosen ?? null} correct={correct} skipped={!!attemptId && !ans} />
+      )}
 
       {itemIds.length > 1 && (
         <footer className="shrink-0 h-14 flex items-center gap-3 px-4 md:px-6 border-t border-border">

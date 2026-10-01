@@ -703,6 +703,7 @@ export interface OptionAnalysis {
   option: string
   is_correct: boolean
   explanation?: string
+  translation?: string | null
   vs_correct?: string | null
   most_confusable?: boolean
   relation_type?: RelationType | null
@@ -727,6 +728,7 @@ export interface ItemAnalysis {
   options_analysis?: OptionAnalysis[]
   filled_sentence?: string | null
   filled_translation?: string | null
+  stem_translation?: string | null
   knowledge?: KnowledgePoint[]
   key_sentence?: string
   [k: string]: unknown

@@ -7,6 +7,15 @@ import { RELATION_LABEL } from '../review/ReviewCard'
 
 const WORD_TYPES = new Set(['vocab_fill', 'synonym', 'usage', 'kanji_reading', 'kanji_writing', 'word_formation', 'grammar_fill'])
 
+/** Options keyed by their number, even where the model wrote 「1. 示された…」. */
+function normalize(a: ItemAnalysis): ItemAnalysis {
+  const options = a.options_analysis?.map(o => {
+    const m = /^\s*([1-4１-４])/.exec(String(o.option))
+    return m ? { ...o, option: String('１２３４'.indexOf(m[1]) + 1 || m[1]) } : o
+  })
+  return options ? { ...a, options_analysis: options } : a
+}
+
 /** Load an item's explanation (made once, shared, possibly still on its way). */
 export function useItemAnalysis(itemId: string, enabled = true) {
   const [analysis, setAnalysis] = useState<ItemAnalysis | null>(null)
@@ -17,7 +26,7 @@ export function useItemAnalysis(itemId: string, enabled = true) {
     let live = true
     setFailed(false)
     getItemAnalysis(itemId)
-      .then(r => { if (live) setAnalysis((r.session_data as ItemAnalysis) ?? {}) })
+      .then(r => { if (live) setAnalysis(normalize((r.session_data as ItemAnalysis) ?? {})) })
       .catch(() => { if (live) setFailed(true) })
     return () => { live = false }
   }, [itemId, enabled, attempt])

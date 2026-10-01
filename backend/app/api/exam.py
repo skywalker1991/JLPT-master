@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 import logging
 from uuid import UUID
 
@@ -1383,7 +1384,7 @@ async def list_paper_attempts(paper_id: UUID, db: AsyncSession = Depends(get_db)
 # how each wrong option differs from the right one (差在哪), which wrong one
 # is the easiest to fall for, the sentence with the answer filled in, and the
 # words and grammar worth keeping from the question.
-ANALYSIS_VERSION = 2
+ANALYSIS_VERSION = 3
 
 _WORD_TYPES = {"vocab_fill", "synonym", "usage", "kanji_reading", "kanji_writing", "word_formation", "grammar_fill"}
 _CHOICE_TYPES = _WORD_TYPES | {"passage_fill", "reading_comp", "listening"}
@@ -1415,13 +1416,21 @@ _WORD_RULES = """
 """
 
 
+_READING_TYPES = {"passage_fill", "reading_comp", "listening"}
+
+
+def _version_needed(problem_type: str) -> int:
+    # Reading-type explanations gained translations of the question and options in v3.
+    return 3 if problem_type in _READING_TYPES else 2
+
+
 def _is_current(cached, problem_type: str) -> bool:
     """A kept explanation that can be shown as it is. One from before the
     review page's extra fields is made again, once; official ones are kept."""
     if cached is None or not cached.session_data:
         return False
     return (cached.source == "official" or problem_type not in _CHOICE_TYPES
-            or (cached.session_data or {}).get("v", 1) >= ANALYSIS_VERSION)
+            or (cached.session_data or {}).get("v", 1) >= _version_needed(problem_type))
 
 
 def _augmented(problem_type: str, schema: dict) -> tuple[dict, str]:
@@ -1437,6 +1446,14 @@ def _augmented(problem_type: str, schema: dict) -> tuple[dict, str]:
         if problem_type in _WORD_TYPES:
             opt["relation_type"] = {"type": ["string", "null"]}
     rules = _DIFF_RULES
+    if problem_type in _READING_TYPES:
+        if opt is not None:
+            opt["translation"] = {"type": ["string", "null"]}
+        props["stem_translation"] = {"type": ["string", "null"]}
+        rules += """
+- stem_translation：题目（问句）的中文翻译；没有印出问句的填 null。
+- options_analysis 每一项再给 translation：这个选项的中文翻译。
+"""
     if problem_type in _WORD_TYPES:
         props["filled_sentence"] = {"type": ["string", "null"]}
         props["filled_translation"] = {"type": ["string", "null"]}
@@ -1494,6 +1511,12 @@ async def _analyse_item(item, problem, db) -> dict | None:
         raise HTTPException(status_code=502, detail="AI analysis failed") from exc
     if isinstance(result_data, dict):
         result_data["v"] = ANALYSIS_VERSION
+        # The model sometimes writes the option's whole text where its number belongs
+        for o in result_data.get("options_analysis") or []:
+            if isinstance(o, dict):
+                m = re.match(r"\s*([1-4１-４])", str(o.get("option", "")))
+                if m:
+                    o["option"] = m.group(1).translate(str.maketrans("１２３４", "1234"))
 
     cached = (await db.execute(
         select(QuestionAnalysis).where(QuestionAnalysis.item_id == item.id)

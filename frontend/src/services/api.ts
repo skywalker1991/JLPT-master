@@ -725,3 +725,8 @@ export async function getItemReview(itemId: string, attemptId?: string | null): 
 export async function askItem(itemId: string, body: { question: string; targets: string[]; chosen?: string | null }): Promise<ItemAskEntry> {
   return request<ItemAskEntry>(`/api/jlpt/items/${itemId}/ask`, { method: 'POST', body: JSON.stringify(body) })
 }
+
+/** The text a question is read against, analysed like a pasted passage. */
+export async function getItemReading(itemId: string): Promise<{ kind: 'passage' | 'script' | 'sentence'; sentences: SentenceAnalysis[] }> {
+  return request(`/api/jlpt/items/${itemId}/reading`)
+}

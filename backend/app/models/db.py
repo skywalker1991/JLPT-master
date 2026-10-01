@@ -658,6 +658,17 @@ class ItemAsk(Base):
     __table_args__ = (Index("ix_item_asks_user_item", "user_id", "item_id", "created_at"),)
 
 
+class PassageAnalysis(Base):
+    """An exam text analysed sentence by sentence like a pasted passage."""
+
+    __tablename__ = "passage_analyses"
+
+    text_hash = Column(String(32), primary_key=True)
+    source_text = Column("text", Text, nullable=False)  # not `text`: that name is SQLAlchemy's text()
+    sentences = Column(JSONB, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+
+
 class ExamAttempt(Base):
     __tablename__ = "exam_attempts"
 
