@@ -661,3 +661,73 @@ export interface CardDetail {
   connection?: string[]
   conjugation?: string | null
 }
+
+// JLPT home & practice
+export interface JlptCategory {
+  id: string
+  label: string
+  part: '言語知識' | '読解' | '聴解'
+  number: number
+  listening: boolean
+  per_paper: number
+  answered: number
+  accuracy: number | null
+}
+
+export interface JlptPaperRow {
+  id: string
+  label: string
+  level: string
+  status: 'new' | 'in_progress' | 'completed'
+  attempt_id: string | null
+  stage: 'written' | 'listening' | null
+  total: number | null
+}
+
+export interface JlptOverview {
+  categories: JlptCategory[]
+  papers: JlptPaperRow[]
+  mistakes: number
+  pass_line: number
+  part_min: number
+}
+
+export interface PracticeUnit {
+  paper: string
+  section: string
+  problem: ProblemDetail
+}
+
+/** The parts of an item analysis the review and practice pages read. */
+export interface OptionAnalysis {
+  option: string
+  is_correct: boolean
+  explanation?: string
+  vs_correct?: string | null
+  most_confusable?: boolean
+  relation_type?: RelationType | null
+  word?: { surface?: string; reading?: string; meaning?: string; usage_condition?: string; synonym_note?: string } | null
+  grammar?: { pattern?: string; meaning?: string; connection?: string } | null
+  violation?: string | null
+}
+
+export interface KnowledgePoint {
+  kind: 'vocab' | 'grammar'
+  key: string
+  reading: string | null
+  meaning: string
+  level: string | null
+  from: 'option' | 'sentence'
+  option: string | null
+}
+
+export interface ItemAnalysis {
+  analysis_type?: string
+  summary?: string
+  options_analysis?: OptionAnalysis[]
+  filled_sentence?: string | null
+  filled_translation?: string | null
+  knowledge?: KnowledgePoint[]
+  key_sentence?: string
+  [k: string]: unknown
+}

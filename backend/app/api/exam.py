@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 from uuid import UUID
@@ -859,6 +860,54 @@ def confidence_of(item) -> str:
     return "多源一致" if len(files) > 1 else "单源"
 
 
+async def problem_detail(db: AsyncSession, prob: ExamProblem, *, with_answers: bool = False) -> ProblemDetail:
+    """One 問題 with its questions and pictures, shaped for reading."""
+    items = (await db.execute(
+        select(ExamItem).where(ExamItem.problem_id == prob.id).order_by(ExamItem.seq)
+    )).scalars().all()
+    media = (await db.execute(
+        select(ExamMedia).where(ExamMedia.problem_id == prob.id).order_by(ExamMedia.seq)
+    )).scalars().all()
+    # Pictures belonging to one question rather than to the 問題 —
+    # a page standing in for a passage that could not be read.
+    per_item: dict = {}
+    for shot in (await db.execute(
+        select(ExamMedia).where(
+            ExamMedia.item_id.in_([i.id for i in items] or [None]),
+            ExamMedia.media_type == "image",
+        ).order_by(ExamMedia.seq)
+    )).scalars().all():
+        per_item.setdefault(shot.item_id, []).append(shot)
+    return ProblemDetail(
+        id=prob.id, seq=prob.seq, name=prob.name, type=prob.type,
+        instruction=prob.instruction, passage=prob.passage, transcript=prob.transcript,
+        media=[ExamMediaItem(
+            # Media held as bytes has no path of its own; it is
+            # served by id, the way synthesised audio already is.
+            id=m.id, url=m.url or f"/api/media/{m.id}",
+            caption=m.caption, seq=m.seq,
+        ) for m in media],
+        items=[ItemSchema(
+            id=i.id, seq=i.seq, num=i.num, stem=i.stem,
+            transcript=i.transcript, passage=i.passage,
+            options=i.options, meta=i.meta,
+            correct_answer=i.correct_answer if with_answers else None,
+            answer_order=i.answer_order if with_answers else None,
+            # Only the bank is shown where an answer came from and how
+            # far it is to be trusted; answering is told none of it.
+            source_file=i.source_file if with_answers else None,
+            source_page=i.source_page if with_answers else None,
+            script_file=i.script_file if with_answers else None,
+            script_page=i.script_page if with_answers else None,
+            answer_votes=i.answer_votes if with_answers else None,
+            confidence=confidence_of(i) if with_answers else None,
+            media=[ExamMediaItem(id=m.id, url=m.url or f"/api/media/{m.id}",
+                                 caption=m.caption, seq=m.seq)
+                   for m in per_item.get(i.id, [])],
+        ) for i in items],
+    )
+
+
 async def build_paper_detail(
     db: AsyncSession, paper: ExamPaper, *, with_answers: bool = False,
 ) -> ExamPaperDetail:
@@ -878,52 +927,7 @@ async def build_paper_detail(
             select(ExamProblem).where(ExamProblem.section_id == sec.id).order_by(ExamProblem.seq)
         )).scalars().all()
 
-        problem_details = []
-        for prob in problems:
-            items = (await db.execute(
-                select(ExamItem).where(ExamItem.problem_id == prob.id).order_by(ExamItem.seq)
-            )).scalars().all()
-            media = (await db.execute(
-                select(ExamMedia).where(ExamMedia.problem_id == prob.id).order_by(ExamMedia.seq)
-            )).scalars().all()
-            # Pictures belonging to one question rather than to the 問題 —
-            # a page standing in for a passage that could not be read.
-            per_item: dict = {}
-            for shot in (await db.execute(
-                select(ExamMedia).where(
-                    ExamMedia.item_id.in_([i.id for i in items] or [None]),
-                    ExamMedia.media_type == "image",
-                ).order_by(ExamMedia.seq)
-            )).scalars().all():
-                per_item.setdefault(shot.item_id, []).append(shot)
-            problem_details.append(ProblemDetail(
-                id=prob.id, seq=prob.seq, name=prob.name, type=prob.type,
-                instruction=prob.instruction, passage=prob.passage, transcript=prob.transcript,
-                media=[ExamMediaItem(
-                    # Media held as bytes has no path of its own; it is
-                    # served by id, the way synthesised audio already is.
-                    id=m.id, url=m.url or f"/api/media/{m.id}",
-                    caption=m.caption, seq=m.seq,
-                ) for m in media],
-                items=[ItemSchema(
-                    id=i.id, seq=i.seq, num=i.num, stem=i.stem,
-                    transcript=i.transcript, passage=i.passage,
-                    options=i.options, meta=i.meta,
-                    correct_answer=i.correct_answer if with_answers else None,
-                    answer_order=i.answer_order if with_answers else None,
-                    # Only the bank is shown where an answer came from and how
-                    # far it is to be trusted; answering is told none of it.
-                    source_file=i.source_file if with_answers else None,
-                    source_page=i.source_page if with_answers else None,
-                    script_file=i.script_file if with_answers else None,
-                    script_page=i.script_page if with_answers else None,
-                    answer_votes=i.answer_votes if with_answers else None,
-                    confidence=confidence_of(i) if with_answers else None,
-                    media=[ExamMediaItem(id=m.id, url=m.url or f"/api/media/{m.id}",
-                                         caption=m.caption, seq=m.seq)
-                           for m in per_item.get(i.id, [])],
-                ) for i in items],
-            ))
+        problem_details = [await problem_detail(db, prob, with_answers=with_answers) for prob in problems]
 
         section_details.append(SectionDetail(
             id=sec.id, name=sec.name, seq=sec.seq, problems=problem_details,
@@ -1108,10 +1112,12 @@ async def get_item_analysis(item_id: UUID, db: AsyncSession = Depends(get_db)):
 
     problem = await db.get(ExamProblem, item.problem_id)
 
+    if item_id in _in_flight:  # being made in the background: wait for that one
+        await asyncio.shield(_in_flight[item_id])
     cached = (await db.execute(
         select(QuestionAnalysis).where(QuestionAnalysis.item_id == item_id)
     )).scalar_one_or_none()
-    if cached and cached.session_data:
+    if _is_current(cached, problem.type):
         return QuestionAnalysisResponse(
             item_id=item_id, session_data=cached.session_data,
             relations_suggested=[], cached=True,
@@ -1373,6 +1379,72 @@ async def list_paper_attempts(paper_id: UUID, db: AsyncSession = Depends(get_db)
 
 
 
+# What every explanation of a choice question also gives, for the review page:
+# how each wrong option differs from the right one (差在哪), which wrong one
+# is the easiest to fall for, the sentence with the answer filled in, and the
+# words and grammar worth keeping from the question.
+ANALYSIS_VERSION = 2
+
+_WORD_TYPES = {"vocab_fill", "synonym", "usage", "kanji_reading", "kanji_writing", "word_formation", "grammar_fill"}
+_CHOICE_TYPES = _WORD_TYPES | {"passage_fill", "reading_comp", "listening"}
+
+_KNOWLEDGE_ITEM = {
+    "type": "object",
+    "properties": {
+        "kind": {"type": "string", "enum": ["vocab", "grammar"]},
+        "key": {"type": "string"},
+        "reading": {"type": ["string", "null"]},
+        "meaning": {"type": "string"},
+        "level": {"type": ["string", "null"]},
+        "from": {"type": "string", "enum": ["option", "sentence"]},
+        "option": {"type": ["string", "null"]},
+    },
+    "required": ["kind", "key", "meaning", "from"],
+}
+
+_DIFF_RULES = """
+另外（所有选择题都要）：
+- options_analysis 每一项再给 vs_correct：这个选项如果是错的，用一句话说清它和正确选项差在哪，不超过 40 字，像这样：「主动争取用得る，被动落到身上用受ける」；正确选项填 null。
+- 在最容易被误选的那一个错误选项上标 most_confusable: true，其余为 false。
+"""
+
+_WORD_RULES = """
+- 每个错误选项再给 relation_type：它和正确选项为什么容易混，只能是 synonym（近义）、derivative（同源）、confusable（形音易混）、antonym（反义）、collocation（搭配）之一；说不上来填 null。
+- filled_sentence：把正确答案填进题干之后的完整日语句子（用法题给正确选项的句子）；filled_translation：它的中文翻译。
+- knowledge：本题知识点。先列四个选项各自的词或语法（from = "option"，option 填选项号；不存在的词不列），再列完整句子里 N3 以上、值得学的词和语法（from = "sentence"，option 填 null，最多 4 个）。key 必须是词典形（落ち着かない → 落ち着く；サ变动词只写名词，交錯する → 交錯）或「〜」开头的句型，reading 用平假名（语法填 null），level 填 N1–N5。
+"""
+
+
+def _is_current(cached, problem_type: str) -> bool:
+    """A kept explanation that can be shown as it is. One from before the
+    review page's extra fields is made again, once; official ones are kept."""
+    if cached is None or not cached.session_data:
+        return False
+    return (cached.source == "official" or problem_type not in _CHOICE_TYPES
+            or (cached.session_data or {}).get("v", 1) >= ANALYSIS_VERSION)
+
+
+def _augmented(problem_type: str, schema: dict) -> tuple[dict, str]:
+    """The type's schema and prompt, plus the review page's extra fields."""
+    if problem_type not in _CHOICE_TYPES:
+        return schema, ""
+    schema = json.loads(json.dumps(schema))
+    props = schema.setdefault("properties", {})
+    opt = props.get("options_analysis", {}).get("items", {}).get("properties")
+    if opt is not None:
+        opt["vs_correct"] = {"type": ["string", "null"]}
+        opt["most_confusable"] = {"type": "boolean"}
+        if problem_type in _WORD_TYPES:
+            opt["relation_type"] = {"type": ["string", "null"]}
+    rules = _DIFF_RULES
+    if problem_type in _WORD_TYPES:
+        props["filled_sentence"] = {"type": ["string", "null"]}
+        props["filled_translation"] = {"type": ["string", "null"]}
+        props["knowledge"] = {"type": "array", "items": _KNOWLEDGE_ITEM}
+        rules += _WORD_RULES
+    return schema, rules
+
+
 async def _analyse_item(item, problem, db) -> dict | None:
     """Explain one question and store it against the question.
 
@@ -1386,6 +1458,7 @@ async def _analyse_item(item, problem, db) -> dict | None:
     prompt_tpl = _PROMPTS.get(problem.type)
     if schema is None or prompt_tpl is None:
         return None
+    schema, extra_rules = _augmented(problem.type, schema)
 
     opts_text = "\n".join(f"{k}. {v}" for k, v in sorted(item.options.items()))
     correct = item.correct_answer or "不明"
@@ -1409,6 +1482,7 @@ async def _analyse_item(item, problem, db) -> dict | None:
             schema_json=json.dumps(schema, ensure_ascii=False),
             star_position=star_position, star_word=star_word,
         )
+        + extra_rules
     )
 
     llm = get_llm_client()
@@ -1418,6 +1492,8 @@ async def _analyse_item(item, problem, db) -> dict | None:
     except Exception as exc:
         logger.error("LLM analysis failed for item %s: %s", item.id, exc)
         raise HTTPException(status_code=502, detail="AI analysis failed") from exc
+    if isinstance(result_data, dict):
+        result_data["v"] = ANALYSIS_VERSION
 
     cached = (await db.execute(
         select(QuestionAnalysis).where(QuestionAnalysis.item_id == item.id)
@@ -1433,35 +1509,52 @@ async def _analyse_item(item, problem, db) -> dict | None:
     return result_data
 
 
-async def prepare_analyses(item_ids: list[UUID]) -> None:
-    """Explain a set of questions in the background.
+# Explanations being made in the background right now, so asking for one
+# that is on its way waits for it instead of paying for it twice.
+_in_flight: dict[UUID, asyncio.Future] = {}
 
-    Run after a section is submitted, over the ones answered wrongly. The wait
-    for an explanation then happens while the score is being read rather than
-    when the explanation is asked for — and a question explained once keeps it,
-    so the second time it is instant either way.
+
+async def prepare_analyses(item_ids: list[UUID], concurrency: int = 3) -> None:
+    """Explain a set of questions in the background, a few at a time, in order.
+
+    Run after a section is submitted (over the ones answered wrongly) and when
+    a practice set is drawn. The wait for an explanation then happens while
+    the person is doing something else — and a question explained once keeps
+    it, so the second time it is instant either way.
 
     Failures are swallowed: this is preparation, and the explanation can still
     be asked for by hand.
     """
     from app.models.db import async_session_factory
 
-    for item_id in item_ids:
-        try:
-            async with async_session_factory() as db:
-                if (await db.execute(
-                    select(QuestionAnalysis).where(QuestionAnalysis.item_id == item_id)
-                )).scalar_one_or_none() is not None:
-                    continue
-                item = await db.get(ExamItem, item_id)
-                if item is None:
-                    continue
-                problem = await db.get(ExamProblem, item.problem_id)
-                if problem is None:
-                    continue
-                await _analyse_item(item, problem, db)
-        except Exception as exc:
-            logger.info("prepare analysis for %s skipped: %s", item_id, exc)
+    gate = asyncio.Semaphore(concurrency)
+
+    async def one(item_id: UUID) -> None:
+        async with gate:
+            try:
+                async with async_session_factory() as db:
+                    item = await db.get(ExamItem, item_id)
+                    if item is None:
+                        return
+                    problem = await db.get(ExamProblem, item.problem_id)
+                    if problem is None:
+                        return
+                    cached = (await db.execute(
+                        select(QuestionAnalysis).where(QuestionAnalysis.item_id == item_id)
+                    )).scalar_one_or_none()
+                    if _is_current(cached, problem.type) or item_id in _in_flight:
+                        return
+                    done = asyncio.get_running_loop().create_future()
+                    _in_flight[item_id] = done
+                    try:
+                        await _analyse_item(item, problem, db)
+                    finally:
+                        _in_flight.pop(item_id, None)
+                        done.set_result(None)
+            except Exception as exc:
+                logger.info("prepare analysis for %s skipped: %s", item_id, exc)
+
+    await asyncio.gather(*(one(i) for i in item_ids))
 
 
 # ── 聴解音频 ───────────────────────────────────────────────────────────────

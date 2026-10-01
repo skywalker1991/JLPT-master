@@ -5,6 +5,8 @@ import {
   CardDetail,
   OccurrenceInput,
   ComparedPair,
+  JlptOverview,
+  PracticeUnit,
   CreateAtomRequest,
   CreateAtomResponse,
   AddPropertiesRequest,
@@ -670,4 +672,18 @@ export async function savePair(body: ComparedPair & {
   source?: 'ask' | 'jlpt'; analysis_id?: string | null; sentence_index?: number | null; item_id?: string | null
 }): Promise<{ relation_id: string; a: string; b: string }> {
   return request('/api/relations/pair', { method: 'POST', body: JSON.stringify(body) })
+}
+
+// ---- JLPT home & practice ----
+
+export async function getJlptOverview(): Promise<JlptOverview> {
+  return request<JlptOverview>('/api/jlpt/overview')
+}
+
+export async function getPractice(category: string): Promise<{ category: { id: string; label: string; part: string }; units: PracticeUnit[] }> {
+  return request(`/api/jlpt/practice/${category}`)
+}
+
+export async function answerPractice(itemId: string, answer: string): Promise<{ is_correct: boolean; correct_answer: string | null; answer_order: string | null }> {
+  return request('/api/jlpt/practice/answer', { method: 'POST', body: JSON.stringify({ item_id: itemId, answer }) })
 }

@@ -1,0 +1,154 @@
+import { useEffect, useRef, useState } from 'react'
+import clsx from 'clsx'
+import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
+import type { PracticeUnit } from '../../types'
+import { answerPractice, getPractice } from '../../services/api'
+import { useToast } from '../../context/ToastContext'
+import Passage from '../exam/Passage'
+import PlayAudio from '../exam/PlayAudio'
+import QuestionBlock from './QuestionBlock'
+import DiffBox from './DiffBox'
+import Logo from '../shared/Logo'
+
+interface Result { chosen: string; correct: string; right: boolean }
+
+/**
+ * Practice one question type across papers: no clock, and each answer is
+ * told at once — the right option, the one chosen, and 差在哪.
+ */
+export default function PracticeSession({ category, label, onExit, onOpenAnalysis }: {
+  category: string
+  label: string
+  onExit: () => void
+  onOpenAnalysis?: (unit: PracticeUnit, itemId: string) => void
+}) {
+  const { toast } = useToast()
+  const [units, setUnits] = useState<PracticeUnit[] | null>(null)
+  const [at, setAt] = useState(0)
+  const [results, setResults] = useState<Record<string, Result>>({})
+  const [round, setRound] = useState(0)
+
+  // Drawing a set also starts its explanations on the server, so draw each
+  // set once (React may run this effect twice in development).
+  const drawn = useRef<string | null>(null)
+  useEffect(() => {
+    const key = `${category}#${round}`
+    if (drawn.current === key) return
+    drawn.current = key
+    setUnits(null)
+    setAt(0)
+    getPractice(category).then(r => setUnits(r.units)).catch(() => toast('题目没取到，稍后再试', 'error'))
+  }, [category, round, toast])
+
+  const all = Object.values(results)
+  const right = all.filter(r => r.right).length
+
+  const answer = async (itemId: string, option: string) => {
+    if (results[itemId]) return
+    try {
+      const r = await answerPractice(itemId, option)
+      setResults(prev => ({ ...prev, [itemId]: { chosen: option, correct: r.correct_answer ?? '', right: r.is_correct } }))
+    } catch {
+      toast('没记上，请再选一次', 'error')
+    }
+  }
+
+  const header = (
+    <header className="h-14 shrink-0 flex items-center gap-3 px-3 md:px-6 border-b border-border">
+      <button type="button" onClick={onExit} className="flex items-center gap-0.5 text-sm text-fg-muted hover:text-fg h-10 pr-2">
+        <ChevronLeft className="w-4 h-4" />结束练习
+      </button>
+      <span className="text-xs font-semibold rounded-full border border-fg px-2.5 py-0.5 text-fg">练习 · {label}</span>
+      {units && units.length > 0 && (
+        <span className="ml-auto flex items-center gap-3 text-xs text-fg-muted tabular-nums">
+          <span>{Math.min(at + 1, units.length)} / {units.length}</span>
+          <span className="hidden sm:block w-40 h-1.5 rounded-full bg-border overflow-hidden">
+            <span className="block h-full bg-fg" style={{ width: `${(Math.min(at, units.length) / units.length) * 100}%` }} />
+          </span>
+          <span>对 {right} · 错 {all.length - right}</span>
+        </span>
+      )}
+    </header>
+  )
+
+  if (!units) {
+    return <div className="flex-1 flex flex-col">{header}<div className="flex-1 flex items-center justify-center"><Loader2 className="w-5 h-5 animate-spin text-fg-subtle" /></div></div>
+  }
+
+  if (at >= units.length) {
+    return (
+      <div className="flex-1 flex flex-col">
+        {header}
+        <div className="flex-1 flex flex-col items-center justify-center gap-5 px-6 text-center">
+          <Logo className="w-12 h-12 text-fg" />
+          <div className="flex flex-col gap-1">
+            <h2 className="text-xl font-bold text-fg">这组练完了</h2>
+            <p className="text-sm text-fg-muted">对 {right} 题，错 {all.length - right} 题。错的会在之后的练习里再出现。</p>
+          </div>
+          <div className="flex gap-3">
+            <button type="button" onClick={onExit} className="btn h-11 px-5 border border-border text-fg">回到 JLPT</button>
+            <button type="button" onClick={() => { setResults({}); setRound(r => r + 1) }} className="btn-primary h-11 px-5">再练一组</button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const unit = units[at]
+  const prob = unit.problem
+  const listening = prob.type === 'listening'
+  const passage = prob.items[0]?.passage || prob.passage
+  const pages = prob.media.filter(m => m.caption?.includes('試験用紙'))
+  const done = prob.items.every(i => results[i.id])
+
+  return (
+    <div className="flex-1 min-h-0 flex flex-col">
+      {header}
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        <div className="max-w-3xl mx-auto px-5 md:px-8 py-6 md:py-10 flex flex-col gap-6">
+          <p className="text-xs text-fg-subtle">{unit.paper} · {prob.name}{prob.instruction ? ` · ${prob.instruction}` : ''}</p>
+
+          {listening && prob.items[0] && <PlayAudio itemId={prob.items[0].id} />}
+          {pages.length > 0 ? pages.map(m => (
+            <img key={m.id} src={m.url} alt={m.caption ?? '试卷页面'} className="max-w-full rounded-lg border border-border" />
+          )) : passage && !listening && (
+            <div className="rounded-2xl bg-accent-light/60 px-5 py-5 font-jp text-lg leading-[2] text-fg">
+              <Passage text={passage} />
+            </div>
+          )}
+
+          {prob.items.map(item => {
+            const r = results[item.id]
+            return (
+              <section key={item.id} className="flex flex-col gap-4">
+                <QuestionBlock item={item} type={prob.type} selected={r?.chosen ?? null} correct={r?.correct}
+                               onSelect={opt => void answer(item.id, opt)} size={prob.items.length > 1 ? 'md' : 'lg'} />
+                {r && <DiffBox itemId={item.id} type={prob.type} chosen={r.chosen} correct={r.correct} />}
+                {r && onOpenAnalysis && (
+                  <button type="button" onClick={() => onOpenAnalysis(unit, item.id)}
+                          className="self-start text-sm text-fg underline underline-offset-4">
+                    看完整解析 ›<span className="ml-2 text-xs text-fg-subtle no-underline">原题、对比、本题知识点、追问都在里面</span>
+                  </button>
+                )}
+              </section>
+            )
+          })}
+
+          {listening && done && prob.items[0]?.transcript && (
+            <details className="rounded-xl border border-border px-4 py-3">
+              <summary className="text-sm text-fg-muted cursor-pointer">听力原文</summary>
+              <p className="mt-3 font-jp text-base leading-[1.9] text-fg whitespace-pre-wrap">{prob.items[0].transcript}</p>
+            </details>
+          )}
+
+          <div className="flex justify-end pt-2">
+            <button type="button" disabled={!done} onClick={() => setAt(a => a + 1)}
+                    className={clsx('btn-primary h-12 px-6 text-base font-semibold', !done && 'opacity-40')}>
+              {at + 1 < units.length ? (prob.items.length > 1 ? '下一篇' : '下一题') : '看结果'}<ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}

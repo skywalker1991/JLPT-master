@@ -6,6 +6,7 @@ import AnalysisPanel from './AnalysisPanel'
 import ReportItemButton from './ReportItemButton'
 import Passage from './Passage'
 import PlayAudio from './PlayAudio'
+import SentenceOrderStem from './SentenceOrderStem'
 import QuestionText from './QuestionText'
 
 // ─── Quiz unit ────────────────────────────────────────────────────────────────
@@ -178,25 +179,6 @@ function QuestionNav({
 const OPTS = ['1', '2', '3', '4'] as const
 
 // Render sentence_order stem: replace [_N_] / [_N★_] with visual chips
-function SentenceOrderStem({ stem }: { stem: string }) {
-  const parts = stem.split(/(\[_\d+★?_\])/g)
-  return (
-    <p className="text-base text-fg leading-relaxed">
-      {parts.map((part, i) => {
-        const star = /\[_(\d+)★_\]/.exec(part)
-        const plain = /\[_(\d+)_\]/.exec(part)
-        if (star) return (
-          <span key={i} className="inline-flex items-center justify-center w-8 h-8 mx-0.5 rounded-lg bg-accent text-on-accent text-xs font-bold align-middle">★</span>
-        )
-        if (plain) return (
-          <span key={i} className="inline-flex items-center justify-center w-8 h-8 mx-0.5 rounded-lg bg-border/60 text-fg-muted text-xs font-bold align-middle">{plain[1]}</span>
-        )
-        return <span key={i}>{part}</span>
-      })}
-    </p>
-  )
-}
-
 function ItemDisplay({
   item, selected, onSelect, reviewMode, correctAnswer, problemType, attemptId,
   showAudio = true,

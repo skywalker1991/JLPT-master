@@ -624,6 +624,24 @@ class ExamItemReport(Base):
     )
 
 
+class PracticeAnswer(Base):
+    """One answer given while practising a question type across papers."""
+
+    __tablename__ = "practice_answers"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    item_id = Column(UUID(as_uuid=True), ForeignKey("exam_items.id", ondelete="CASCADE"), nullable=False)
+    user_answer = Column(String(10), nullable=False)
+    is_correct = Column(Boolean, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+
+    __table_args__ = (
+        Index("ix_practice_answers_user", "user_id", "created_at"),
+        Index("ix_practice_answers_item", "item_id"),
+    )
+
+
 class ExamAttempt(Base):
     __tablename__ = "exam_attempts"
 
@@ -640,6 +658,8 @@ class ExamAttempt(Base):
     scope = Column(JSONB, nullable=True)
     started_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
     completed_at = Column(DateTime(timezone=True), nullable=True)
+    # A mock exam: {"mock": true, "stage": "written"|"listening", "stage_started_at": iso, "flags": [item ids]}
+    meta = Column(JSONB, nullable=True)
 
     paper = relationship("ExamPaper", back_populates="attempts")
     answers = relationship("AttemptAnswer", back_populates="attempt", cascade="all, delete-orphan")

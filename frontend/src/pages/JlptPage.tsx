@@ -1,121 +1,22 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import { useLocation } from 'react-router-dom'
+import JlptHome from '../components/jlpt/JlptHome'
+import PracticeSession from '../components/jlpt/PracticeSession'
 import {
-  BookOpen, AlignLeft, FileText, Headphones, Clock,
   ChevronLeft, Loader2, Trash2,
 } from 'lucide-react'
 import {
-  listExams, getExam, startAttempt, getAccuracyStats,
+  listExams, getExam, startAttempt, getJlptOverview,
   listPaperAttempts, getAttemptReview, deleteAttempt,
 } from '../services/api'
-import { useSettings } from '../context/SettingsContext'
 import ExamSession from '../components/exam/ExamSession'
 import MistakeList from '../components/exam/MistakeList'
 import type {
-  ExamPaperList, ExamPaperDetail, AccuracyStats, AttemptSummary,
+  JlptCategory, JlptOverview,
+  ExamPaperList, ExamPaperDetail, AttemptSummary,
 } from '../types'
 
-// ─── JLPT exam schedule ───────────────────────────────────────────────────────
-
-function nextJlptDate(): { label: string; daysLeft: number } {
-  const now = new Date()
-  const y = now.getFullYear()
-  function firstSunday(yr: number, mo: number) {
-    const d = new Date(yr, mo - 1, 1)
-    d.setDate(1 + ((7 - d.getDay()) % 7))
-    return d
-  }
-  const candidates = [firstSunday(y, 7), firstSunday(y, 12), firstSunday(y + 1, 7)]
-  const next = candidates.find(d => d > now) ?? candidates[2]
-  return {
-    daysLeft: Math.ceil((next.getTime() - now.getTime()) / 86400000),
-    label: `${next.getFullYear()}年${next.getMonth() + 1}月`,
-  }
-}
-
-// ─── Stats sidebar ────────────────────────────────────────────────────────────
-
-const STAT_CATS = [
-  { key: 'vocab',     label: '単語', icon: BookOpen,   color: '#2563EB' },
-  { key: 'grammar',   label: '文法', icon: AlignLeft,  color: '#7C3AED' },
-  { key: 'reading',   label: '読解', icon: FileText,   color: '#059669' },
-  { key: 'listening', label: '聴解', icon: Headphones, color: '#D97706' },
-] as const
-
-function StatsSidebar({ stats }: { stats: AccuracyStats | null }) {
-  const { label, daysLeft } = useMemo(() => nextJlptDate(), [])
-  return (
-    <>
-      {/* Countdown */}
-      <div className="px-4 py-4 border-b border-border shrink-0">
-        <div className="flex items-center gap-1.5 text-fg-muted text-xs mb-2">
-          <Clock className="w-3.5 h-3.5" />距下次考试
-        </div>
-        <p className="text-3xl font-bold text-fg leading-none">
-          {daysLeft}<span className="text-base font-normal text-fg-muted ml-1">天</span>
-        </p>
-        <p className="text-xs text-fg-muted mt-1">{label}</p>
-      </div>
-
-      {/* Accuracy */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-        <p className="section-label">正解率</p>
-        {STAT_CATS.map(({ key, label: l, icon: Icon, color }) => {
-          const cat = stats?.[key]
-          const pct = cat && cat.total > 0 ? Math.round(cat.correct / cat.total * 100) : null
-          return (
-            <div key={key}>
-              <div className="flex items-center justify-between mb-1.5">
-                <div className="flex items-center gap-1.5">
-                  <Icon className="w-3.5 h-3.5" style={{ color }} />
-                  <span className="text-sm font-medium text-fg">{l}</span>
-                </div>
-                <span className="text-xs text-fg-muted">
-                  {pct !== null ? `${pct}%` : '—'}
-                  {cat && cat.total > 0 && (
-                    <span className="text-fg-subtle ml-1">({cat.correct}/{cat.total})</span>
-                  )}
-                </span>
-              </div>
-              <div className="h-1.5 bg-border rounded-full overflow-hidden">
-                {pct !== null && (
-                  <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: color }} />
-                )}
-              </div>
-            </div>
-          )
-        })}
-      </div>
-    </>
-  )
-}
-
 // ─── Level badge ──────────────────────────────────────────────────────────────
-
-/** The countdown and accuracy on a phone: one line, not a column that would
- *  take the screen the papers need — but not gone, which is what hiding the
- *  sidebar did. */
-function StatsStrip({ stats }: { stats: AccuracyStats | null }) {
-  const { daysLeft } = useMemo(() => nextJlptDate(), [])
-  return (
-    <div className="md:hidden shrink-0 flex items-center gap-3 px-5 py-2 border-b border-border
-                    overflow-x-auto">
-      <span className="shrink-0 text-xs text-fg-muted">
-        <span className="font-bold text-fg">{daysLeft}</span> 天
-      </span>
-      {STAT_CATS.map(({ key, label, color }) => {
-        const cat = stats?.[key]
-        const pct = cat && cat.total > 0 ? Math.round(cat.correct / cat.total * 100) : null
-        return (
-          <span key={key} className="shrink-0 text-xs text-fg-muted flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }} />
-            {label}
-            <span className="text-fg font-medium">{pct !== null ? `${pct}%` : '—'}</span>
-          </span>
-        )
-      })}
-    </div>
-  )
-}
 
 function LevelBadge({ level }: { level: string }) {
   const colors: Record<string, string> = {
@@ -131,71 +32,6 @@ function LevelBadge({ level }: { level: string }) {
 }
 
 // ─── Exam bank ────────────────────────────────────────────────────────────────
-
-function ExamBank({ papers, onSelect }: { papers: ExamPaperList[]; onSelect: (p: ExamPaperList) => void }) {
-  const { settings } = useSettings()
-  const filtered = useMemo(() =>
-    settings.levelFilter.length === 0 ? papers : papers.filter(p => settings.levelFilter.includes(p.level)),
-    [papers, settings.levelFilter],
-  )
-  const grouped = useMemo(() => {
-    const order = ['N1', 'N2', 'N3', 'N4', 'N5']
-    const byLevel = new Map<string, Map<string, ExamPaperList[]>>()
-    for (const p of filtered) {
-      if (!byLevel.has(p.level)) byLevel.set(p.level, new Map())
-      const year = p.source?.match(/(\d{4})年/)?.[1] ?? '未知年份'
-      const m = byLevel.get(p.level)!
-      if (!m.has(year)) m.set(year, [])
-      m.get(year)!.push(p)
-    }
-    return order.filter(l => byLevel.has(l)).map(l => ({
-      level: l,
-      years: [...byLevel.get(l)!.entries()]
-        .sort((a, b) => b[0].localeCompare(a[0]))
-        .map(([year, items]) => ({ year, items })),
-    }))
-  }, [filtered])
-
-  if (grouped.length === 0) return (
-    <div className="flex items-center justify-center h-32 text-fg-muted text-sm">
-      {settings.levelFilter.length > 0 ? '当前等级筛选下暂无试卷' : '暂无试卷，使用 seed_exam.py 导入'}
-    </div>
-  )
-
-  return (
-    <div className="space-y-5">
-      {grouped.map(({ level, years }) => (
-        <div key={level}>
-          <div className="flex items-center gap-2 mb-2">
-            <LevelBadge level={level} />
-            <div className="flex-1 h-px bg-border" />
-          </div>
-          {years.map(({ year, items }) => (
-            <div key={year} className="mb-3">
-              <p className="text-xs text-fg-muted font-medium mb-1.5 ml-1">{year}</p>
-              <div className="space-y-2">
-                {items.map(p => (
-                  <div key={p.id}
-                    className="bg-surface border border-border rounded-xl px-4 py-3 flex items-center gap-3 shadow-card hover:shadow-card-md cursor-pointer group transition-shadow"
-                    onClick={() => onSelect(p)}
-                  >
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-fg text-sm truncate">{p.title}</p>
-                      <p className="text-xs text-fg-muted mt-0.5">{p.source} · {p.section_count} 节 · {p.item_count} 题</p>
-                    </div>
-                    <span className="text-accent text-sm font-medium opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                      进入 →
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      ))}
-    </div>
-  )
-}
 
 // ─── Attempt list sidebar ─────────────────────────────────────────────────────
 
@@ -658,76 +494,66 @@ function ExamDetailView({ paper, onBack }: { paper: ExamPaperList; onBack: () =>
 
 // ─── Page root ────────────────────────────────────────────────────────────────
 
+type View =
+  | { kind: 'home' }
+  | { kind: 'practice'; category: JlptCategory }
+  | { kind: 'paper'; paper: ExamPaperList }
+  | { kind: 'mistakes' }
+
 export default function JlptPage() {
-  const [selected, setSelected] = useState<ExamPaperList | null>(null)
+  const { pathname } = useLocation()
+  const active = pathname === '/jlpt'
+  const [view, setView] = useState<View>({ kind: 'home' })
+  const [overview, setOverview] = useState<JlptOverview | null>(null)
   const [papers, setPapers] = useState<ExamPaperList[]>([])
-  const [stats, setStats] = useState<AccuracyStats | null>(null)
-  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [tab, setTab] = useState<'papers' | 'mistakes'>('papers')
 
   useEffect(() => {
-    Promise.all([listExams(), getAccuracyStats()])
-      .then(([p, s]) => { setPapers(p); setStats(s) })
-      .catch(e => setError(e.message))
-      .finally(() => setLoading(false))
-  }, [])
+    if (!active || view.kind !== 'home') return
+    getJlptOverview().then(setOverview).catch(e => setError(e.message))
+    if (papers.length === 0) listExams().then(setPapers).catch(() => {})
+  }, [active, view.kind]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Detail view ──
-  if (selected) {
+  const home = () => setView({ kind: 'home' })
+
+  if (view.kind === 'practice') {
+    return <PracticeSession category={view.category.id} label={view.category.label} onExit={home} />
+  }
+
+  if (view.kind === 'paper') {
     return (
       <div className="flex flex-col md:flex-row flex-1 min-h-0 p-4 gap-4 overflow-hidden">
-        <ExamDetailView paper={selected} onBack={() => setSelected(null)} />
+        <ExamDetailView paper={view.paper} onBack={home} />
       </div>
     )
   }
 
-  // ── List view ──
+  if (view.kind === 'mistakes') {
+    return (
+      <div className="flex-1 min-h-0 flex flex-col">
+        <div className="shrink-0 flex items-center gap-2 px-4 h-12 border-b border-border">
+          <button type="button" onClick={home} className="flex items-center gap-1 text-sm text-fg-muted hover:text-fg">
+            <ChevronLeft className="w-4 h-4" />JLPT
+          </button>
+          <span className="text-sm font-semibold text-fg">错题</span>
+        </div>
+        <MistakeList />
+      </div>
+    )
+  }
+
+  if (error) return <div className="flex-1 flex items-center justify-center text-danger text-sm">{error}</div>
+  if (!overview) return <div className="flex-1 flex items-center justify-center"><Loader2 className="w-5 h-5 animate-spin text-fg-subtle" /></div>
+
   return (
-    <div className="flex flex-col md:flex-row flex-1 min-h-0 p-4 gap-4 overflow-hidden">
-
-      {/* Left: title + stats. The countdown and accuracy bars are context, not
-          the task; on a phone they would take the screen the papers need. */}
-      <div className="card w-52 shrink-0 hidden md:flex flex-col overflow-hidden">
-        <div className="px-4 py-4 border-b border-border shrink-0">
-          <h1 className="text-base font-bold text-fg">JLPT 真题练习</h1>
-          <p className="text-xs text-fg-muted mt-0.5">选择试卷开始作答</p>
-        </div>
-        <StatsSidebar stats={stats} />
-      </div>
-
-      {/* Right: exam bank, or the mistakes gathered across every record */}
-      <div className="card flex-1 flex flex-col min-h-0 overflow-hidden">
-        <StatsStrip stats={stats} />
-        <div className="shrink-0 flex gap-1 px-5 pt-4">
-          {([['papers', '试卷'], ['mistakes', '错题']] as const).map(([k, label]) => (
-            <button
-              key={k}
-              onClick={() => setTab(k)}
-              className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
-                tab === k ? 'bg-fg/10 text-fg font-semibold' : 'text-fg-muted hover:text-fg'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        {tab === 'mistakes' && <MistakeList />}
-        {tab === 'papers' && loading && (
-          <div className="flex items-center justify-center flex-1 gap-2 text-fg-muted">
-            <Loader2 className="w-4 h-4 animate-spin" />
-          </div>
-        )}
-        {tab === 'papers' && error && (
-          <div className="flex items-center justify-center flex-1 text-danger text-sm">{error}</div>
-        )}
-        {tab === 'papers' && !loading && !error && (
-          <div className="flex-1 overflow-y-auto p-5">
-            <ExamBank papers={papers} onSelect={setSelected} />
-          </div>
-        )}
-      </div>
-
-    </div>
+    <JlptHome
+      data={overview}
+      onPractice={c => setView({ kind: 'practice', category: c })}
+      onPaper={row => {
+        const paper = papers.find(p => p.id === row.id)
+        if (paper) setView({ kind: 'paper', paper })
+      }}
+      onMistakes={() => setView({ kind: 'mistakes' })}
+    />
   )
 }
