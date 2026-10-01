@@ -996,15 +996,18 @@ async def paper_overview(paper_id: UUID, db: AsyncSession = Depends(get_db), use
             "answered": len(got), "right": sum(got.values()) if done else None, "finished": done,
         })
 
-    # A kind's card shows its latest pass
+    # A kind's card: the last pass handed in, and the one under way if any
     kinds = []
     for g, label in jp.GROUPS:
         if not totals.get(g):
             continue
-        last = next((r for r in records if r["kind"] == g), None)
+        mine = [r for r in records if r["kind"] == g]
+        done = next((r for r in mine if r["finished"]), None)
+        open_ = mine[0] if mine and not mine[0]["finished"] else None
         kinds.append({"id": g, "label": label, "total": totals[g],
-                      "answered": last["answered"] if last else 0, "right": last["right"] if last else None,
-                      "run_id": last["id"] if last and not last["finished"] else None})
+                      "answered": done["answered"] if done else 0, "right": done["right"] if done else None,
+                      "run_id": open_["id"] if open_ else None,
+                      "open_answered": open_["answered"] if open_ else None})
 
     lv = jp.level_of(level)
     max_total = sum(p.max for p in lv.parts)

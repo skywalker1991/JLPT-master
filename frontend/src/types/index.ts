@@ -681,7 +681,7 @@ export interface PaperOverview {
   label: string
   level: string
   /** Each kind as its latest pass left it; run_id is that pass when unfinished */
-  kinds: { id: JlptCategory['id']; label: string; total: number; answered: number; right: number | null; run_id: string | null }[]
+  kinds: { id: JlptCategory['id']; label: string; total: number; answered: number; right: number | null; run_id: string | null; open_answered: number | null }[]
   /** Every pass and mock exam at this paper, newest first */
   records: PaperRecord[]
   written_minutes: number

@@ -53,20 +53,25 @@ export default function PaperView({ paperId, onBack, onPractice, onMock, onRecor
           <h2 className="text-sm font-semibold text-fg-muted">分类练习</h2>
           <div className="grid grid-cols-2 gap-3">
             {p.kinds.map(k => {
-              const acc = k.right != null && k.total ? Math.round((k.right / k.total) * 100) : null
+              // Accuracy of the last pass handed in: right out of answered
+              const acc = k.right != null && k.answered ? Math.round((k.right / k.answered) * 100) : null
               const weak = acc != null && acc < WEAK
+              const shown = k.open_answered ?? k.answered
               return (
                 <button key={k.id} type="button" onClick={() => onPractice(k.id, k.label, k.run_id && !hidden.includes(k.run_id) ? k.run_id : null)}
                         className="text-left rounded-2xl border border-border bg-surface px-5 py-4 flex flex-col gap-3 hover:border-fg-subtle hover:-translate-y-0.5 transition-[border-color,transform] duration-150">
                   <span className="flex flex-wrap items-baseline gap-x-2">
                     <span className="font-jp text-lg md:text-xl text-fg whitespace-nowrap">{k.label}</span>
-                    <span className="ml-auto text-xs text-fg-subtle tabular-nums whitespace-nowrap">{k.answered} / {k.total} 题</span>
+                    <span className="ml-auto text-xs text-fg-subtle tabular-nums whitespace-nowrap">{shown} / {k.total} 题</span>
                   </span>
                   <span className="h-1.5 rounded-full bg-border overflow-hidden">
-                    <span className={clsx('block h-full', weak ? 'bg-danger' : 'bg-fg')} style={{ width: `${(k.answered / Math.max(1, k.total)) * 100}%` }} />
+                    <span className={clsx('block h-full', k.open_answered == null && weak ? 'bg-danger' : 'bg-fg')} style={{ width: `${(shown / Math.max(1, k.total)) * 100}%` }} />
                   </span>
-                  {acc != null && (
-                    <span className="text-sm text-fg-muted">正确率 <b className={clsx('ml-1', weak ? 'text-danger-fg' : 'text-fg')}>{acc}%</b></span>
+                  {(acc != null || k.open_answered != null) && (
+                    <span className="flex flex-col gap-0.5 text-sm text-fg-muted">
+                      {k.open_answered != null && <span className="text-fg">进行中 · 已答 {k.open_answered} / {k.total}</span>}
+                      {acc != null && <span>{k.open_answered != null ? '上次' : ''}正确率 <b className={clsx('ml-1', weak ? 'text-danger-fg' : 'text-fg')}>{acc}%</b></span>}
+                    </span>
                   )}
                 </button>
               )
@@ -130,7 +135,10 @@ function outcome(r: PaperRecord) {
     }
     return <span className="text-fg"><b>{r.score ?? '—'}</b><span className="text-fg-muted"> / {r.max_total} 分</span></span>
   }
-  if (!r.finished || r.right == null) return <span className="text-fg-muted">已答 {r.answered} / {r.total}</span>
-  const weak = r.total > 0 && (r.right / r.total) * 100 < WEAK
-  return <span className="text-fg">对 <b className={weak ? 'text-danger-fg' : ''}>{r.right}</b><span className="text-fg-muted"> / {r.total}</span></span>
+  if (!r.finished || r.right == null) return <span className="text-fg-muted">进行中 · 已答 {r.answered} / {r.total}</span>
+  if (r.answered === 0) return <span className="text-fg-muted">答 0 / {r.total}</span>
+  const acc = Math.round((r.right / r.answered) * 100)
+  return (
+    <span className="text-fg-muted">答 {r.answered} / {r.total} · 正确率 <b className={acc < WEAK ? 'text-danger-fg' : 'text-fg'}>{acc}%</b></span>
+  )
 }
