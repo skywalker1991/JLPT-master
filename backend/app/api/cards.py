@@ -28,6 +28,9 @@ router = APIRouter(tags=["cards"])
 
 
 class CardDetailRequest(BaseModel):
+    # False: only what is already kept (null if nothing yet) — opening a card
+    # costs nothing; examples are made when asked for.
+    generate: bool = True
     type: str = Field(pattern="^(vocabulary|grammar)$")
     key: str = Field(min_length=1, max_length=100)
     reading: str | None = Field(default=None, max_length=100)
@@ -135,6 +138,8 @@ async def card_detail(body: CardDetailRequest, db: AsyncSession = Depends(get_db
     )).scalar_one_or_none()
     if cached is not None:
         return cached
+    if not body.generate:
+        return None
 
     if body.type == "vocabulary":
         schema = _VOCAB_SCHEMA

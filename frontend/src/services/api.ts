@@ -658,10 +658,11 @@ export async function retrySentence(analysisId: string, index: number): Promise<
 }
 
 /** Examples, other spellings and usage rules for a card; generated once, then cached. */
+/** generate=false: only what is already kept (null if nothing yet), costs nothing. */
 export async function getCardDetail(req: {
-  type: 'vocabulary' | 'grammar'; key: string; reading?: string | null; meaning?: string | null
-}): Promise<CardDetail> {
-  return request<CardDetail>('/api/cards/detail', { method: 'POST', body: JSON.stringify(req) })
+  type: 'vocabulary' | 'grammar'; key: string; reading?: string | null; meaning?: string | null; generate?: boolean
+}): Promise<CardDetail | null> {
+  return request<CardDetail | null>('/api/cards/detail', { method: 'POST', body: JSON.stringify(req) })
 }
 
 /** Keep this sentence under an entry already in the library (noting another spelling, if any). */

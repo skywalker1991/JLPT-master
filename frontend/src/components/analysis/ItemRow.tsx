@@ -8,7 +8,7 @@ import { useToast } from '../../context/ToastContext'
 import { useOccurrence } from './useOccurrence'
 import { AskContext, AttachButton } from './AskPanel'
 import { grammarKey, grammarPieces, vocabKey } from '../../utils/marks'
-import { Connected } from '../shared/Motion'
+import { Connected, Thinking } from '../shared/Motion'
 
 type Props = {
   /** Already in the library: its atom id */
@@ -236,12 +236,18 @@ function CardBody(props: Props & { meaningHere: string; onSupplemented: () => vo
   const [showExamples, setShowExamples] = useState(!atomId)
   const [supplemented, setSupplemented] = useState(false)
 
-  const load = () => {
+  // Opening a card only shows examples already made (by anyone); making them
+  // is a choice — 「生成 AI 例句」 — since it costs a model call.
+  const [generating, setGenerating] = useState(false)
+  const req = { type: (vocab ? 'vocabulary' : 'grammar') as 'vocabulary' | 'grammar', key, reading: vocab?.reading, meaning: props.item.meaning }
+  useEffect(() => {
+    getCardDetail({ ...req, generate: false }).then(setDetail).catch(() => {})
+  }, [key]) // eslint-disable-line react-hooks/exhaustive-deps
+  const generate = async () => {
     setFailed(false)
-    getCardDetail({ type: vocab ? 'vocabulary' : 'grammar', key, reading: vocab?.reading, meaning: props.item.meaning })
-      .then(setDetail).catch(() => setFailed(true))
+    setGenerating(true)
+    try { setDetail(await getCardDetail({ ...req, generate: true })) } catch { setFailed(true) } finally { setGenerating(false) }
   }
-  useEffect(load, [key]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Already in the library: this sentence is kept under it (no tap needed),
   // and the card shows the sentences kept before.
@@ -269,28 +275,28 @@ function CardBody(props: Props & { meaningHere: string; onSupplemented: () => vo
     props.onSupplemented()
   }
 
-  const examples = (
+  const examples = detail ? (
     <section className="flex flex-col gap-2">
       <button type="button" onClick={() => setShowExamples(s => !s)} aria-expanded={showExamples}
               className="flex items-baseline gap-2 text-left">
-        <span className="text-xs font-semibold text-fg-muted">AI 例句{atomId && detail ? ` ${detail.examples.length} 句` : ''}</span>
+        <span className="text-xs font-semibold text-fg-muted">AI 例句{atomId ? ` ${detail.examples.length} 句` : ''}</span>
         {atomId && <ChevronRight className={clsx('w-3.5 h-3.5 text-fg-subtle self-center transition-transform', showExamples && 'rotate-90')} />}
       </button>
-      {showExamples && (failed ? (
-        <button type="button" onClick={load} className="self-start btn h-8 text-xs border border-border">
-          <RotateCcw className="w-3.5 h-3.5" />例句没生成出来，重试
-        </button>
-      ) : !detail ? (
-        <div className="flex flex-col gap-2" aria-label="例句生成中">
-          {[0, 1, 2].map(i => <div key={i} className="h-14 rounded-lg bg-accent-light animate-pulse" />)}
-        </div>
-      ) : detail.examples.map((e, i) => (
-        <div key={i} className="rounded-lg border border-dashed border-border px-3 py-2.5 flex flex-col gap-1">
+      {showExamples && detail.examples.map((e, i) => (
+        <div key={i} className="rounded-lg border border-dashed border-border px-3 py-2.5 flex flex-col gap-1 animate-rise-in"
+             style={{ animationDelay: `${i * 60}ms` }}>
           <p className="font-jp text-[0.9375rem] text-fg leading-relaxed"><Marked text={e.ja} /></p>
           <p className="text-xs text-fg-muted leading-relaxed">{e.zh}</p>
         </div>
-      )))}
+      ))}
     </section>
+  ) : (
+    <button type="button" onClick={() => void generate()} disabled={generating}
+            className="self-start btn h-9 text-sm border border-dashed border-fg-subtle text-fg-muted hover:text-fg">
+      {generating ? <><Thinking className="w-4 h-4" />正在生成例句</>
+        : failed ? <><RotateCcw className="w-3.5 h-3.5" />没生成出来，再试一次</>
+        : '生成 AI 例句'}
+    </button>
   )
 
   return (
