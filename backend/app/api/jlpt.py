@@ -208,12 +208,12 @@ async def practice(
         units.sort(key=rank)
         units = units[: count or (3 if category in ("reading", "listening") else 10)]
 
-    # Practice shows the explanation right after each answer; start on them
-    # now so most are ready by then. Explanations are shared and kept, so
-    # each question is explained once for everyone.
-    item_ids = [r[0].id for unit in units for r in unit]
-    _background.add(task := asyncio.create_task(prepare_analyses(item_ids)))
-    task.add_done_callback(_background.discard)
+    if run is None:
+        # A mixed set shows explanations as it goes; start on them now.
+        # (A pass is explained when it is handed in — see submit_run.)
+        item_ids = [r[0].id for unit in units for r in unit]
+        _background.add(task := asyncio.create_task(prepare_analyses(item_ids)))
+        task.add_done_callback(_background.discard)
 
     out = []
     for unit in units:
@@ -258,6 +258,19 @@ async def submit_run(run_id: UUID, db: AsyncSession = Depends(get_db), user: Use
     if run.submitted_at is None:
         run.submitted_at = datetime.now(timezone.utc)
         await db.commit()
+
+    # Explain the whole pass now, in the background: the ones got wrong
+    # first, then the ones left blank, then the rest. Explanations are shared
+    # and kept, so each question is explained once for everyone.
+    paper = await db.get(ExamPaper, run.paper_id)
+    level = (paper.level or "N1").upper()
+    items = [r[0] for r in await _bank(db) if r[3].id == run.paper_id
+             and (c := jp.category_of(r[2].name, r[1].name, level)) and jp.group_of(c) == run.kind]
+    got = {a.item_id: a.is_correct for a in (await db.execute(
+        select(PracticeAnswer).where(PracticeAnswer.run_id == run.id))).scalars()}
+    order = sorted(items, key=lambda i: 0 if got.get(i.id) is False else 1 if i.id not in got else 2)
+    _background.add(task := asyncio.create_task(prepare_analyses([i.id for i in order])))
+    task.add_done_callback(_background.discard)
     return {"ok": True}
 
 
@@ -541,12 +554,13 @@ from app.services.llm.factory import get_llm_client  # noqa: E402
 async def review_item(
     item_id: UUID,
     attempt_id: UUID | None = None,
+    run_id: UUID | None = None,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(current_user),
 ):
     """One question as it was answered: the whole 問題 it belongs to (with the
     answers, now that it is answered), what was chosen — in this mock exam,
-    or else most recently in practice — and how its siblings went."""
+    in this practice pass, or else most recently — and how its siblings went."""
     row = (await db.execute(
         select(ExamItem, ExamProblem, ExamSection, ExamPaper)
         .join(ExamProblem, ExamProblem.id == ExamItem.problem_id)
@@ -559,7 +573,13 @@ async def review_item(
     item, prob, sec, paper = row
 
     chosen: dict[UUID, tuple[str, bool]] = {}
-    if attempt_id is not None:
+    if run_id is not None:
+        run = await _own_run(db, run_id, user)
+        if run.submitted_at is None:
+            raise HTTPException(status_code=409, detail="这一遍还没提交")
+        for x in (await db.execute(select(PracticeAnswer).where(PracticeAnswer.run_id == run.id))).scalars():
+            chosen[x.item_id] = (x.user_answer, x.is_correct)
+    elif attempt_id is not None:
         a = await db.get(ExamAttempt, attempt_id)
         if a is None or a.user_id != user.id:
             raise HTTPException(status_code=404, detail="没有这次作答")
@@ -574,7 +594,9 @@ async def review_item(
             .where(ExamAttempt.user_id == user.id)
         )).all() + (await db.execute(
             select(PracticeAnswer.item_id, PracticeAnswer.user_answer, PracticeAnswer.is_correct, PracticeAnswer.created_at)
-            .where(PracticeAnswer.user_id == user.id)
+            .outerjoin(PracticeRun, PracticeRun.id == PracticeAnswer.run_id)
+            .where(PracticeAnswer.user_id == user.id,
+                   (PracticeAnswer.run_id.is_(None)) | (PracticeRun.submitted_at.is_not(None)))
         )).all()
         for iid, ans, ok, when in rows:
             if iid not in latest or when >= latest[iid][2]:

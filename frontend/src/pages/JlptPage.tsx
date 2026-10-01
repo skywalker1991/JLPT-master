@@ -20,7 +20,7 @@ type View =
   | { kind: 'practice'; paperId: string; runId: string; category: string; label: string }
   | { kind: 'mock'; attemptId: string; paperId: string }
   | { kind: 'result'; attemptId: string; paperId: string }
-  | { kind: 'review'; itemIds: string[]; attemptId: string | null; back: View; backLabel: string; startAt?: number }
+  | { kind: 'review'; itemIds: string[]; attemptId: string | null; runId?: string; back: View; backLabel: string; startAt?: number }
   | { kind: 'mistakes' }
 
 export default function JlptPage() {
@@ -67,10 +67,10 @@ export default function JlptPage() {
           <PracticeSession key={practice.runId} category={practice.category} level={level} runId={practice.runId} label={practice.label}
                            onExit={() => setView({ kind: 'paper', paperId: practice.paperId })}
                            onAgain={() => practise(practice.paperId, practice.category, practice.label, null)}
-                           onOpenAnalysis={(_, itemId) => setView({ kind: 'review', itemIds: [itemId], attemptId: null, back: practice, backLabel: '练习' })} />
+                           onOpenAnalysis={(_, itemId) => setView({ kind: 'review', itemIds: [itemId], attemptId: null, runId: practice.runId, back: practice, backLabel: '练习' })} />
         </div>
         {view.kind === 'review' && (
-          <ReviewView itemIds={view.itemIds} attemptId={view.attemptId} backLabel={view.backLabel} onBack={() => setView(view.back)} />
+          <ReviewView itemIds={view.itemIds} attemptId={view.attemptId} runId={view.runId} backLabel={view.backLabel} onBack={() => setView(view.back)} />
         )}
       </>
     )

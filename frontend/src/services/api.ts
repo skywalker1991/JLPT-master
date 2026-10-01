@@ -403,8 +403,9 @@ export async function submitSection(
   )
 }
 
+/** An item's explanation; `pending` when it is still being made (the request doesn't wait for it). */
 export async function getItemAnalysis(itemId: string): Promise<QuestionAnalysisResponse> {
-  return request<QuestionAnalysisResponse>(`/api/items/${itemId}/analysis`)
+  return request<QuestionAnalysisResponse>(`/api/items/${itemId}/analysis?wait=false`)
 }
 
 export async function getProblemAnalysis(problemId: string): Promise<{ problem_id: string; session_data: Record<string, unknown>; cached: boolean }> {
@@ -744,8 +745,9 @@ export async function getMockResult(attemptId: string): Promise<MockResult> {
   return request<MockResult>(`/api/jlpt/mock/${attemptId}/result`)
 }
 
-export async function getItemReview(itemId: string, attemptId?: string | null): Promise<ItemReview> {
-  return request<ItemReview>(`/api/jlpt/review/${itemId}${attemptId ? `?attempt_id=${attemptId}` : ''}`)
+export async function getItemReview(itemId: string, attemptId?: string | null, runId?: string | null): Promise<ItemReview> {
+  const q = attemptId ? `?attempt_id=${attemptId}` : runId ? `?run_id=${runId}` : ''
+  return request<ItemReview>(`/api/jlpt/review/${itemId}${q}`)
 }
 
 export async function askItem(itemId: string, body: { question: string; targets: string[]; chosen?: string | null }): Promise<ItemAskEntry> {

@@ -286,6 +286,8 @@ export interface QuestionAnalysisResponse {
   session_data: Record<string, unknown> | null
   relations_suggested: RelationSuggestion[]
   cached: boolean
+  /** Still being made: ask again shortly */
+  pending?: boolean
 }
 
 export interface CategoryAccuracy {

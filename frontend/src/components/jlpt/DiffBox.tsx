@@ -25,11 +25,25 @@ export function useItemAnalysis(itemId: string, enabled = true) {
   useEffect(() => {
     if (!enabled) return
     let live = true
+    let timer: ReturnType<typeof setTimeout> | undefined
     setFailed(false)
-    getItemAnalysis(itemId)
-      .then(r => { if (live) setAnalysis(normalize((r.session_data as ItemAnalysis) ?? {})) })
-      .catch(() => { if (live) setFailed(true) })
-    return () => { live = false }
+    // Still being made: ask again, less often as time goes on; give up after
+    // about three minutes (the retry button starts over)
+    const ask = (n: number) => {
+      getItemAnalysis(itemId)
+        .then(r => {
+          if (!live) return
+          if (r.pending) {
+            if (n >= 40) setFailed(true)
+            else timer = setTimeout(() => ask(n + 1), Math.min(2000 + n * 500, 6000))
+            return
+          }
+          setAnalysis(normalize((r.session_data as ItemAnalysis) ?? {}))
+        })
+        .catch(() => { if (live) setFailed(true) })
+    }
+    ask(0)
+    return () => { live = false; clearTimeout(timer) }
   }, [itemId, enabled, attempt])
   return { analysis, failed, retry: () => setAttempt(a => a + 1) }
 }

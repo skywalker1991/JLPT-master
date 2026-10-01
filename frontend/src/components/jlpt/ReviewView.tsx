@@ -27,9 +27,11 @@ const READING_TYPES = new Set(['reading_comp', 'passage_fill', 'listening', 'sen
  * right answer and 差在哪, the question's words and grammar to keep, and a
  * box to ask about it.
  */
-export default function ReviewView({ itemIds, attemptId, backLabel, onBack, startAt = 0 }: {
+export default function ReviewView({ itemIds, attemptId, runId, backLabel, onBack, startAt = 0 }: {
   itemIds: string[]
   attemptId?: string | null
+  /** A practice pass: show its answers */
+  runId?: string | null
   backLabel: string
   onBack: () => void
   startAt?: number
@@ -41,8 +43,8 @@ export default function ReviewView({ itemIds, attemptId, backLabel, onBack, star
 
   useEffect(() => {
     setData(null)
-    getItemReview(current, attemptId).then(setData).catch(() => toast('这道题没取到', 'error'))
-  }, [current, attemptId, toast])
+    getItemReview(current, attemptId, runId).then(setData).catch(() => toast('这道题没取到', 'error'))
+  }, [current, attemptId, runId, toast])
 
   const goList = (i: number) => { setAt(i); setCurrent(itemIds[i]) }
 

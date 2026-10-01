@@ -145,6 +145,8 @@ class QuestionAnalysisResponse(BaseModel):
     session_data: dict | None
     relations_suggested: list[RelationSuggestion]
     cached: bool
+    # Still being made: ask again shortly
+    pending: bool = False
 
 
 # ── Stats ─────────────────────────────────────────────────────────────────────

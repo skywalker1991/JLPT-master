@@ -4,7 +4,7 @@ import re
 import logging
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
 
 from app.api.deps import current_user, require_admin
 from sqlalchemy import delete, distinct, select, func, update
@@ -1106,12 +1106,32 @@ async def submit_section(
 # ── AI 分析（懒生成+缓存）────────────────────────────────────────────────────
 
 @router.get("/items/{item_id}/analysis", response_model=QuestionAnalysisResponse)
-async def get_item_analysis(item_id: UUID, db: AsyncSession = Depends(get_db)):
+async def get_item_analysis(
+    item_id: UUID,
+    wait: bool = Query(default=True, description="false: don't hold the request while it is made; answer pending and ask again"),
+    db: AsyncSession = Depends(get_db),
+):
     item = await db.get(ExamItem, item_id)
     if item is None:
         raise HTTPException(status_code=404, detail="Item not found")
 
     problem = await db.get(ExamProblem, item.problem_id)
+
+    if not wait:
+        # A page shows many explanations at once; a request held open for each
+        # one being made would use up the browser's few connections to the
+        # server and leave everything else on the page waiting behind them.
+        cached = (await db.execute(
+            select(QuestionAnalysis).where(QuestionAnalysis.item_id == item_id)
+        )).scalar_one_or_none()
+        if _is_current(cached, problem.type):
+            return QuestionAnalysisResponse(item_id=item_id, session_data=cached.session_data,
+                                            relations_suggested=[], cached=True)
+        if item_id not in _in_flight:
+            _started.add(task := asyncio.create_task(prepare_analyses([item_id], concurrency=1)))
+            task.add_done_callback(_started.discard)
+        return QuestionAnalysisResponse(item_id=item_id, session_data=None, relations_suggested=[],
+                                        cached=False, pending=True)
 
     if item_id in _in_flight:  # being made in the background: wait for that one
         await asyncio.shield(_in_flight[item_id])
@@ -1535,6 +1555,7 @@ async def _analyse_item(item, problem, db) -> dict | None:
 # Explanations being made in the background right now, so asking for one
 # that is on its way waits for it instead of paying for it twice.
 _in_flight: dict[UUID, asyncio.Future] = {}
+_started: set = set()
 
 
 async def prepare_analyses(item_ids: list[UUID], concurrency: int = 3) -> None:

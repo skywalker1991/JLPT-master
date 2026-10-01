@@ -9,12 +9,11 @@ import { useToast } from '../../context/ToastContext'
 import Passage from '../exam/Passage'
 import PlayAudio from '../exam/PlayAudio'
 import QuestionBlock from './QuestionBlock'
-import DiffBox from './DiffBox'
 
 /**
  * One pass through a paper's questions of one kind, as printed, no clock.
  * Answers can be changed until the pass is handed in (提交); then every
- * question shows the right option, the one chosen, and 差在哪.
+ * question shows right or wrong, and its explanation is one tap away.
  */
 export default function PracticeSession({ category, level, runId, label, onExit, onAgain, onOpenAnalysis }: {
   category: string
@@ -133,14 +132,9 @@ export default function PracticeSession({ category, level, runId, label, onExit,
     </div>
   )
 
-  const after = (unit: { paper: string; problem: PracticeUnit['problem'] }) => (it: ItemSchema) => correct && (
-    <div className="flex flex-col gap-2 pt-1">
-      {chosen[it.id] && <DiffBox itemId={it.id} type={unit.problem.type} chosen={chosen[it.id]} correct={correct[it.id]} />}
-      {onOpenAnalysis && (
-        <button type="button" onClick={() => onOpenAnalysis({ paper: unit.paper, section: '', problem: unit.problem }, it.id)}
-                className="self-start text-sm text-fg underline underline-offset-4">看完整解析 ›</button>
-      )}
-    </div>
+  const after = (unit: { paper: string; problem: PracticeUnit['problem'] }) => (it: ItemSchema) => correct && onOpenAnalysis && (
+    <button type="button" onClick={() => onOpenAnalysis({ paper: unit.paper, section: '', problem: unit.problem }, it.id)}
+            className="text-sm text-fg-muted hover:text-fg underline underline-offset-4">看完整解析 ›</button>
   )
 
   // Desktop: the paper's 問題 as printed pages
