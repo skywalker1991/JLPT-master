@@ -63,6 +63,12 @@ async def _cards(db: AsyncSession, atoms: list[Atom], states: dict[UUID, AtomSrs
             "level": level,
             "meaning": "；".join(meanings[:2]) if meanings else None,
             "connection": next((x.value for x in p if x.kind == "connection"), None),
+            # The rest of what the entry holds, for the back of the card
+            "part_of_speech": next((x.value for x in p if x.kind == "part_of_speech"), None),
+            "register": next((x.value for x in p if x.kind == "register"), None),
+            "usage": next((x.value for x in p if x.kind == "usage"), None),
+            "nuance": next((x.value for x in p if x.kind == "nuance"), None),
+            "examples": list(dict.fromkeys(x.value for x in p if x.kind == "example"))[:2],
             "is_new": srs is None,
             "familiar": bool(srs and (srs.stability or 0) >= review_service.FAMILIAR_DAYS),
             "mode": review_service.front_mode(atom.type, srs.stability if srs else None, shown is not None),
@@ -72,15 +78,15 @@ async def _cards(db: AsyncSession, atoms: list[Atom], states: dict[UUID, AtomSrs
                 "surface": shown.surface,
                 "meaning_here": shown.surface_meaning,
                 "met_at": shown.created_at.isoformat(),
-                "source": "语料分析" if shown.analysis_id else "JLPT",
+                "source": "精读" if shown.analysis_id else "JLPT",
             } if shown else None,
             "sentences": [
                 {"text": o.sentence_text, "surface": o.surface, "met_at": o.created_at.isoformat(),
-                 "source": "语料分析" if o.analysis_id else "JLPT", "current": o is shown}
+                 "source": "精读" if o.analysis_id else "JLPT", "current": o is shown}
                 for o in sentences
             ],
             "relations": [
-                {"key": r["target"]["key"], "type": r["type"]} for r in relations if r.get("target")
+                {"key": r["target"]["key"], "type": r["type"], "note": r.get("note")} for r in relations if r.get("target")
             ],
         })
     return out
@@ -122,10 +128,11 @@ async def today(
         .order_by(Atom.created_at)
         .limit(new_room)
     )).scalars().all() if new_room else []
+    # New cards that could be had today (one added today waits for tomorrow)
     waiting_new = (await db.execute(
         select(func.count()).select_from(Atom)
         .outerjoin(AtomSrsState, AtomSrsState.atom_id == Atom.id)
-        .where(Atom.user_id == user.id, AtomSrsState.atom_id.is_(None))
+        .where(Atom.user_id == user.id, AtomSrsState.atom_id.is_(None), Atom.created_at < day.start)
     )).scalar_one()
 
     states = {srs.atom_id: srs for _, srs in due_rows}

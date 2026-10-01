@@ -156,7 +156,7 @@ async def sources(db: AsyncSession = Depends(get_db), user: User = Depends(curre
         out.append({
             "analysis_id": str(analysis_id) if analysis_id else None,
             "title": first or (an.input_content[:40] if an and an.input_content else "JLPT 真题"),
-            "source": "语料分析" if analysis_id else "JLPT",
+            "source": "精读" if analysis_id else "JLPT",
             "date": g["when"].isoformat(),
             "entries": [{"id": str(a.id), "key": a.key} for a in g["atoms"].values()],
         })
@@ -201,7 +201,7 @@ async def entry(atom_id: UUID, db: AsyncSession = Depends(get_db), user: User = 
             "other": {"id": str(o.id), "key": o.key, "reading": o.reading or _pick(oprops[oid], "reading")[0],
                       "meaning": _pick(oprops[oid], "meaning")[0],
                       "sentence": {"text": s.sentence_text, "date": s.created_at.isoformat(),
-                                   "source": "语料分析" if s.analysis_id else "JLPT"} if s else None},
+                                   "source": "精读" if s.analysis_id else "JLPT"} if s else None},
         })
 
     return {
@@ -210,7 +210,7 @@ async def entry(atom_id: UUID, db: AsyncSession = Depends(get_db), user: User = 
         "sentences": [{
             "id": str(o.id), "text": o.sentence_text, "translation": o.sentence_translation,
             "surface": o.surface, "meaning_here": o.surface_meaning, "date": o.created_at.isoformat(),
-            "source": "语料分析" if o.analysis_id else "JLPT", "analysis_id": str(o.analysis_id) if o.analysis_id else None,
+            "source": "精读" if o.analysis_id else "JLPT", "analysis_id": str(o.analysis_id) if o.analysis_id else None,
         } for o in occs],
         "review": {
             "familiarity": familiarity(srs),
@@ -345,7 +345,7 @@ async def export_csv(db: AsyncSession = Depends(get_db), user: User = Depends(cu
                 "词汇" if a.type == "vocabulary" else "语法", a.key, e["reading"] or "", e["meaning"] or "",
                 e["level"] or "", label[e["familiarity"]], a.created_at.date().isoformat(),
                 o.sentence_text if o else "", (o.sentence_translation or "") if o else "",
-                ("语料分析" if o.analysis_id else "JLPT") if o else "",
+                ("精读" if o.analysis_id else "JLPT") if o else "",
             ])
     return Response(
         content="﻿" + buf.getvalue(),  # BOM so Excel opens it as UTF-8

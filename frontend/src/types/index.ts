@@ -520,13 +520,18 @@ export interface ReviewCard {
   level: string | null
   meaning: string | null
   connection: string | null
+  part_of_speech?: string | null
+  register?: string | null
+  usage?: string | null
+  nuance?: string | null
+  examples?: string[]
   is_new: boolean
   familiar: boolean
   /** word: no sentence yet; recognize: word marked in its sentence; cloze: blanked, with translation */
   mode: 'word' | 'recognize' | 'cloze'
   sentence: ReviewSentence | null
   sentences: ReviewSentence[]
-  relations: { key: string; type: string }[]
+  relations: { key: string; type: string; note?: string | null }[]
 }
 
 export interface ReviewToday {
