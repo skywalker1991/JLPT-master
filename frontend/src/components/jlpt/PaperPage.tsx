@@ -107,7 +107,7 @@ export default function PaperPage({ problem, answers, onChoose, flags, onFlag, c
                 )
               })}
             </div>
-            {after && chosen && <div className="pl-[2.75rem] font-sans">{after(item)}</div>}
+            {(() => { const below = after?.(item); return below ? <div className="pl-[2.75rem] font-sans">{below}</div> : null })()}
           </section>
         )
       })}
