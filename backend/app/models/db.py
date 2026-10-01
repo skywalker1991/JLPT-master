@@ -624,6 +624,18 @@ class ExamItemReport(Base):
     )
 
 
+class PracticeRun(Base):
+    """One pass through one paper's questions of one kind."""
+
+    __tablename__ = "practice_runs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    paper_id = Column(UUID(as_uuid=True), ForeignKey("exam_papers.id", ondelete="CASCADE"), nullable=False)
+    kind = Column(String(20), nullable=False)
+    started_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+
+
 class PracticeAnswer(Base):
     """One answer given while practising a question type across papers."""
 
@@ -634,6 +646,7 @@ class PracticeAnswer(Base):
     item_id = Column(UUID(as_uuid=True), ForeignKey("exam_items.id", ondelete="CASCADE"), nullable=False)
     user_answer = Column(String(10), nullable=False)
     is_correct = Column(Boolean, nullable=False)
+    run_id = Column(UUID(as_uuid=True), ForeignKey("practice_runs.id", ondelete="CASCADE"), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
 
     __table_args__ = (

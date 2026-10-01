@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import current_user
 from app.api.exam import prepare_analyses, problem_detail
 from app.models.db import (
-    AttemptAnswer, ExamAttempt, ExamItem, ExamPaper, ExamProblem, ExamSection, PracticeAnswer, User, get_db,
+    AttemptAnswer, ExamAttempt, ExamItem, ExamPaper, ExamProblem, ExamSection, PracticeAnswer, PracticeRun, User, get_db,
 )
 from app.services import jlpt_practice as jp
 
@@ -168,12 +168,20 @@ async def practice(
     category: str,
     level: str = Query(default="N1", pattern="^N[1-5]$"),
     paper_id: UUID | None = Query(default=None, description="Only this paper, in its own order"),
+    run_id: UUID | None = Query(default=None, description="A pass through one paper's kind: its questions and the answers given so far"),
     count: int | None = Query(default=None, ge=1, le=30),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(current_user),
 ):
     """Questions of one type from all papers: ones never answered first, then
-    ones last answered wrong, then the rest — each group shuffled."""
+    ones last answered wrong, then the rest — each group shuffled. With a
+    run, one paper's questions of the type as printed, and the run's answers."""
+    run = None
+    if run_id is not None:
+        run = await _own_run(db, run_id, user)
+        category, paper_id = run.kind, run.paper_id
+        paper = await db.get(ExamPaper, paper_id)
+        level = (paper.level or "N1").upper()
     if category not in jp.GROUP_LABEL:
         raise HTTPException(status_code=404, detail="没有这一类")
     rows = [r for r in await _bank(db) if (r[3].level or "N1").upper() == level
@@ -211,12 +219,44 @@ async def practice(
         detail.items = [i for i in detail.items if i.id in keep]
         out.append({"paper": jp.paper_label(paper.source, paper.title), "section": sec.name,
                     "problem": detail.model_dump(mode="json")})
-    return {"category": {"id": category, "label": jp.GROUP_LABEL[category]}, "units": out}
+    answers = {}
+    if run is not None:
+        correct = {r[0].id: r[0].correct_answer for unit in units for r in unit}
+        for a in (await db.execute(
+            select(PracticeAnswer).where(PracticeAnswer.run_id == run.id).order_by(PracticeAnswer.created_at)
+        )).scalars():
+            answers[str(a.item_id)] = {"chosen": a.user_answer, "correct": correct.get(a.item_id) or "", "right": a.is_correct}
+    return {"category": {"id": category, "label": jp.GROUP_LABEL[category]}, "units": out, "answers": answers}
+
+
+async def _own_run(db: AsyncSession, run_id: UUID, user: User) -> PracticeRun:
+    run = await db.get(PracticeRun, run_id)
+    if run is None or run.user_id != user.id:
+        raise HTTPException(status_code=404, detail="没有这次练习")
+    return run
+
+
+class RunBody(BaseModel):
+    kind: str
+
+
+@router.post("/jlpt/papers/{paper_id}/runs")
+async def start_run(paper_id: UUID, body: RunBody, db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
+    """Start a new pass through this paper's questions of one kind."""
+    if await db.get(ExamPaper, paper_id) is None:
+        raise HTTPException(status_code=404, detail="没有这套试卷")
+    if body.kind not in jp.GROUP_LABEL:
+        raise HTTPException(status_code=404, detail="没有这一类")
+    run = PracticeRun(user_id=user.id, paper_id=paper_id, kind=body.kind)
+    db.add(run)
+    await db.commit()
+    return {"run_id": str(run.id)}
 
 
 class PracticeAnswerBody(BaseModel):
     item_id: UUID
     answer: str = Field(min_length=1, max_length=10)
+    run_id: UUID | None = None
 
 
 @router.post("/jlpt/practice/answer")
@@ -224,8 +264,11 @@ async def answer(body: PracticeAnswerBody, db: AsyncSession = Depends(get_db), u
     item = await db.get(ExamItem, body.item_id)
     if item is None:
         raise HTTPException(status_code=404, detail="没有这道题")
+    if body.run_id is not None:
+        await _own_run(db, body.run_id, user)
     ok = item.correct_answer is not None and body.answer.strip() == item.correct_answer
-    db.add(PracticeAnswer(user_id=user.id, item_id=item.id, user_answer=body.answer.strip(), is_correct=ok))
+    db.add(PracticeAnswer(user_id=user.id, item_id=item.id, user_answer=body.answer.strip(), is_correct=ok,
+                          run_id=body.run_id))
     await db.commit()
     return {"is_correct": ok, "correct_answer": item.correct_answer, "answer_order": item.answer_order}
 
@@ -725,33 +768,63 @@ async def paper_overview(paper_id: UUID, db: AsyncSession = Depends(get_db), use
         raise HTTPException(status_code=404, detail="没有这套试卷")
     level = (paper.level or "N1").upper()
     rows = [r for r in await _bank(db) if r[3].id == paper.id]
-    latest = _latest(await _answers(db, user.id))
-    kinds: dict[str, dict] = {}
+    kind_of: dict[UUID, str] = {}
+    totals: dict[str, int] = defaultdict(int)
     for item, prob, sec, _ in rows:
         cat = jp.category_of(sec.name, prob.name, level)
-        if cat is None:
-            continue
-        g = jp.group_of(cat)
-        k = kinds.setdefault(g, {"id": g, "label": jp.GROUP_LABEL[g], "total": 0, "answered": 0, "right": 0})
-        k["total"] += 1
-        if item.id in latest:
-            k["answered"] += 1
-            k["right"] += int(latest[item.id])
-    mock = (await db.execute(
-        select(ExamAttempt).where(ExamAttempt.user_id == user.id, ExamAttempt.paper_id == paper.id)
-        .order_by(ExamAttempt.started_at.desc())
+        if cat is not None:
+            kind_of[item.id] = jp.group_of(cat)
+            totals[kind_of[item.id]] += 1
+
+    # Each pass at a kind, with how far it got and how much was right
+    runs = (await db.execute(
+        select(PracticeRun).where(PracticeRun.user_id == user.id, PracticeRun.paper_id == paper.id)
+        .order_by(PracticeRun.started_at.desc())
     )).scalars().all()
-    mock = next((a for a in mock if (a.meta or {}).get("mock")), None)
+    tally: dict[UUID, dict[UUID, bool]] = defaultdict(dict)
+    if runs:
+        for run_id, item_id, ok in (await db.execute(
+            select(PracticeAnswer.run_id, PracticeAnswer.item_id, PracticeAnswer.is_correct)
+            .where(PracticeAnswer.run_id.in_([r.id for r in runs])).order_by(PracticeAnswer.created_at)
+        )).all():
+            tally[run_id][item_id] = ok
+    records = []
+    for r in runs:
+        got = tally[r.id]
+        records.append({
+            "type": "practice", "id": str(r.id), "at": r.started_at.isoformat(), "kind": r.kind,
+            "label": jp.GROUP_LABEL.get(r.kind, r.kind), "total": totals.get(r.kind, 0),
+            "answered": len(got), "right": sum(got.values()),
+        })
+    for r in records:
+        r["finished"] = r["answered"] >= r["total"]
+
+    # A kind's card shows its latest pass
+    kinds = []
+    for g, label in jp.GROUPS:
+        if not totals.get(g):
+            continue
+        last = next((r for r in records if r["kind"] == g), None)
+        kinds.append({"id": g, "label": label, "total": totals[g],
+                      "answered": last["answered"] if last else 0, "right": last["right"] if last else 0,
+                      "run_id": last["id"] if last and not last["finished"] else None})
+
     lv = jp.level_of(level)
+    max_total = sum(p.max for p in lv.parts)
+    for a in (await db.execute(
+        select(ExamAttempt).where(ExamAttempt.user_id == user.id, ExamAttempt.paper_id == paper.id)
+    )).scalars():
+        meta = a.meta or {}
+        if not meta.get("mock"):
+            continue
+        records.append({
+            "type": "mock", "id": str(a.id), "at": a.started_at.isoformat(), "status": a.status,
+            "stage": meta.get("stage"), "remaining": _remaining(meta) if a.status == "in_progress" else None,
+            "score": meta.get("result", {}).get("total"), "max_total": max_total,
+        })
+    records.sort(key=lambda r: r["at"], reverse=True)
     return {
         "id": str(paper.id), "label": jp.paper_label(paper.source, paper.title), "level": level,
-        "kinds": [kinds[g] for g, _ in jp.GROUPS if g in kinds],
+        "kinds": kinds, "records": records,
         "written_minutes": lv.written_minutes, "listening_minutes": lv.listening_minutes,
-        "mock": None if mock is None else {
-            "attempt_id": str(mock.id), "status": mock.status,
-            "stage": (mock.meta or {}).get("stage"),
-            "remaining": _remaining(mock.meta or {}) if mock.status == "in_progress" else None,
-            "total": (mock.meta or {}).get("result", {}).get("total"),
-            "max_total": sum(p.max for p in lv.parts),
-        },
     }

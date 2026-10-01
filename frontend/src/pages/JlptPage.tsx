@@ -7,7 +7,7 @@ import MockExam from '../components/jlpt/MockExam'
 import MockResultView from '../components/jlpt/MockResultView'
 import ReviewView from '../components/jlpt/ReviewView'
 import MistakesView from '../components/jlpt/MistakesView'
-import { getJlptOverview, startMock } from '../services/api'
+import { getJlptOverview, startMock, startRun } from '../services/api'
 import { useSettings } from '../context/SettingsContext'
 import type { JlptOverview } from '../types'
 import PaperView from '../components/jlpt/PaperView'
@@ -17,7 +17,7 @@ import PaperView from '../components/jlpt/PaperView'
 type View =
   | { kind: 'home' }
   | { kind: 'paper'; paperId: string }
-  | { kind: 'practice'; paperId: string; category: string; label: string }
+  | { kind: 'practice'; paperId: string; runId: string; category: string; label: string }
   | { kind: 'mock'; attemptId: string; paperId: string }
   | { kind: 'result'; attemptId: string; paperId: string }
   | { kind: 'review'; itemIds: string[]; attemptId: string | null; back: View; backLabel: string; startAt?: number }
@@ -39,6 +39,23 @@ export default function JlptPage() {
 
   const home = () => setView({ kind: 'home' })
 
+  const practise = async (paperId: string, category: string, label: string, runId: string | null) => {
+    try {
+      const id = runId ?? (await startRun(paperId, category)).run_id
+      setView({ kind: 'practice', paperId, runId: id, category, label })
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '开始不了练习')
+    }
+  }
+  const mock = async (paperId: string) => {
+    try {
+      const { attempt_id } = await startMock(paperId)
+      setView({ kind: 'mock', attemptId: attempt_id, paperId })
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '开始不了这套卷子')
+    }
+  }
+
   // Practice stays mounted while one of its questions is looked at in full,
   // so coming back finds the set where it was.
   const practice = view.kind === 'practice' ? view
@@ -47,8 +64,9 @@ export default function JlptPage() {
     return (
       <>
         <div className={view.kind === 'practice' ? 'flex-1 min-h-0 flex flex-col' : 'hidden'}>
-          <PracticeSession category={practice.category} level={level} paperId={practice.paperId} label={practice.label}
+          <PracticeSession key={practice.runId} category={practice.category} level={level} runId={practice.runId} label={practice.label}
                            onExit={() => setView({ kind: 'paper', paperId: practice.paperId })}
+                           onAgain={() => practise(practice.paperId, practice.category, practice.label, null)}
                            onOpenAnalysis={(_, itemId) => setView({ kind: 'review', itemIds: [itemId], attemptId: null, back: practice, backLabel: '练习' })} />
         </div>
         {view.kind === 'review' && (
@@ -77,14 +95,13 @@ export default function JlptPage() {
     const paperId = view.paperId
     return (
       <PaperView paperId={paperId} onBack={home}
-                 onPractice={(category, label) => setView({ kind: 'practice', paperId, category, label })}
-                 onResult={attemptId => setView({ kind: 'result', attemptId, paperId })}
-                 onMock={async () => {
-                   try {
-                     const { attempt_id } = await startMock(paperId)
-                     setView({ kind: 'mock', attemptId: attempt_id, paperId })
-                   } catch (e) {
-                     setError(e instanceof Error ? e.message : '开始不了这套卷子')
+                 onPractice={(category, label, runId) => practise(paperId, category, label, runId)}
+                 onMock={() => mock(paperId)}
+                 onRecord={r => {
+                   if (r.type === 'mock') {
+                     setView(r.status === 'completed' ? { kind: 'result', attemptId: r.id, paperId } : { kind: 'mock', attemptId: r.id, paperId })
+                   } else {
+                     setView({ kind: 'practice', paperId, runId: r.id, category: r.kind, label: r.label })
                    }
                  }} />
     )

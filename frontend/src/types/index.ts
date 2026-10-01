@@ -671,11 +671,17 @@ export interface PaperOverview {
   id: string
   label: string
   level: string
-  kinds: { id: JlptCategory['id']; label: string; total: number; answered: number; right: number }[]
+  /** Each kind as its latest pass left it; run_id is that pass when unfinished */
+  kinds: { id: JlptCategory['id']; label: string; total: number; answered: number; right: number; run_id: string | null }[]
+  /** Every pass and mock exam at this paper, newest first */
+  records: PaperRecord[]
   written_minutes: number
   listening_minutes: number
-  mock: { attempt_id: string; status: 'in_progress' | 'completed'; stage: string | null; remaining: number | null; total: number | null; max_total: number } | null
 }
+
+export type PaperRecord =
+  | { type: 'practice'; id: string; at: string; kind: JlptCategory['id']; label: string; total: number; answered: number; right: number; finished: boolean }
+  | { type: 'mock'; id: string; at: string; status: 'in_progress' | 'completed'; stage: string | null; remaining: number | null; score: number | null; max_total: number }
 
 export interface JlptOverview {
   level: string

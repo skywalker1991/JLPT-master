@@ -686,16 +686,24 @@ export async function getJlptOverview(level: string): Promise<JlptOverview> {
   return request<JlptOverview>(`/api/jlpt/overview?level=${level}`)
 }
 
-export async function getPractice(category: string, level: string, paperId?: string | null): Promise<{ category: { id: string; label: string }; units: PracticeUnit[] }> {
-  return request(`/api/jlpt/practice/${category}?level=${level}${paperId ? `&paper_id=${paperId}` : ''}`)
+export async function getPractice(category: string, level: string, runId?: string | null): Promise<{
+  category: { id: string; label: string }; units: PracticeUnit[]
+  /** A run's answers so far, by item */
+  answers: Record<string, { chosen: string; correct: string; right: boolean }>
+}> {
+  return request(`/api/jlpt/practice/${category}?level=${level}${runId ? `&run_id=${runId}` : ''}`)
+}
+
+export async function startRun(paperId: string, kind: string): Promise<{ run_id: string }> {
+  return request(`/api/jlpt/papers/${paperId}/runs`, { method: 'POST', body: JSON.stringify({ kind }) })
 }
 
 export async function getPaperOverview(paperId: string): Promise<PaperOverview> {
   return request<PaperOverview>(`/api/jlpt/papers/${paperId}`)
 }
 
-export async function answerPractice(itemId: string, answer: string): Promise<{ is_correct: boolean; correct_answer: string | null; answer_order: string | null }> {
-  return request('/api/jlpt/practice/answer', { method: 'POST', body: JSON.stringify({ item_id: itemId, answer }) })
+export async function answerPractice(itemId: string, answer: string, runId?: string | null): Promise<{ is_correct: boolean; correct_answer: string | null; answer_order: string | null }> {
+  return request('/api/jlpt/practice/answer', { method: 'POST', body: JSON.stringify({ item_id: itemId, answer, run_id: runId ?? null }) })
 }
 
 // ---- Mock exam ----

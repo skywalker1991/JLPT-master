@@ -18,13 +18,15 @@ interface Result { chosen: string; correct: string; right: boolean }
  * Practice one question type across papers: no clock, and each answer is
  * told at once — the right option, the one chosen, and 差在哪.
  */
-export default function PracticeSession({ category, level, paperId, label, onExit, onOpenAnalysis }: {
+export default function PracticeSession({ category, level, runId, label, onExit, onAgain, onOpenAnalysis }: {
   category: string
   level: string
-  /** One paper's questions of this kind, as printed (otherwise a mixed set) */
-  paperId?: string | null
+  /** A pass through one paper's questions of this kind, as printed (otherwise a mixed set) */
+  runId?: string | null
   label: string
   onExit: () => void
+  /** Start a fresh pass (with a run) */
+  onAgain?: () => void
   onOpenAnalysis?: (unit: PracticeUnit, itemId: string) => void
 }) {
   const { toast } = useToast()
@@ -43,8 +45,17 @@ export default function PracticeSession({ category, level, paperId, label, onExi
     drawn.current = key
     setUnits(null)
     setAt(0)
-    getPractice(category, level, paperId).then(r => setUnits(r.units)).catch(() => toast('题目没取到，稍后再试', 'error'))
-  }, [category, round, toast])
+    getPractice(category, level, runId).then(r => {
+      // A pass left halfway opens where it stopped
+      const done = r.answers ?? {}
+      const open = (u: PracticeUnit) => u.problem.items.some(i => !done[i.id])
+      const page = pagesOf(r.units).findIndex(pg => pg.problem.items.some(i => !done[i.id]))
+      const unit = r.units.findIndex(open)
+      setResults(done)
+      setUnits(r.units)
+      setAt(Object.keys(done).length === 0 ? 0 : (desktop && runId ? (page < 0 ? r.units.length : page) : (unit < 0 ? r.units.length : unit)))
+    }).catch(() => toast('题目没取到，稍后再试', 'error'))
+  }, [category, round, toast]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const all = Object.values(results)
   const right = all.filter(r => r.right).length
@@ -52,7 +63,7 @@ export default function PracticeSession({ category, level, paperId, label, onExi
   const answer = async (itemId: string, option: string) => {
     if (results[itemId]) return
     try {
-      const r = await answerPractice(itemId, option)
+      const r = await answerPractice(itemId, option, runId)
       setResults(prev => ({ ...prev, [itemId]: { chosen: option, correct: r.correct_answer ?? '', right: r.is_correct } }))
     } catch {
       toast('没记上，请再选一次', 'error')
@@ -62,16 +73,16 @@ export default function PracticeSession({ category, level, paperId, label, onExi
   const header = (
     <header className="h-14 shrink-0 flex items-center gap-3 px-3 md:px-6 border-b border-border">
       <button type="button" onClick={onExit} className="flex items-center gap-0.5 text-sm text-fg-muted hover:text-fg h-10 pr-2">
-        <ChevronLeft className="w-4 h-4" />{paperId ? '回到试卷' : '结束练习'}
+        <ChevronLeft className="w-4 h-4" />{runId ? '回到试卷' : '结束练习'}
       </button>
       <span className="text-xs font-semibold rounded-full border border-fg px-2.5 py-0.5 text-fg">练习 · {label}</span>
       {units && units.length > 0 && (
         <span className="ml-auto flex items-center gap-3 text-xs text-fg-muted tabular-nums">
-          <span>{desktop && paperId
+          <span>{desktop && runId
             ? `已答 ${all.length} / ${units.reduce((n, u) => n + u.problem.items.length, 0)}`
             : `${Math.min(at + 1, units.length)} / ${units.length}`}</span>
           <span className="hidden sm:block w-40 h-1.5 rounded-full bg-border overflow-hidden">
-            <span className="block h-full bg-fg" style={{ width: `${(desktop && paperId
+            <span className="block h-full bg-fg" style={{ width: `${(desktop && runId
               ? all.length / Math.max(1, units.reduce((n, u) => n + u.problem.items.length, 0))
               : Math.min(at, units.length) / units.length) * 100}%` }} />
           </span>
@@ -92,12 +103,12 @@ export default function PracticeSession({ category, level, paperId, label, onExi
         <div className="flex-1 flex flex-col items-center justify-center gap-5 px-6 text-center">
           <Connected className="w-12 h-12" />
           <div className="flex flex-col gap-1">
-            <h2 className="text-xl font-bold text-fg">{paperId ? '这一类做完了' : '这组练完了'}</h2>
+            <h2 className="text-xl font-bold text-fg">{runId ? '这一类做完了' : '这组练完了'}</h2>
             <p className="text-sm text-fg-muted">对 {right} 题，错 {all.length - right} 题。错的会在之后的练习里再出现。</p>
           </div>
           <div className="flex gap-3">
-            <button type="button" onClick={onExit} className="btn h-11 px-5 border border-border text-fg">{paperId ? '回到试卷' : '回到 JLPT'}</button>
-            <button type="button" onClick={() => { setResults({}); setRound(r => r + 1) }} className="btn-primary h-11 px-5">{paperId ? '再做一遍' : '再练一组'}</button>
+            <button type="button" onClick={onExit} className="btn h-11 px-5 border border-border text-fg">{runId ? '回到试卷' : '回到 JLPT'}</button>
+            <button type="button" onClick={() => { if (onAgain) { onAgain(); return } setResults({}); setRound(r => r + 1) }} className="btn-primary h-11 px-5">{runId ? '再做一遍' : '再练一组'}</button>
           </div>
         </div>
       </div>
@@ -105,13 +116,8 @@ export default function PracticeSession({ category, level, paperId, label, onExi
   }
 
   // Desktop, one paper: its 問題 as printed pages, right / wrong under each answer
-  if (desktop && paperId) {
-    const pages: { paper: string; problem: PracticeUnit['problem'] }[] = []
-    for (const u of units) {
-      const last = pages[pages.length - 1]
-      if (last && last.problem.id === u.problem.id) last.problem = { ...last.problem, items: [...last.problem.items, ...u.problem.items] }
-      else pages.push({ paper: u.paper, problem: u.problem })
-    }
+  if (desktop && runId) {
+    const pages = pagesOf(units)
     const page = pages[Math.min(at, pages.length - 1)]
     const chosen = Object.fromEntries(Object.entries(results).map(([k, r]) => [k, r.chosen]))
     const correct = Object.fromEntries(Object.entries(results).map(([k, r]) => [k, r.correct]))
@@ -202,4 +208,15 @@ export default function PracticeSession({ category, level, paperId, label, onExi
       </div>
     </div>
   )
+}
+
+/** One paper's units as its printed pages: a 問題 split into passages joins up again. */
+function pagesOf(units: PracticeUnit[]): { paper: string; problem: PracticeUnit['problem'] }[] {
+  const pages: { paper: string; problem: PracticeUnit['problem'] }[] = []
+  for (const u of units) {
+    const last = pages[pages.length - 1]
+    if (last && last.problem.id === u.problem.id) last.problem = { ...last.problem, items: [...last.problem.items, ...u.problem.items] }
+    else pages.push({ paper: u.paper, problem: u.problem })
+  }
+  return pages
 }
