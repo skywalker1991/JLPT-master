@@ -11,6 +11,7 @@ import {
   MockResult,
   ItemReview,
   ItemAskEntry,
+  Recitation,
   CreateAtomRequest,
   CreateAtomResponse,
   AddPropertiesRequest,
@@ -741,4 +742,34 @@ export interface MistakeGroup {
 /** Questions last answered wrong, by question type. */
 export async function getJlptMistakes(): Promise<MistakeGroup[]> {
   return request<MistakeGroup[]>('/api/jlpt/mistakes')
+}
+
+// ---- Recitation (背诵) ----
+
+export async function getRecitations(): Promise<{ queue: Recitation[]; done: Recitation[] }> {
+  return request('/api/recite')
+}
+
+export async function addRecitation(analysisId: string): Promise<Recitation> {
+  return request<Recitation>('/api/recite', { method: 'POST', body: JSON.stringify({ analysis_id: analysisId }) })
+}
+
+export async function setRecitationProgress(id: string, progress: number): Promise<Recitation> {
+  return request<Recitation>(`/api/recite/${id}`, { method: 'PATCH', body: JSON.stringify({ progress }) })
+}
+
+export async function finishRecitation(id: string): Promise<Recitation> {
+  return request<Recitation>(`/api/recite/${id}/done`, { method: 'POST' })
+}
+
+export async function reciteAgain(id: string): Promise<Recitation> {
+  return request<Recitation>(`/api/recite/${id}/again`, { method: 'POST' })
+}
+
+export async function reorderRecitations(ids: string[]): Promise<void> {
+  await request('/api/recite/order', { method: 'PUT', body: JSON.stringify({ ids }) })
+}
+
+export async function removeRecitation(id: string): Promise<void> {
+  await request(`/api/recite/${id}`, { method: 'DELETE' })
 }

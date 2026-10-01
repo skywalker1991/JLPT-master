@@ -669,6 +669,28 @@ class PassageAnalysis(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
 
 
+class Recitation(Base):
+    """A passage to say by heart, waiting in the queue or done."""
+
+    __tablename__ = "recitations"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    analysis_id = Column(UUID(as_uuid=True), ForeignKey("analyses.id", ondelete="SET NULL"), nullable=True)
+    sentences = Column(JSONB, nullable=False)
+    status = Column(String(10), nullable=False, server_default=text("'queued'"))
+    position = Column(Integer, nullable=False, server_default=text("0"))
+    progress = Column(Integer, nullable=False, server_default=text("0"))
+    times_done = Column(Integer, nullable=False, server_default=text("0"))
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    done_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint("status IN ('queued', 'done')", name="ck_recitations_status"),
+        Index("ix_recitations_user", "user_id", "status", "position"),
+    )
+
+
 class ExamAttempt(Base):
     __tablename__ = "exam_attempts"
 

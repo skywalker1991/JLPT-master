@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import clsx from 'clsx'
-import { ChevronLeft, ChevronRight, Loader2, Menu, Plus, X } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, Loader2, Menu, Plus, X } from 'lucide-react'
 import { useAnalysis } from '../hooks/useAnalysis'
 import { useKnown } from '../hooks/useKnown'
 import { useSettings } from '../context/SettingsContext'
@@ -15,7 +15,7 @@ import { AskContext } from '../components/analysis/AskPanel'
 import { AskComposer, AskThread } from '../components/analysis/AskBox'
 import type { AnalysisRecord, AskTarget } from '../types'
 import type { Mark } from '../utils/marks'
-import { getAnalyses, getAnalysis, deleteAnalysis, retrySentence } from '../services/api'
+import { getAnalyses, getAnalysis, deleteAnalysis, retrySentence, addRecitation, getRecitations } from '../services/api'
 
 /**
  * 语料分析: paste a passage, read it whole with the gaps marked, pick a
@@ -44,6 +44,51 @@ export default function AnalysisPage() {
   const [sheetOpen, setSheetOpen] = useState(false)
   const [picked, setPicked] = useState<{ sentence: number; item: Mark['item'] } | null>(null)
   const [retrying, setRetrying] = useState<number | null>(null)
+  const [reciting, setReciting] = useState<'no' | 'adding' | 'queued'>('no')
+  const navigate = useNavigate()
+  const { search } = useLocation()
+
+  // Opened from elsewhere (背诵's 「回到语料重新学」): /?analysis=<id>
+  useEffect(() => {
+    const id = new URLSearchParams(search).get('analysis')
+    if (!isActive || !id || id === analysisId) return
+    getAnalysis(id).then(r => { restoreFromHistory(r); navigate('/', { replace: true }) }).catch(() => {})
+  }, [isActive, search]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Whether this passage is already waiting in the 背诵 queue
+  useEffect(() => {
+    setReciting('no')
+    if (!analysisId || isStreaming) return
+    getRecitations().then(r => {
+      if (r.queue.some(x => x.analysis_id === analysisId)) setReciting('queued')
+    }).catch(() => {})
+  }, [analysisId, isStreaming])
+
+  const recite = async () => {
+    if (!analysisId || reciting !== 'no') return
+    setReciting('adding')
+    try {
+      await addRecitation(analysisId)
+      setReciting('queued')
+      toast('整段排进了背诵队列', 'success')
+    } catch {
+      setReciting('no')
+      toast('没加上，请再试一次', 'error')
+    }
+  }
+
+  const reciteButton = analysisId && !isStreaming && (
+    reciting === 'queued' ? (
+      <Link to="/internalize?recite=1" className="btn h-9 text-sm text-success-fg border border-success/40">
+        <Check className="w-4 h-4" />在背诵队列里
+      </Link>
+    ) : (
+      <button type="button" onClick={() => void recite()} disabled={reciting === 'adding'}
+              className="btn h-9 text-sm border border-border text-fg hover:border-fg-subtle">
+        {reciting === 'adding' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}要背
+      </button>
+    )
+  )
 
   const hasResults = sentences.length > 0 || isStreaming
   const analysed = sentences.filter(s => s.analysis && !s.analysis.failed).length
@@ -238,9 +283,12 @@ export default function AnalysisPage() {
           </button>
           <span className="font-semibold text-fg">语料分析</span>
           {hasResults && (
-            <button type="button" onClick={handleNew} aria-label="新建分析" className="ml-auto w-11 h-11 flex items-center justify-center text-fg">
-              <Plus className="w-5 h-5" />
-            </button>
+            <>
+              <span className="ml-auto">{reciteButton}</span>
+              <button type="button" onClick={handleNew} aria-label="新建分析" className="w-11 h-11 flex items-center justify-center text-fg">
+                <Plus className="w-5 h-5" />
+              </button>
+            </>
           )}
         </header>
 
@@ -262,11 +310,11 @@ export default function AnalysisPage() {
                   <span className="text-sm text-fg-muted tabular-nums">
                     {sentences.length} 句{isStreaming && ` · 已分析 ${analysed} 句`}
                   </span>
-                  {isStreaming && (
+                  {isStreaming ? (
                     <span className="ml-auto flex items-center gap-2 text-sm text-fg-muted">
                       <Loader2 className="w-4 h-4 animate-spin" />还在分析，先读着
                     </span>
-                  )}
+                  ) : <span className="ml-auto">{reciteButton}</span>}
                 </div>
                 {isStreaming && sentences.length > 0 && (
                   <div className="h-1 rounded-full bg-border overflow-hidden" role="progressbar"
@@ -279,7 +327,7 @@ export default function AnalysisPage() {
                 <p className="text-xs text-fg-subtle">
                   <span className="hidden md:inline">点一句，在右边看译文和解析；</span>
                   <span className="md:hidden">点一句，从底部看译文和解析；</span>
-                  粗横杠是生词，细灰线是已在库，虚线是语法。
+                  粗横杠是生词，细灰线是已在库，虚线是语法；读完值得背就点「要背」。
                 </p>
                 <div className="hidden md:block"><AskThread /></div>
               </div>

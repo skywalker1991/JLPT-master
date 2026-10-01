@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Loader2 } from 'lucide-react'
-import type { ReviewSettings, ReviewToday } from '../types'
-import { getReviewSettings, getReviewToday, updateReviewSettings } from '../services/api'
+import type { Recitation, ReviewSettings, ReviewToday } from '../types'
+import { getRecitations, getReviewSettings, getReviewToday, updateReviewSettings } from '../services/api'
 import { useToast } from '../context/ToastContext'
 import ReviewSession from '../components/review/ReviewSession'
+import ReciteView from '../components/recite/ReciteView'
 import Logo from '../components/shared/Logo'
 
 const SECONDS_PER_CARD = 10
@@ -15,8 +16,19 @@ const SECONDS_PER_CARD = 10
  * when it is done, it is done (with the option of a few more new ones).
  */
 export default function InternalizePage() {
-  const { pathname } = useLocation()
+  const { pathname, search } = useLocation()
+  const navigate = useNavigate()
   const active = pathname === '/internalize'
+  const [reciting, setReciting] = useState(false)
+  const [recite, setRecite] = useState<{ queue: Recitation[]; done: Recitation[] } | null>(null)
+
+  // 语料分析's 「在背诵队列里」 links here with ?recite=1
+  useEffect(() => {
+    if (active && new URLSearchParams(search).get('recite')) {
+      setReciting(true)
+      navigate('/internalize', { replace: true })
+    }
+  }, [active, search, navigate])
   const { toast } = useToast()
   const [today, setToday] = useState<ReviewToday | null>(null)
   const [settings, setSettings] = useState<ReviewSettings | null>(null)
@@ -33,10 +45,11 @@ export default function InternalizePage() {
   }, [extra, toast])
 
   useEffect(() => {
-    if (!active || playing) return
+    if (!active || playing || reciting) return
     void load()
     getReviewSettings().then(setSettings).catch(() => {})
-  }, [active]) // eslint-disable-line react-hooks/exhaustive-deps
+    getRecitations().then(setRecite).catch(() => {})
+  }, [active, reciting]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const finish = useCallback(() => {
     setPlaying(false)
@@ -64,6 +77,8 @@ export default function InternalizePage() {
     }
   }
 
+  if (reciting) return <ReciteView onBack={() => setReciting(false)} />
+
   if (playing && today && today.cards.length > 0) {
     return <ReviewSession cards={today.cards} onClose={() => { setPlaying(false); void load() }} onFinished={finish} />
   }
@@ -84,7 +99,7 @@ export default function InternalizePage() {
           <p className="text-xs text-fg-muted">{dateLabel()} · 今天要做的，做完就结束</p>
         </header>
 
-        {today.library === 0 ? (
+        {today.library === 0 && !recite?.queue.length && !recite?.done.length ? (
           <Empty />
         ) : left === 0 ? (
           <section className="rounded-2xl border border-border bg-surface p-6 flex flex-col items-center gap-4 text-center">
@@ -132,6 +147,10 @@ export default function InternalizePage() {
           </section>
         )}
 
+        {recite && (recite.queue.length > 0 || recite.done.length > 0) && (
+          <ReciteCard queue={recite.queue} doneCount={recite.done.length} onOpen={() => setReciting(true)} />
+        )}
+
         {settings && today.library > 0 && (
           <section className="rounded-2xl border border-border bg-surface p-5 flex flex-col gap-4">
             <h2 className="text-xs font-semibold text-fg-subtle">设置</h2>
@@ -177,4 +196,27 @@ function Empty() {
 function dateLabel() {
   const d = new Date()
   return `${d.getMonth() + 1}月${d.getDate()}日`
+}
+
+function ReciteCard({ queue, doneCount, onOpen }: { queue: Recitation[]; doneCount: number; onOpen: () => void }) {
+  const first = queue[0]
+  return (
+    <section className="rounded-2xl border border-border bg-surface p-5 flex flex-col gap-3">
+      <div className="flex items-baseline">
+        <h2 className="text-base font-bold text-fg">背诵</h2>
+        <span className="ml-auto text-sm text-fg-muted">{queue.length ? `队列 ${queue.length} 段 · 一次一段` : `已背完 ${doneCount} 段`}</span>
+      </div>
+      {first ? (
+        <>
+          <p className="font-jp text-[0.9375rem] text-fg truncate">{first.sentences.map(s => s.text).join('')}</p>
+          <p className="text-xs text-fg-subtle">正在背 · 已背出 {first.progress} / {first.sentences.length} 句 · 背完才出现下一段</p>
+        </>
+      ) : (
+        <p className="text-sm text-fg-muted">队列是空的。在语料分析里读完一段，点「要背」。</p>
+      )}
+      <button type="button" onClick={onOpen} className="btn h-11 justify-center border border-border text-fg">
+        {first ? (first.progress > 0 ? '继续背' : '开始背') : '看已背完的'}
+      </button>
+    </section>
+  )
 }

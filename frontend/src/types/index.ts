@@ -778,3 +778,16 @@ export interface ItemReview {
   answers: Record<string, { chosen: string; right: boolean }>
   asks: ItemAskEntry[]
 }
+
+// Recitation (背诵)
+export interface Recitation {
+  id: string
+  analysis_id: string | null
+  sentences: { index: number; text: string; translation: string }[]
+  status: 'queued' | 'done'
+  /** Sentences said so far this time round */
+  progress: number
+  times_done: number
+  created_at: string | null
+  done_at: string | null
+}
