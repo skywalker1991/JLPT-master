@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import clsx from 'clsx'
-import { ChevronLeft, Layers, Loader2, Mic, SlidersHorizontal } from 'lucide-react'
+import { ChevronLeft, Layers, Loader2, ScrollText, SlidersHorizontal } from 'lucide-react'
 import type { Recitation, ReviewToday } from '../types'
 import { getRecitations, getReviewToday } from '../services/api'
 import { useToast } from '../context/ToastContext'
@@ -146,7 +146,7 @@ export default function InternalizePage() {
       open: () => setApp('cards'),
     },
     {
-      id: 'recite', name: '背诵', icon: Mic,
+      id: 'recite', name: '背诵', icon: ScrollText,
       status: first ? `正在背 · ${first.progress} / ${first.sentences.length} 句` : recite?.done.length ? `已背完 ${recite.done.length} 段` : '队列是空的',
       badge: recite?.queue.length || null, done: false,
       open: () => setReciting(true),
