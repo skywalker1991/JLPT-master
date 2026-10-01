@@ -7,6 +7,7 @@ import { getRecitations, getReviewToday } from '../services/api'
 import { useToast } from '../context/ToastContext'
 import ReviewSession from '../components/review/ReviewSession'
 import ReciteView from '../components/recite/ReciteView'
+import { LEVELS } from '../components/recite/ReciteSession'
 import Logo from '../components/shared/Logo'
 import { Connected } from '../components/shared/Motion'
 
@@ -147,7 +148,7 @@ export default function InternalizePage() {
     },
     {
       id: 'recite', name: '背诵', icon: ScrollText,
-      status: first ? `正在背 · ${first.progress} / ${first.sentences.length} 句` : recite?.done.length ? `已背完 ${recite.done.length} 段` : '队列是空的',
+      status: first ? `正在背 · ${LEVELS[Math.min(first.progress, LEVELS.length - 1)]}` : recite?.done.length ? `已背完 ${recite.done.length} 段` : '队列是空的',
       badge: recite?.queue.length || null, done: false,
       open: () => setReciting(true),
     },

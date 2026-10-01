@@ -5,7 +5,7 @@ import { ChevronLeft, ChevronUp, GripVertical, Loader2, Trash2 } from 'lucide-re
 import type { Recitation } from '../../types'
 import { getRecitations, reciteAgain, removeRecitation, reorderRecitations } from '../../services/api'
 import { useToast } from '../../context/ToastContext'
-import ReciteSession from './ReciteSession'
+import ReciteSession, { LEVELS } from './ReciteSession'
 
 const preview = (r: Recitation, len = 18) => {
   const t = r.sentences.map(s => s.text).join('')
@@ -68,7 +68,7 @@ export default function ReciteView({ onBack }: { onBack: () => void }) {
           <button type="button" onClick={() => i === 0 && setWorking(true)} className="flex-1 min-w-0 text-left flex flex-col gap-0.5">
             <span className="font-jp text-[0.9375rem] text-fg truncate">{preview(r)}</span>
             <span className="text-xs text-fg-subtle">
-              {r.sentences.length} 句{i === 0 ? ` · 已背出 ${r.progress} 句` : ` · ${day(r.created_at)}`}
+              {r.sentences.length} 句{i === 0 ? ` · 到了「${LEVELS[Math.min(r.progress, LEVELS.length - 1)]}」` : ` · ${day(r.created_at)}`}
             </span>
           </button>
           {i === 0 ? (
@@ -81,7 +81,7 @@ export default function ReciteView({ onBack }: { onBack: () => void }) {
                       className="p-1.5 text-fg-subtle hover:text-fg"><ChevronUp className="w-4 h-4" /></button>
             </>
           )}
-          {r.analysis_id && <Link to={`/?analysis=${r.analysis_id}`} className="text-sm text-fg-muted hover:text-fg shrink-0">语料 ›</Link>}
+          {r.analysis_id && <Link to={`/?analysis=${r.analysis_id}`} className="text-sm text-fg-muted hover:text-fg shrink-0">精读 ›</Link>}
         </div>
       ))}
 
@@ -97,7 +97,7 @@ export default function ReciteView({ onBack }: { onBack: () => void }) {
               <button type="button" onClick={() => void again(r)} className="btn h-8 text-xs border border-border bg-surface text-fg shrink-0">再背一遍</button>
               <button type="button" aria-label="删掉" onClick={async () => { await removeRecitation(r.id).catch(() => {}); void load() }}
                       className="p-1.5 text-fg-subtle hover:text-danger shrink-0"><Trash2 className="w-4 h-4" /></button>
-              {r.analysis_id && <Link to={`/?analysis=${r.analysis_id}`} className="text-sm text-fg-muted hover:text-fg shrink-0">语料 ›</Link>}
+              {r.analysis_id && <Link to={`/?analysis=${r.analysis_id}`} className="text-sm text-fg-muted hover:text-fg shrink-0">精读 ›</Link>}
             </div>
           ))}
         </section>

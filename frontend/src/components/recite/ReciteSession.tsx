@@ -1,25 +1,27 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import clsx from 'clsx'
-import { Check, Loader2, Volume2 } from 'lucide-react'
+import { Loader2, Volume2 } from 'lucide-react'
 import type { Recitation, TokenInfo } from '../../types'
 import { finishRecitation, preprocessBatch, setRecitationProgress } from '../../services/api'
-import { tokensFor } from '../../utils/tokens'
+import { isFunctionToken, tokensFor } from '../../utils/tokens'
 import { speak } from '../../utils/speech'
 import TokenText from '../shared/TokenText'
 import { useSettings } from '../../context/SettingsContext'
 import { Connected } from '../shared/Motion'
 
-type Stage = 'line' | 'chain' | 'done'
+/** The cues fade level by level: the whole text, then each word's first
+ *  character, then only the Chinese. */
+export const LEVELS = ['读熟', '首字', '盲背'] as const
+const LAST = LEVELS.length - 1
 
 /**
- * Saying one passage by heart. The whole passage stays in view: sentences
- * already said keep their Japanese, faded; the one being said shows its
- * Chinese with the Japanese hidden (shown whole, on demand, to check); the
- * rest show only Chinese. A sentence not yet said doesn't move on.
- *
- * Then 连段: the whole passage from the top in one go, marking the
- * sentences that stuck, which are practised alone before going through again.
+ * Saying one passage by heart, the whole passage at a time. Each level
+ * takes away more of the Japanese — first all of it is there to read and
+ * listen to, then only each word's first character, then only the
+ * Chinese. A hidden sentence can be tapped to peek at; a peeked sentence
+ * is marked, showing where it stuck. Say it through, then go up a level
+ * (or go through it again); through at 盲背, the passage is done.
  */
 export default function ReciteSession({ item, next, onFinished, onProgress }: {
   item: Recitation
@@ -27,17 +29,14 @@ export default function ReciteSession({ item, next, onFinished, onProgress }: {
   onFinished: (startNext: boolean) => void
   onProgress?: (progress: number) => void
 }) {
-  const n = item.sentences.length
-  const [at, setAt] = useState(Math.min(item.progress, n))
-  const [stage, setStage] = useState<Stage>(item.progress >= n ? 'chain' : 'line')
-  const [shown, setShown] = useState(false)
+  const [level, setLevel] = useState(Math.min(item.progress, LAST))
+  const [stage, setStage] = useState<'say' | 'done'>('say')
+  const [peeked, setPeeked] = useState<Set<number>>(new Set())
   const { settings } = useSettings()
   const [kana, setKana] = useState(settings.reciteKana)
+  const [zh, setZh] = useState(false)
   const [tokens, setTokens] = useState<TokenInfo[][]>([])
   const [speaking, setSpeaking] = useState(false)
-  const [stuck, setStuck] = useState<Set<number>>(new Set())
-  /** Sentences being practised alone after a 连段 (null = the whole passage) */
-  const [only, setOnly] = useState<number[] | null>(null)
 
   useEffect(() => {
     preprocessBatch(item.sentences.map(s => s.text))
@@ -45,28 +44,12 @@ export default function ReciteSession({ item, next, onFinished, onProgress }: {
       .catch(() => {})
   }, [item])
 
-  const order = only ?? item.sentences.map((_, i) => i)
-  const current = order[at]
-
-  const advance = useCallback(() => {
-    if (stage !== 'line') return
-    const nextAt = at + 1
-    setShown(false)
-    if (nextAt >= order.length) {
-      setStage('chain')
-      setOnly(null)
-      setStuck(new Set())
-      if (!only) { onProgress?.(n); void setRecitationProgress(item.id, n).catch(() => {}) }
-      return
-    }
-    setAt(nextAt)
-    if (!only) { onProgress?.(nextAt); void setRecitationProgress(item.id, nextAt).catch(() => {}) }
-  }, [stage, at, order.length, only, item.id, n, onProgress])
-
-  const say = async (text: string) => {
-    if (speaking) return
-    setSpeaking(true)
-    try { await speak(text) } finally { setSpeaking(false) }
+  const goTo = (l: number) => {
+    setLevel(l)
+    setPeeked(new Set())
+    onProgress?.(l)
+    void setRecitationProgress(item.id, l).catch(() => {})
+    document.getElementById('recite-scroll')?.scrollTo({ top: 0 })
   }
 
   const finish = async () => {
@@ -74,20 +57,26 @@ export default function ReciteSession({ item, next, onFinished, onProgress }: {
     setStage('done')
   }
 
+  const listen = async () => {
+    if (speaking) return
+    setSpeaking(true)
+    try { await speak(item.sentences.map(x => x.text).join('')) } finally { setSpeaking(false) }
+  }
+
+  const peek = (i: number) => setPeeked(prev => new Set(prev).add(i))
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
-      if (e.key === ' ') { e.preventDefault(); setShown(s => !s) }
-      else if (e.key === 'r' || e.key === 'R') setShown(false)
-      else if (e.key === 'Enter' && stage === 'line') { e.preventDefault(); advance() }
+      if (e.key === 'Enter' && stage === 'say') { e.preventDefault(); if (level < LAST) goTo(level + 1); else void finish() }
+      else if (e.key === 'r' || e.key === 'R') setPeeked(new Set())
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [advance, stage])
+  }) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const title = item.sentences[0]?.text.slice(0, 14) + (item.sentences[0]?.text.length > 14 ? '…' : '')
   const back = item.analysis_id && (
-    <Link to={`/?analysis=${item.analysis_id}`} className="btn h-8 text-xs rounded-full border border-border text-fg shrink-0">回到语料重新学 ›</Link>
+    <Link to={`/?analysis=${item.analysis_id}`} className="text-xs text-fg-muted hover:text-fg shrink-0">回到精读 ›</Link>
   )
 
   if (stage === 'done') {
@@ -120,113 +109,98 @@ export default function ReciteSession({ item, next, onFinished, onProgress }: {
     )
   }
 
-  if (stage === 'chain') {
-    return (
-      <div className="flex-1 flex flex-col min-h-0">
-        <div className="flex-1 overflow-y-auto">
-          <div className="max-w-2xl mx-auto px-5 md:px-0 py-6 md:py-10 flex flex-col gap-5">
-            <p className="text-xs font-semibold text-fg-subtle">{n > 1 ? `${n} 句都背出来了 · 现在从头连起来` : '再完整说一遍'}</p>
-            <p className="text-lg md:text-xl font-semibold text-fg leading-relaxed">{item.sentences.map(s => s.translation).join('')}</p>
-            <div className="border-t border-border pt-4 flex flex-col gap-3">
-              <p className="text-xs font-semibold text-fg-subtle">{shown ? '点出卡住的句子' : '背完点「显示」对照'}</p>
-              {shown ? (
-                <p className="font-jp text-lg leading-[2] text-fg animate-reveal">
-                  {item.sentences.map((s, i) => (
-                    <span key={i} role="button" tabIndex={0} aria-pressed={stuck.has(i)}
-                          onClick={() => setStuck(prev => { const x = new Set(prev); if (x.has(i)) x.delete(i); else x.add(i); return x })}
-                          className={clsx('rounded-[0.25em] cursor-pointer box-decoration-clone', stuck.has(i) ? 'bg-danger-light text-danger-fg' : 'hover:bg-accent-light')}>
-                      {s.text}
-                    </span>
-                  ))}
-                </p>
-              ) : (
-                <div className="rounded-xl border border-dashed border-border bg-accent-light/50 px-4 py-6 text-center text-sm text-fg-subtle">日文已隐藏</div>
-              )}
-            </div>
-            {back}
-          </div>
-        </div>
-        <footer className="shrink-0 px-4 py-3 border-t border-border flex gap-3 max-w-2xl mx-auto w-full">
-          {!shown ? (
-            <button type="button" onClick={() => setShown(true)} className="btn-primary flex-1 h-12 justify-center font-semibold">显示</button>
-          ) : (
-            <>
-              <button type="button" disabled={stuck.size === 0}
-                      onClick={() => { setOnly([...stuck].sort((a, b) => a - b)); setAt(0); setShown(false); setStage('line') }}
-                      className="btn flex-1 h-12 justify-center border border-border text-fg disabled:opacity-40">练卡住的句子</button>
-              <button type="button" onClick={() => void finish()} className="btn-primary flex-[1.3] h-12 justify-center font-semibold">全部顺下来了</button>
-            </>
-          )}
-        </footer>
-      </div>
-    )
-  }
-
-  const s = item.sentences[current]
+  const showZh = level > 0 || zh
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      <div className="flex-1 overflow-y-auto">
-        <div className="max-w-3xl mx-auto px-5 md:px-0 py-5 md:py-10 flex flex-col gap-4">
-          <div className="flex items-center gap-2 text-sm text-fg-muted">
-            <span className="font-jp truncate">{title}</span>
-            <span className="text-fg-subtle shrink-0">· {only ? `卡住的第 ${at + 1} / ${order.length} 句` : `第 ${at + 1} / ${n} 句`}</span>
-            <span className="ml-auto">{back}</span>
+      <div className="shrink-0 border-b border-border">
+        <div className="max-w-2xl mx-auto px-4 md:px-0 py-3 flex items-center gap-3">
+          <div role="tablist" aria-label="提示程度" className="flex rounded-full bg-accent-light p-1">
+            {LEVELS.map((l, i) => (
+              <button key={l} type="button" role="tab" aria-selected={i === level} onClick={() => goTo(i)}
+                      className={clsx('h-8 px-3.5 rounded-full text-sm transition-colors',
+                        i === level ? 'bg-surface text-fg font-semibold shadow-sm' : 'text-fg-muted hover:text-fg')}>
+                {l}
+              </button>
+            ))}
           </div>
-
-          {item.sentences.map((x, i) => {
-            const pos = order.indexOf(i)
-            const said = only ? !order.includes(i) || pos < at : i < at
-            if (i === current) {
-              return (
-                <section key={i} className="rounded-2xl border-[1.5px] border-fg bg-surface px-5 md:px-7 py-5 flex flex-col gap-4 animate-rise-in">
-                  <p className="text-lg md:text-xl font-semibold text-fg leading-relaxed">{s.translation || '（没有译文）'}</p>
-                  {shown ? (
-                    <div className="font-jp text-xl md:text-2xl leading-[2] text-fg animate-reveal">
-                      <TokenText tokens={tokens[i] ?? []} fallback={x.text} furigana={kana} className="text-xl md:text-2xl leading-[2.2]" />
-                    </div>
-                  ) : (
-                    <button type="button" onClick={() => setShown(true)}
-                            className="self-start rounded-lg border border-dashed border-fg-subtle bg-accent-light/60 px-4 py-2.5 text-sm text-fg-subtle">
-                      日文已隐藏 · 点「显示」对照
-                    </button>
-                  )}
-                  <div className="flex items-center gap-3">
-                    <button type="button" onClick={() => void say(x.text)} disabled={speaking}
-                            className="btn h-9 rounded-full border border-border text-fg">
-                      {speaking ? <Loader2 className="w-4 h-4 animate-spin" /> : <Volume2 className="w-4 h-4" />}听原句
-                    </button>
-                    <label className="ml-auto flex items-center gap-1.5 text-sm text-fg-muted cursor-pointer">
-                      <input type="checkbox" checked={kana} onChange={e => setKana(e.target.checked)} className="accent-fg w-4 h-4" />假名提示
-                    </label>
-                  </div>
-                </section>
-              )
-            }
-            return said ? (
-              <p key={i} className="flex gap-2 font-jp text-base text-fg-subtle leading-relaxed">
-                <Check className="w-4 h-4 text-success-fg shrink-0 mt-1" />{x.text}
-              </p>
-            ) : (
-              <p key={i} className="flex gap-2 text-base text-fg-subtle leading-relaxed">
-                <span className="w-3 h-3 rounded-full border border-fg-subtle shrink-0 mt-1.5 ml-0.5" />{x.translation}
-              </p>
-            )
-          })}
-
+          <span className="ml-auto">{back}</span>
         </div>
       </div>
-      <footer className="shrink-0 border-t border-border">
-        <div className="md:hidden px-4 py-3 flex gap-2">
-          <button type="button" onClick={() => setShown(v => !v)} className="btn flex-1 h-12 justify-center border border-border text-fg">{shown ? '隐藏' : '显示'}</button>
-          <button type="button" onClick={() => setShown(false)} className="btn flex-1 h-12 justify-center border border-danger/30 bg-danger-light/60 text-danger-fg">再来一遍</button>
-          <button type="button" onClick={advance} className="btn-primary flex-[1.4] h-12 justify-center font-semibold">背出了，下一句</button>
+
+      <div id="recite-scroll" className="flex-1 min-h-0 overflow-y-auto">
+        <div className="max-w-2xl mx-auto px-5 md:px-0 py-6 md:py-8 flex flex-col gap-5">
+          {item.sentences.map((x, i) => {
+            const open = level === 0 || peeked.has(i)
+            return (
+              <div key={i} className="flex flex-col gap-1">
+                {open ? (
+                  <p className={clsx('font-jp text-lg md:text-xl leading-[2] text-fg rounded-md -mx-1 px-1',
+                    level > 0 && 'bg-danger-light/60 animate-reveal')}>
+                    {level === 0
+                      ? <TokenText tokens={tokens[i] ?? []} fallback={x.text} furigana={kana} className="text-lg md:text-xl leading-[2.1]" />
+                      : x.text}
+                  </p>
+                ) : (
+                  <button type="button" onClick={() => peek(i)} title="看一眼"
+                          className="text-left font-jp text-lg md:text-xl leading-[2] text-fg rounded-md -mx-1 px-1 hover:bg-accent-light">
+                    {level === 1 ? <FirstChars tokens={tokens[i]} text={x.text} /> : (
+                      <span className="inline-block w-full h-[1.6em] align-middle rounded-md border border-dashed border-border bg-accent-light/40" />
+                    )}
+                  </button>
+                )}
+                {showZh && x.translation && (
+                  <p className={clsx('leading-relaxed', level === LAST ? 'text-base text-fg' : 'text-sm text-fg-muted')}>{x.translation}</p>
+                )}
+              </div>
+            )
+          })}
         </div>
-        <div className="hidden md:flex items-center justify-center gap-8 h-16 text-sm text-fg-muted">
-          <button type="button" onClick={() => setShown(v => !v)} className="flex items-center gap-2"><kbd className="kbd">空格</kbd>显示 / 隐藏</button>
-          <button type="button" onClick={() => setShown(false)} className="flex items-center gap-2"><kbd className="kbd">R</kbd>再来一遍</button>
-          <button type="button" onClick={advance} className="flex items-center gap-2"><kbd className="kbd">回车</kbd>背出了，下一句</button>
+      </div>
+
+      <footer className="shrink-0 border-t border-border">
+        <div className="max-w-2xl mx-auto px-4 md:px-0 py-3 flex items-center gap-2">
+          <button type="button" onClick={() => void listen()} disabled={speaking} aria-label="听全文"
+                  className="btn h-11 border border-border text-fg">
+            {speaking ? <Loader2 className="w-4 h-4 animate-spin" /> : <Volume2 className="w-4 h-4" />}<span className="hidden sm:inline">听全文</span>
+          </button>
+          {level === 0 ? (
+            <span className="flex items-center gap-3 text-sm text-fg-muted">
+              <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={kana} onChange={e => setKana(e.target.checked)} className="accent-fg w-4 h-4" />假名</label>
+              <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={zh} onChange={e => setZh(e.target.checked)} className="accent-fg w-4 h-4" />中文</label>
+            </span>
+          ) : (
+            <button type="button" disabled={peeked.size === 0} onClick={() => setPeeked(new Set())}
+                    className="btn h-11 border border-border text-fg disabled:opacity-40">
+              再来一遍{peeked.size > 0 && <span className="text-danger-fg tabular-nums">· 看了 {peeked.size} 句</span>}
+            </button>
+          )}
+          {level < LAST ? (
+            <button type="button" onClick={() => goTo(level + 1)} className="ml-auto btn-primary h-11 px-5 font-semibold">
+              {level === 0 ? '读熟了' : '背出来了'} · 下一级
+            </button>
+          ) : (
+            <button type="button" onClick={() => void finish()} className="ml-auto btn-primary h-11 px-5 font-semibold">全部背出来了</button>
+          )}
         </div>
       </footer>
     </div>
+  )
+}
+
+/** A sentence with each word down to its first character; particles and
+ *  punctuation stay, so its shape is still there to hang the words on. */
+function FirstChars({ tokens, text }: { tokens?: TokenInfo[]; text: string }) {
+  if (!tokens?.length) return <span className="text-fg-subtle">{text.slice(0, 1)}{'＿'.repeat(Math.max(0, Math.min(text.length - 1, 12)))}</span>
+  return (
+    <>
+      {tokens.map((t, i) => isFunctionToken(t) || t.surface.length === 1
+        ? <span key={i} className="text-fg-muted">{t.surface}</span>
+        : (
+          <span key={i}>
+            {t.surface[0]}
+            <span aria-hidden="true" className="inline-block align-baseline border-b border-fg-subtle mx-[0.05em]" style={{ width: `${t.surface.length - 1}em` }} />
+          </span>
+        ))}
+    </>
   )
 }

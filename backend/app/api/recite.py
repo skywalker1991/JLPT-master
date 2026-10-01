@@ -89,7 +89,8 @@ class ProgressBody(BaseModel):
 @router.patch("/recite/{rid}")
 async def progress(rid: UUID, body: ProgressBody, db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
     r = await _mine(db, rid, user)
-    r.progress = min(body.progress, len(r.sentences))
+    # The level reached: 0 读熟, 1 首字, 2 盲背
+    r.progress = min(body.progress, 2)
     await db.commit()
     return _row(r)
 
