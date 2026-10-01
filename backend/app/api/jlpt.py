@@ -6,6 +6,7 @@ POST /jlpt/practice/answer           one answer, told at once whether it was rig
 """
 import random
 import re
+import logging
 from collections import defaultdict
 from uuid import UUID
 
@@ -24,6 +25,7 @@ from app.models.db import (
 )
 from app.services import jlpt_practice as jp
 
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["jlpt"])
 
 _background: set = set()
@@ -271,6 +273,18 @@ async def submit_run(run_id: UUID, db: AsyncSession = Depends(get_db), user: Use
     order = sorted(items, key=lambda i: 0 if got.get(i.id) is False else 1 if i.id not in got else 2)
     _background.add(task := asyncio.create_task(prepare_analyses([i.id for i in order])))
     task.add_done_callback(_background.discard)
+    # and the texts they are read against (読解 passages, 聴解 scripts)
+    if run.kind in ("reading", "listening", "grammar"):
+        seen: set[str] = set()
+        problems = {r[1].id: r[1] for r in await _bank(db) if r[3].id == run.paper_id}
+        for i in order:
+            prob = problems.get(i.problem_id)
+            if prob is None or prob.type == "sentence_order":
+                continue
+            text, _ = await _reading_text(db, i, prob)
+            if text.strip() and text not in seen and prob.type in ("reading_comp", "passage_fill", "listening"):
+                seen.add(text)
+                start_text(text)
     return {"ok": True}
 
 
@@ -761,8 +775,49 @@ async def analyse_text(db: AsyncSession, text: str) -> list[dict]:
         done.set_result(None)
 
 
+def _passage_hash(text: str) -> str:
+    return hashlib.md5(_clean(text).encode()).hexdigest()
+
+
+async def _analyse_text_in_background(text: str) -> None:
+    from app.models.db import async_session_factory
+    try:
+        async with async_session_factory() as db:
+            await analyse_text(db, text)
+    except Exception as exc:
+        logger.info("passage analysis skipped: %s", exc)
+
+
+_text_started: set[str] = set()
+
+
+def start_text(text: str) -> None:
+    """Analyse a text in the background unless it is already on its way."""
+    h = _passage_hash(text)
+    if not text.strip() or h in _passage_in_flight or h in _text_started:
+        return
+    _text_started.add(h)
+    task = asyncio.create_task(_analyse_text_in_background(text))
+    _background.add(task)
+    task.add_done_callback(lambda t: (_background.discard(t), _text_started.discard(h)))
+
+
+async def _reading_text(db: AsyncSession, item: ExamItem, prob: ExamProblem) -> tuple[str, str]:
+    if prob.type == "listening":
+        siblings = (await db.execute(select(ExamItem).where(ExamItem.problem_id == prob.id).order_by(ExamItem.seq))).scalars().all()
+        return dialogue_for(item, siblings) or prob.transcript or "", "script"
+    if prob.type == "sentence_order":
+        qa = (await db.execute(select(QuestionAnalysis).where(QuestionAnalysis.item_id == item.id))).scalar_one_or_none()
+        return ((qa.session_data or {}).get("correct_order") if qa else "") or "", "sentence"
+    return item.passage or prob.passage or "", "passage"
+
+
 @router.get("/jlpt/items/{item_id}/reading")
-async def item_reading(item_id: UUID, db: AsyncSession = Depends(get_db)):
+async def item_reading(
+    item_id: UUID,
+    wait: bool = Query(default=True, description="false: don't hold the request while it is made; answer pending and ask again"),
+    db: AsyncSession = Depends(get_db),
+):
     """The text a question is read against, analysed sentence by sentence:
     the passage (読解, 文章の文法), the script (聴解), or the ordered
     sentence (整序)."""
@@ -773,16 +828,18 @@ async def item_reading(item_id: UUID, db: AsyncSession = Depends(get_db)):
     if row is None:
         raise HTTPException(status_code=404, detail="没有这道题")
     item, prob = row
-    if prob.type == "listening":
-        siblings = (await db.execute(select(ExamItem).where(ExamItem.problem_id == prob.id).order_by(ExamItem.seq))).scalars().all()
-        text, kind = dialogue_for(item, siblings) or prob.transcript or "", "script"
-    elif prob.type == "sentence_order":
-        qa = (await db.execute(select(QuestionAnalysis).where(QuestionAnalysis.item_id == item_id))).scalar_one_or_none()
-        text, kind = ((qa.session_data or {}).get("correct_order") if qa else "") or "", "sentence"
-    else:
-        text, kind = item.passage or prob.passage or "", "passage"
+    text, kind = await _reading_text(db, item, prob)
     if not text.strip():
         raise HTTPException(status_code=404, detail="这道题没有可以读的文本")
+    if not wait:
+        # Like explanations: never hold a request open while a text is analysed
+        cached = (await db.execute(
+            select(PassageAnalysis.sentences).where(PassageAnalysis.text_hash == _passage_hash(text))
+        )).scalar_one_or_none()
+        if cached is None:
+            start_text(text)
+            return {"kind": kind, "sentences": [], "pending": True}
+        return {"kind": kind, "sentences": cached}
     return {"kind": kind, "sentences": await analyse_text(db, text)}
 
 

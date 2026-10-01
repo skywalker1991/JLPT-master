@@ -151,7 +151,8 @@ function Body({ data, itemId, chosen, correct, skipped }: {
     </div>
   )
 
-  const compare = other && options.length > 0 && word && (
+  // Both sides must be real options (an explanation can name one wrongly)
+  const compare = other && options.length > 0 && word && item.options[other] != null && item.options[correct] != null && (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
       <OptionCard row={options.find(o => o.option === other)} text={item.options[other]} label={wrong ? `你选 · ${other}` : `最易混 · ${other}`} tone="wrong" knowledge={knowledge} />
       <OptionCard row={options.find(o => o.option === correct)} text={item.options[correct]} label={`正解 · ${correct}`} tone="right" knowledge={knowledge} />

@@ -11,6 +11,7 @@ import { getJlptOverview, startMock, startRun } from '../services/api'
 import { useSettings } from '../context/SettingsContext'
 import type { JlptOverview } from '../types'
 import PaperView from '../components/jlpt/PaperView'
+import ErrorBoundary from '../components/shared/ErrorBoundary'
 
 // ─── Page root ────────────────────────────────────────────────────────────────
 
@@ -70,7 +71,7 @@ export default function JlptPage() {
                            onOpenAnalysis={(_, itemId) => setView({ kind: 'review', itemIds: [itemId], attemptId: null, runId: practice.runId, back: practice, backLabel: '练习' })} />
         </div>
         {view.kind === 'review' && (
-          <ReviewView itemIds={view.itemIds} attemptId={view.attemptId} runId={view.runId} backLabel={view.backLabel} onBack={() => setView(view.back)} />
+          <ErrorBoundary key={view.itemIds.join()} onBack={() => setView(view.back)} backLabel={view.backLabel}><ReviewView itemIds={view.itemIds} attemptId={view.attemptId} runId={view.runId} backLabel={view.backLabel} onBack={() => setView(view.back)} /></ErrorBoundary>
         )}
       </>
     )
@@ -87,8 +88,8 @@ export default function JlptPage() {
   }
 
   if (view.kind === 'review') {
-    return <ReviewView key={view.itemIds.join()} itemIds={view.itemIds} attemptId={view.attemptId} backLabel={view.backLabel}
-                       startAt={view.startAt} onBack={() => setView(view.back)} />
+    return <ErrorBoundary key={view.itemIds.join()} onBack={() => setView(view.back)} backLabel={view.backLabel}><ReviewView key={view.itemIds.join()} itemIds={view.itemIds} attemptId={view.attemptId} backLabel={view.backLabel}
+                       startAt={view.startAt} onBack={() => setView(view.back)} /></ErrorBoundary>
   }
 
   if (view.kind === 'paper') {

@@ -725,6 +725,8 @@ export interface KnowledgePoint {
   level: string | null
   from: 'option' | 'sentence'
   option: string | null
+  /** false: the option is only a wrong reading or spelling, not a word */
+  exists?: boolean
 }
 
 export interface ItemAnalysis {

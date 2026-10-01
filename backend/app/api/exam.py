@@ -1125,7 +1125,7 @@ async def get_item_analysis(
             select(QuestionAnalysis).where(QuestionAnalysis.item_id == item_id)
         )).scalar_one_or_none()
         if _is_current(cached, problem.type):
-            return QuestionAnalysisResponse(item_id=item_id, session_data=cached.session_data,
+            return QuestionAnalysisResponse(item_id=item_id, session_data=_tidy_knowledge(_option_keys(cached.session_data, item.options or {}), item, problem.type),
                                             relations_suggested=[], cached=True)
         if item_id not in _in_flight:
             _started.add(task := asyncio.create_task(prepare_analyses([item_id], concurrency=1)))
@@ -1140,7 +1140,7 @@ async def get_item_analysis(
     )).scalar_one_or_none()
     if _is_current(cached, problem.type):
         return QuestionAnalysisResponse(
-            item_id=item_id, session_data=cached.session_data,
+            item_id=item_id, session_data=_tidy_knowledge(_option_keys(cached.session_data, item.options or {}), item, problem.type),
             relations_suggested=[], cached=True,
         )
 
@@ -1404,7 +1404,7 @@ async def list_paper_attempts(paper_id: UUID, db: AsyncSession = Depends(get_db)
 # how each wrong option differs from the right one (差在哪), which wrong one
 # is the easiest to fall for, the sentence with the answer filled in, and the
 # words and grammar worth keeping from the question.
-ANALYSIS_VERSION = 3
+ANALYSIS_VERSION = 4
 
 _WORD_TYPES = {"vocab_fill", "synonym", "usage", "kanji_reading", "kanji_writing", "word_formation", "grammar_fill"}
 _CHOICE_TYPES = _WORD_TYPES | {"passage_fill", "reading_comp", "listening"}
@@ -1419,8 +1419,9 @@ _KNOWLEDGE_ITEM = {
         "level": {"type": ["string", "null"]},
         "from": {"type": "string", "enum": ["option", "sentence"]},
         "option": {"type": ["string", "null"]},
+        "exists": {"type": "boolean"},
     },
-    "required": ["kind", "key", "meaning", "from"],
+    "required": ["kind", "key", "meaning", "from", "exists"],
 }
 
 _DIFF_RULES = """
@@ -1432,7 +1433,11 @@ _DIFF_RULES = """
 _WORD_RULES = """
 - 每个错误选项再给 relation_type：它和正确选项为什么容易混，只能是 synonym（近义）、derivative（同源）、confusable（形音易混）、antonym（反义）、collocation（搭配）之一；说不上来填 null。
 - filled_sentence：把正确答案填进题干之后的完整日语句子（用法题给正确选项的句子）；filled_translation：它的中文翻译。
-- knowledge：本题知识点。先列四个选项各自的词或语法（from = "option"，option 填选项号；不存在的词不列），再列完整句子里 N3 以上、值得学的词和语法（from = "sentence"，option 填 null，最多 4 个）。key 必须是词典形（落ち着かない → 落ち着く；サ变动词只写名词，交錯する → 交錯）或「〜」开头的句型，reading 用平假名（语法填 null），level 填 N1–N5。
+- knowledge：本题知识点。
+  - 先列四个选项，每个一条（from = "option"，option 填选项号）。选项本身是真实存在的词或语法，exists 填 true；选项只是错误的读音或写法、不是一个词（如「余暇」的错误读音「ようか」、错字写法），exists 填 false，key 照抄选项，meaning 写它错在哪（如「余暇」的错误读音）。读音题里错误读音恰好是另一个真实的词（如 するどい → 鋭い），exists 填 true，key 写那个词。
+  - 再列完整句子里 N3 以上、值得学的（from = "sentence"，option 填 null，exists 填 true）：词 1–3 个，语法 1–2 个；句子里确实没有值得学的语法才不列语法。
+  - kind：动词、名词、形容词、副词等都是 vocab；只有句型、助词搭配、接续表达才是 grammar。
+  - key 必须是词典形（落ち着かない → 落ち着く；サ变动词只写名词，交錯する → 交錯），语法用「〜」开头的句型；reading 用平假名（语法填 null）；level 填 N1–N5。
 """
 
 
@@ -1440,8 +1445,10 @@ _READING_TYPES = {"passage_fill", "reading_comp", "listening"}
 
 
 def _version_needed(problem_type: str) -> int:
-    # Reading-type explanations gained translations of the question and options in v3.
-    return 3 if problem_type in _READING_TYPES else 2
+    # Reading-type explanations gained translations of the question and options
+    # in v3; word and grammar ones, knowledge points marked real or not and
+    # sentences giving both words and grammar in v4.
+    return 3 if problem_type in _READING_TYPES else 4
 
 
 def _is_current(cached, problem_type: str) -> bool:
@@ -1531,12 +1538,8 @@ async def _analyse_item(item, problem, db) -> dict | None:
         raise HTTPException(status_code=502, detail="AI analysis failed") from exc
     if isinstance(result_data, dict):
         result_data["v"] = ANALYSIS_VERSION
-        # The model sometimes writes the option's whole text where its number belongs
-        for o in result_data.get("options_analysis") or []:
-            if isinstance(o, dict):
-                m = re.match(r"\s*([1-4１-４])", str(o.get("option", "")))
-                if m:
-                    o["option"] = m.group(1).translate(str.maketrans("１２３４", "1234"))
+        _option_keys(result_data, item.options or {})
+        _tidy_knowledge(result_data, item, problem.type)
 
     cached = (await db.execute(
         select(QuestionAnalysis).where(QuestionAnalysis.item_id == item.id)
@@ -1550,6 +1553,58 @@ async def _analyse_item(item, problem, db) -> dict | None:
         ))
     await db.commit()
     return result_data
+
+
+_FORM_TYPES = {"kanji_reading", "kanji_writing", "word_formation"}
+
+
+def _tidy_knowledge(data: dict | None, item, problem_type: str) -> dict | None:
+    """Knowledge points as the page needs them, also for ones made before the
+    prompt asked for it: a wrong reading or spelling is not a word (nothing to
+    keep), and only a pattern is grammar."""
+    if not isinstance(data, dict) or not isinstance(data.get("knowledge"), list):
+        return data
+    options = item.options or {}
+    correct = str(item.correct_answer or "")
+    for k in data["knowledge"]:
+        if not isinstance(k, dict):
+            continue
+        key = str(k.get("key") or "")
+        if k.get("kind") == "grammar" and not key.startswith(("〜", "～", "~")):
+            k["kind"] = "vocab"
+        if "exists" not in k and k.get("from") == "option" and problem_type in _FORM_TYPES:
+            opt = str(k.get("option") or "")
+            # the model kept the option's own text: no real word was found for it
+            k["exists"] = not (opt != correct and key.replace("_", "") == str(options.get(opt, "")).replace("_", ""))
+    return data
+
+
+def _option_keys(data: dict | None, options: dict) -> dict | None:
+    """Options keyed by their number. The model sometimes writes 「1. 示された…」
+    or just the option's text (「ようか」) where the number belongs."""
+    if not isinstance(data, dict):
+        return data
+    plain = lambda t: re.sub(r"[_\s　]", "", str(t))  # noqa: E731
+    by_text = {plain(v): str(k) for k, v in options.items()}
+    for o in data.get("options_analysis") or []:
+        if not isinstance(o, dict):
+            continue
+        raw = str(o.get("option", ""))
+        m = re.match(r"\s*([1-4１-４])(?![0-9０-９])", raw)
+        if m:
+            o["option"] = m.group(1).translate(str.maketrans("１２３４", "1234"))
+        elif plain(raw) in by_text:
+            o["option"] = by_text[plain(raw)]
+    # Text the model changed a little: one row per option, in order
+    rows = [o for o in data.get("options_analysis") or [] if isinstance(o, dict)]
+    keys = sorted(str(k) for k in options)
+    if len(rows) == len(keys):
+        taken = {o["option"] for o in rows if o.get("option") in keys}
+        for o, k in zip(rows, keys):
+            if o.get("option") not in keys and k not in taken:
+                o["option"] = k
+                taken.add(k)
+    return data
 
 
 # Explanations being made in the background right now, so asking for one

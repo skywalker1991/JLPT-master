@@ -6,8 +6,8 @@
  * extraction; printed literally, the question reads 「当時を__回顧__して」 and
  * the mark it is meant to carry becomes noise.
  */
-export default function Stem({ text }: { text: string }) {
-  const parts = text.split(/__(.+?)__/g)
+export default function Stem({ text }: { text: string | null | undefined }) {
+  const parts = (text ?? '').split(/__(.+?)__/g)
   return (
     <>
       {parts.map((part, i) =>

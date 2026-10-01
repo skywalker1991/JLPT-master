@@ -32,3 +32,29 @@ def test_clean_rejoins_printed_line_breaks():
     assert _clean("強調す\nることは。\n次の文。") == "強調することは。\n次の文。"
     assert _clean("__下線__の部分") == "下線の部分"
     assert _clean("です。\n（注１）琴線：心\nを動かす") == "です。\n（注１）琴線：心を動かす"
+
+
+def test_option_keys_from_text_or_number():
+    from app.api.exam import _option_keys
+    opts = {"1": "ようか", "2": "よか", "3": "よが", "4": "__ようが__"}
+    data = {"options_analysis": [{"option": "ようか"}, {"option": "2. よか"}, {"option": "３"}, {"option": "ようが"}, {"option": "?"}]}
+    assert [o["option"] for o in _option_keys(data, opts)["options_analysis"]] == ["1", "2", "3", "4", "?"]
+    # a slightly changed text takes its place in order
+    data = {"options_analysis": [{"option": "も加えて"}, {"option": "でない限り"}, {"option": "3"}, {"option": "とは"}]}
+    opts = {"1": "も含めて", "2": "でない限り", "3": "にしても", "4": "とは"}
+    assert [o["option"] for o in _option_keys(data, opts)["options_analysis"]] == ["1", "2", "3", "4"]
+
+
+def test_knowledge_marks_fake_options_and_fixes_kinds():
+    from types import SimpleNamespace
+    from app.api.exam import _tidy_knowledge
+    item = SimpleNamespace(options={"1": "ようか", "2": "よか", "3": "よが", "4": "ようが"}, correct_answer="2")
+    data = {"knowledge": [
+        {"kind": "vocab", "key": "ようか", "from": "option", "option": "1"},
+        {"kind": "vocab", "key": "余暇", "from": "option", "option": "2"},
+        {"kind": "grammar", "key": "説く", "from": "sentence", "option": None},
+        {"kind": "grammar", "key": "〜ものを", "from": "sentence", "option": None},
+    ]}
+    k = _tidy_knowledge(data, item, "kanji_reading")["knowledge"]
+    assert [x.get("exists") for x in k[:2]] == [False, True]
+    assert [x["kind"] for x in k[2:]] == ["vocab", "grammar"]

@@ -755,8 +755,9 @@ export async function askItem(itemId: string, body: { question: string; targets:
 }
 
 /** The text a question is read against, analysed like a pasted passage. */
-export async function getItemReading(itemId: string): Promise<{ kind: 'passage' | 'script' | 'sentence'; sentences: SentenceAnalysis[] }> {
-  return request(`/api/jlpt/items/${itemId}/reading`)
+/** The text a question is read against, analysed; `pending` while that is still being made. */
+export async function getItemReading(itemId: string): Promise<{ kind: 'passage' | 'script' | 'sentence'; sentences: SentenceAnalysis[]; pending?: boolean }> {
+  return request(`/api/jlpt/items/${itemId}/reading?wait=false`)
 }
 
 export interface MistakeGroup {

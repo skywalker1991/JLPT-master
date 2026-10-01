@@ -51,17 +51,25 @@ export default function ReadingReview({ data, itemId, chosen, correct, ask }: {
   useEffect(() => {
     if (!waitFor) return
     let live = true
+    let timer: ReturnType<typeof setTimeout> | undefined
     setFailed(false)
-    getItemReading(itemId)
+    // Still being analysed: ask again, less often as time goes on
+    const ask = (n: number) => getItemReading(itemId)
       .then(async r => {
         if (!live) return
+        if (r.pending) {
+          if (n >= 40) setFailed(true)
+          else timer = setTimeout(() => void ask(n + 1), Math.min(2000 + n * 500, 6000))
+          return
+        }
         setReading(r)
         setSelected(0)
         const pre = await preprocessBatch(r.sentences.map(s => s.text)).catch(() => null)
         if (live) setTokens(r.sentences.map((s, i) => tokensFor(s.text, pre?.[i] ?? null)))
       })
       .catch(() => { if (live) setFailed(true) })
-    return () => { live = false }
+    void ask(0)
+    return () => { live = false; clearTimeout(timer) }
   }, [itemId, waitFor, attempt])
 
   const options = analysis?.options_analysis ?? []
