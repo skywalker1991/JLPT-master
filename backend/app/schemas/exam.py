@@ -147,6 +147,8 @@ class QuestionAnalysisResponse(BaseModel):
     cached: bool
     # Still being made: ask again shortly
     pending: bool = False
+    # Couldn't be made: offer 重试 (retry=true)
+    failed: bool = False
 
 
 # ── Stats ─────────────────────────────────────────────────────────────────────

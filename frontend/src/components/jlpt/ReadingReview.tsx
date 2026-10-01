@@ -13,7 +13,7 @@ import { AskContext } from '../analysis/AskPanel'
 import PlayAudio from '../exam/PlayAudio'
 import Stem from '../exam/Stem'
 import SentenceOrderStem from '../exam/SentenceOrderStem'
-import DiffBox, { useItemAnalysis } from './DiffBox'
+import { useItemAnalysis } from './DiffBox'
 import type { Mark } from '../../utils/marks'
 import { Thinking } from '../shared/Motion'
 
@@ -154,7 +154,6 @@ export default function ReadingReview({ data, itemId, chosen, correct, ask }: {
             )
           })}
         </ul>
-        {analysis && <DiffBox itemId={item.id} type={prob.type} chosen={chosen} correct={correct} />}
         {ask}
       </aside>
     </div>

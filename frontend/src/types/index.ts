@@ -288,6 +288,8 @@ export interface QuestionAnalysisResponse {
   cached: boolean
   /** Still being made: ask again shortly */
   pending?: boolean
+  /** Couldn't be made: offer 重试 */
+  failed?: boolean
 }
 
 export interface CategoryAccuracy {

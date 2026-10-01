@@ -58,3 +58,27 @@ def test_knowledge_marks_fake_options_and_fixes_kinds():
     k = _tidy_knowledge(data, item, "kanji_reading")["knowledge"]
     assert [x.get("exists") for x in k[:2]] == [False, True]
     assert [x["kind"] for x in k[2:]] == ["vocab", "grammar"]
+
+
+def test_checked_puts_an_explanation_into_shape():
+    from types import SimpleNamespace
+    from app.api.exam import _checked, _pinned
+    item = SimpleNamespace(options={"1": "を", "2": "で", "3": "が", "4": "に"}, correct_answer="4")
+    data = {"summary": 1, "options_analysis": [
+        {"option": "を", "is_correct": True, "most_confusable": True},
+        {"option": "2", "is_correct": False, "most_confusable": True},
+        {"option": "3"}, {"option": "4. に", "vs_correct": "x"}],
+        "knowledge": [{"kind": "grammar", "key": "〜に", "from": "option", "option": "4", "meaning": "m"},
+                      {"kind": "vocab", "key": "夢", "from": "sentence", "option": "-", "meaning": "m"},
+                      {"kind": "noun", "key": "x", "from": "sentence"}, {"key": ""}]}
+    out, problems = _checked(data, item, "grammar_fill")
+    assert problems == []
+    rows = out["options_analysis"]
+    assert [o["is_correct"] for o in rows] == [False, False, False, True]   # from the answer key
+    assert sum(o["most_confusable"] for o in rows) == 1 and rows[3]["vs_correct"] is None
+    assert [k["key"] for k in out["knowledge"]] == ["〜に", "夢"] and out["knowledge"][1]["option"] is None
+    assert out["summary"] == "1"
+    # an option missing is reported, not hidden
+    assert _checked({"options_analysis": [{"option": "1"}]}, item, "grammar_fill")[1]
+    schema = {"properties": {"options_analysis": {"items": {"properties": {"option": {"type": "string"}}}}}}
+    assert _pinned(schema, item.options)["properties"]["options_analysis"]["items"]["properties"]["option"]["enum"] == ["1", "2", "3", "4"]

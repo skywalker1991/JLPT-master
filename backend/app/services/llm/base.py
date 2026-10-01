@@ -12,8 +12,8 @@ class LLMClient(ABC):
         ...
 
     @abstractmethod
-    async def analyze(self, prompt: str, schema: dict) -> dict:
-        """Single-shot structured output."""
+    async def analyze(self, prompt: str, schema: dict, enforce: bool = False) -> dict:
+        """Single-shot structured output. `enforce`: hold the model to the schema."""
         ...
 
     @abstractmethod

@@ -9,7 +9,7 @@ import PlayAudio from '../exam/PlayAudio'
 import Stem from '../exam/Stem'
 import SentenceOrderStem from '../exam/SentenceOrderStem'
 import QuestionBlock from './QuestionBlock'
-import DiffBox, { useItemAnalysis } from './DiffBox'
+import { useItemAnalysis } from './DiffBox'
 import KnowledgeList from './KnowledgeList'
 import ReportItemButton from '../exam/ReportItemButton'
 import ReadingReview from './ReadingReview'
@@ -104,7 +104,7 @@ function Body({ data, itemId, chosen, correct, skipped }: {
 }) {
   const prob = data.problem
   const item = prob.items.find(i => i.id === itemId)!
-  const { analysis } = useItemAnalysis(itemId)
+  const { analysis, failed, retry } = useItemAnalysis(itemId)
   const type = prob.type
   const word = WORD_TYPES.has(type)
   const listening = type === 'listening'
@@ -192,9 +192,14 @@ function Body({ data, itemId, chosen, correct, skipped }: {
           {question}
           {compare}
           {optionNotes}
-          {analysis ? <DiffBox itemId={item.id} type={type} chosen={chosen} correct={correct} /> : (
+          {analysis ? null : failed ? (
+            <div className="rounded-xl bg-danger-light px-5 py-4 flex items-center gap-3 text-sm text-danger-fg">
+              这道题的解析没生成出来。
+              <button type="button" onClick={retry} className="ml-auto btn h-8 border border-border bg-surface text-fg">重试</button>
+            </div>
+          ) : (
             <div className="rounded-xl bg-accent-light px-5 py-4 flex items-center gap-3 text-sm text-fg-muted">
-              <Thinking className="w-5 h-5" />正在准备这道题的解析……
+              <Thinking className="w-5 h-5" />正在生成这道题的解析……
             </div>
           )}
           <div className="md:hidden">

@@ -404,8 +404,8 @@ export async function submitSection(
 }
 
 /** An item's explanation; `pending` when it is still being made (the request doesn't wait for it). */
-export async function getItemAnalysis(itemId: string): Promise<QuestionAnalysisResponse> {
-  return request<QuestionAnalysisResponse>(`/api/items/${itemId}/analysis?wait=false`)
+export async function getItemAnalysis(itemId: string, retry = false): Promise<QuestionAnalysisResponse> {
+  return request<QuestionAnalysisResponse>(`/api/items/${itemId}/analysis?wait=false${retry ? '&retry=true' : ''}`)
 }
 
 export async function getProblemAnalysis(problemId: string): Promise<{ problem_id: string; session_data: Record<string, unknown>; cached: boolean }> {
@@ -697,6 +697,17 @@ export async function getPractice(category: string, level: string, runId: string
   correct: Record<string, string>
 }> {
   return request(`/api/jlpt/practice/${category}?level=${level}&run_id=${runId}`)
+}
+
+export type AnalysisState = 'ready' | 'pending' | 'failed'
+
+/** How far a handed-in pass's explanations have got. */
+export async function getRunAnalyses(runId: string): Promise<{ items: Record<string, AnalysisState>; total: number; ready: number; failed: number }> {
+  return request(`/api/jlpt/runs/${runId}/analyses`)
+}
+
+export async function retryRunAnalyses(runId: string): Promise<void> {
+  await request(`/api/jlpt/runs/${runId}/analyses/retry`, { method: 'POST' })
 }
 
 export async function submitRun(runId: string): Promise<void> {

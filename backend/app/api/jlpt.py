@@ -288,6 +288,76 @@ async def submit_run(run_id: UUID, db: AsyncSession = Depends(get_db), user: Use
     return {"ok": True}
 
 
+_READ_ALONG = ("reading_comp", "passage_fill", "listening")
+
+
+async def _run_items(db: AsyncSession, run: PracticeRun) -> list[tuple[ExamItem, ExamProblem]]:
+    paper = await db.get(ExamPaper, run.paper_id)
+    level = (paper.level or "N1").upper()
+    return [(r[0], r[1]) for r in await _bank(db) if r[3].id == run.paper_id
+            and (c := jp.category_of(r[2].name, r[1].name, level)) and jp.group_of(c) == run.kind]
+
+
+@router.get("/jlpt/runs/{run_id}/analyses")
+async def run_analyses(run_id: UUID, db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
+    """How far a handed-in pass's explanations have got: each question ready,
+    still being made, or failed (a question read against a passage or script
+    is ready once that is analysed too)."""
+    from app.api.exam import _failed, _fits, _in_flight, _queued
+    run = await _own_run(db, run_id, user)
+    items = await _run_items(db, run)
+    kept = {q.item_id: q for q in (await db.execute(
+        select(QuestionAnalysis).where(QuestionAnalysis.item_id.in_([i.id for i, _ in items]))
+    )).scalars()}
+    texts: dict[UUID, str] = {}
+    for item, prob in items:
+        if prob.type in _READ_ALONG:
+            texts[item.id] = _passage_hash((await _reading_text(db, item, prob))[0])
+    have = set((await db.execute(
+        select(PassageAnalysis.text_hash).where(PassageAnalysis.text_hash.in_(set(texts.values())))
+    )).scalars()) if texts else set()
+    state = {}
+    stalled = []
+    for item, prob in items:
+        explained = _fits(kept.get(item.id), item, prob.type)
+        if item.id in _failed or texts.get(item.id) in _text_failed:
+            state[str(item.id)] = "failed"
+        elif explained and (item.id not in texts or texts[item.id] in have):
+            state[str(item.id)] = "ready"
+        else:
+            state[str(item.id)] = "pending"
+            # Nothing is making it (the server restarted mid-way, say): start again
+            if not explained and item.id not in _in_flight and item.id not in _queued:
+                stalled.append(item.id)
+            if item.id in texts and texts[item.id] not in have:
+                start_text((await _reading_text(db, item, prob))[0])
+    if stalled:
+        _background.add(task := asyncio.create_task(prepare_analyses(stalled)))
+        task.add_done_callback(_background.discard)
+    return {"items": state, "total": len(state),
+            "ready": sum(v == "ready" for v in state.values()), "failed": sum(v == "failed" for v in state.values())}
+
+
+@router.post("/jlpt/runs/{run_id}/analyses/retry")
+async def retry_run_analyses(run_id: UUID, db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
+    """Try again the explanations (and texts) of this pass that failed."""
+    from app.api.exam import _failed
+    run = await _own_run(db, run_id, user)
+    again = []
+    for item, prob in await _run_items(db, run):
+        if item.id in _failed:
+            _failed.discard(item.id)
+            again.append(item.id)
+        if prob.type in _READ_ALONG:
+            text = (await _reading_text(db, item, prob))[0]
+            if _passage_hash(text) in _text_failed:
+                start_text(text)
+    if again:
+        _background.add(task := asyncio.create_task(prepare_analyses(again)))
+        task.add_done_callback(_background.discard)
+    return {"ok": True}
+
+
 class RunBody(BaseModel):
     kind: str
 
@@ -779,12 +849,20 @@ def _passage_hash(text: str) -> str:
     return hashlib.md5(_clean(text).encode()).hexdigest()
 
 
+# Texts whose analysis couldn't be made; tried again only on 重试
+_text_failed: set[str] = set()
+
+
 async def _analyse_text_in_background(text: str) -> None:
     from app.models.db import async_session_factory
+    h = _passage_hash(text)
     try:
         async with async_session_factory() as db:
-            await analyse_text(db, text)
+            sentences = await analyse_text(db, text)
+        if all(x.get("failed") for x in sentences):
+            _text_failed.add(h)
     except Exception as exc:
+        _text_failed.add(h)
         logger.info("passage analysis skipped: %s", exc)
 
 
@@ -796,6 +874,7 @@ def start_text(text: str) -> None:
     h = _passage_hash(text)
     if not text.strip() or h in _passage_in_flight or h in _text_started:
         return
+    _text_failed.discard(h)
     _text_started.add(h)
     task = asyncio.create_task(_analyse_text_in_background(text))
     _background.add(task)

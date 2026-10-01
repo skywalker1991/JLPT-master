@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
-import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
 import type { ItemSchema, PracticeUnit } from '../../types'
 import PaperPage from './PaperPage'
 import { useIsDesktop } from '../../hooks/useIsDesktop'
-import { answerPractice, getPractice, submitRun } from '../../services/api'
+import { answerPractice, getPractice, getRunAnalyses, retryRunAnalyses, submitRun, type AnalysisState } from '../../services/api'
+import { Connected, Thinking } from '../shared/Motion'
 import { useToast } from '../../context/ToastContext'
 import Passage from '../exam/Passage'
 import PlayAudio from '../exam/PlayAudio'
@@ -33,6 +34,23 @@ export default function PracticeSession({ category, level, runId, label, onExit,
   const [at, setAt] = useState(0)
   const [confirm, setConfirm] = useState(false)
   const [sending, setSending] = useState(false)
+  const [states, setStates] = useState<Record<string, AnalysisState> | null>(null)
+  const [poll, setPoll] = useState(0)
+
+  // Once handed in, the explanations are made in the background: follow
+  // them until each is ready or has failed
+  useEffect(() => {
+    if (!correct) return
+    let live = true
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const check = () => getRunAnalyses(runId).then(r => {
+      if (!live) return
+      setStates(r.items)
+      if (Object.values(r.items).some(v => v === 'pending')) timer = setTimeout(() => void check(), 3000)
+    }).catch(() => { if (live) timer = setTimeout(() => void check(), 6000) })
+    void check()
+    return () => { live = false; clearTimeout(timer) }
+  }, [correct, runId, poll])
 
   // Fetching a pass also starts its explanations on the server; fetch once
   // (React may run this effect twice in development)
@@ -107,10 +125,28 @@ export default function PracticeSession({ category, level, runId, label, onExit,
     return <div className="flex-1 flex flex-col">{header}<div className="flex-1 flex items-center justify-center"><Loader2 className="w-5 h-5 animate-spin text-fg-subtle" /></div></div>
   }
 
+  const ready = states ? Object.values(states).filter(v => v === 'ready').length : 0
+  const failedN = states ? Object.values(states).filter(v => v === 'failed').length : 0
+  const pendingN = states ? Object.values(states).filter(v => v === 'pending').length : items.length
+  const analysesLine = correct && (
+    <span className="flex items-center gap-2 text-sm">
+      {pendingN > 0 ? (
+        <><Thinking className="w-4 h-4" /><span className="text-fg-muted tabular-nums">解析生成中 {ready} / {items.length}</span></>
+      ) : failedN > 0 ? (
+        <><span className="text-danger-fg tabular-nums">{failedN} 题解析没生成出来</span>
+          <button type="button" onClick={() => { void retryRunAnalyses(runId).then(() => setPoll(p => p + 1)) }}
+                  className="btn h-7 text-xs border border-border text-fg">重试</button></>
+      ) : (
+        <><Connected className="w-4 h-4" /><span className="text-success-fg">解析已全部生成</span></>
+      )}
+    </span>
+  )
+
   const summary = correct && (
-    <div className="rounded-2xl border-[1.5px] border-fg bg-surface px-5 py-4 flex flex-wrap items-center gap-4 font-sans animate-pop-in">
+    <div className="rounded-2xl border-[1.5px] border-fg bg-surface px-5 py-4 flex flex-wrap items-center gap-x-4 gap-y-2 font-sans animate-pop-in">
       <span className="text-lg font-bold text-fg">对 {right} / {items.length}</span>
       {answered < items.length && <span className="text-sm text-fg-muted">{items.length - answered} 题没答</span>}
+      {analysesLine}
       <span className="ml-auto flex gap-2">
         <button type="button" onClick={onExit} className="btn h-10 border border-border text-fg">回到试卷</button>
         <button type="button" onClick={onAgain} className="btn-primary h-10">再做一遍</button>
@@ -134,7 +170,12 @@ export default function PracticeSession({ category, level, runId, label, onExit,
 
   const after = (unit: { paper: string; problem: PracticeUnit['problem'] }) => (it: ItemSchema) => correct && onOpenAnalysis && (
     <button type="button" onClick={() => onOpenAnalysis({ paper: unit.paper, section: '', problem: unit.problem }, it.id)}
-            className="text-sm text-fg-muted hover:text-fg underline underline-offset-4">看完整解析 ›</button>
+            className="inline-flex items-center gap-1.5 text-sm text-fg-muted hover:text-fg">
+      <span className="underline underline-offset-4">看完整解析 ›</span>
+      {states?.[it.id] === 'ready' ? <Check className="w-3.5 h-3.5 text-success-fg" aria-label="解析已生成" />
+        : states?.[it.id] === 'failed' ? <span className="text-xs text-danger-fg">没生成出来</span>
+        : <span className="inline-flex items-center gap-1 text-xs text-fg-subtle"><Loader2 className="w-3 h-3 animate-spin" />生成中</span>}
+    </button>
   )
 
   // Desktop: the paper's 問題 as printed pages

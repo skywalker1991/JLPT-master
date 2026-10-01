@@ -1109,6 +1109,7 @@ async def submit_section(
 async def get_item_analysis(
     item_id: UUID,
     wait: bool = Query(default=True, description="false: don't hold the request while it is made; answer pending and ask again"),
+    retry: bool = Query(default=False, description="with wait=false: try again one that failed"),
     db: AsyncSession = Depends(get_db),
 ):
     item = await db.get(ExamItem, item_id)
@@ -1124,9 +1125,14 @@ async def get_item_analysis(
         cached = (await db.execute(
             select(QuestionAnalysis).where(QuestionAnalysis.item_id == item_id)
         )).scalar_one_or_none()
-        if _is_current(cached, problem.type):
-            return QuestionAnalysisResponse(item_id=item_id, session_data=_tidy_knowledge(_option_keys(cached.session_data, item.options or {}), item, problem.type),
+        if _fits(cached, item, problem.type):
+            return QuestionAnalysisResponse(item_id=item_id, session_data=_checked(cached.session_data, item, problem.type)[0],
                                             relations_suggested=[], cached=True)
+        if item_id in _failed and not retry:
+            return QuestionAnalysisResponse(item_id=item_id, session_data=None, relations_suggested=[],
+                                            cached=False, failed=True)
+        if retry:
+            _failed.discard(item_id)
         if item_id not in _in_flight:
             _started.add(task := asyncio.create_task(prepare_analyses([item_id], concurrency=1)))
             task.add_done_callback(_started.discard)
@@ -1138,9 +1144,9 @@ async def get_item_analysis(
     cached = (await db.execute(
         select(QuestionAnalysis).where(QuestionAnalysis.item_id == item_id)
     )).scalar_one_or_none()
-    if _is_current(cached, problem.type):
+    if _fits(cached, item, problem.type):
         return QuestionAnalysisResponse(
-            item_id=item_id, session_data=_tidy_knowledge(_option_keys(cached.session_data, item.options or {}), item, problem.type),
+            item_id=item_id, session_data=_checked(cached.session_data, item, problem.type)[0],
             relations_suggested=[], cached=True,
         )
 
@@ -1460,6 +1466,15 @@ def _is_current(cached, problem_type: str) -> bool:
             or (cached.session_data or {}).get("v", 1) >= _version_needed(problem_type))
 
 
+def _fits(cached, item, problem_type: str) -> bool:
+    """A kept explanation the pages can show: current, and in the right shape."""
+    if not _is_current(cached, problem_type):
+        return False
+    if cached.source == "official" or problem_type not in _CHOICE_TYPES:
+        return True
+    return not _checked(json.loads(json.dumps(cached.session_data)), item, problem_type)[1]
+
+
 def _augmented(problem_type: str, schema: dict) -> tuple[dict, str]:
     """The type's schema and prompt, plus the review page's extra fields."""
     if problem_type not in _CHOICE_TYPES:
@@ -1529,17 +1544,27 @@ async def _analyse_item(item, problem, db) -> dict | None:
         + extra_rules
     )
 
+    # The output format is enforced (option numbers can only be this
+    # question's own), then checked; a result that still doesn't fit is asked
+    # for once more, and never saved broken.
+    strict = _pinned(schema, item.options or {})
     llm = get_llm_client()
-    try:
-        raw = await llm.analyze(prompt, schema)
-        result_data = json.loads(raw) if isinstance(raw, str) else raw
-    except Exception as exc:
-        logger.error("LLM analysis failed for item %s: %s", item.id, exc)
-        raise HTTPException(status_code=502, detail="AI analysis failed") from exc
-    if isinstance(result_data, dict):
-        result_data["v"] = ANALYSIS_VERSION
-        _option_keys(result_data, item.options or {})
-        _tidy_knowledge(result_data, item, problem.type)
+    result_data, problems = None, ["no answer"]
+    for attempt in range(2):
+        try:
+            raw = await llm.analyze(prompt, strict, enforce=True)
+            result_data = _strip_json(raw) if isinstance(raw, str) else raw
+        except Exception as exc:
+            logger.error("LLM analysis failed for item %s: %s", item.id, exc)
+            problems = [str(exc)[:200]]
+            continue
+        result_data, problems = _checked(result_data, item, problem.type)
+        if not problems:
+            break
+        logger.warning("analysis for item %s doesn't fit (attempt %d): %s", item.id, attempt + 1, problems)
+    if problems:
+        raise HTTPException(status_code=502, detail="AI analysis failed")
+    result_data["v"] = ANALYSIS_VERSION
 
     cached = (await db.execute(
         select(QuestionAnalysis).where(QuestionAnalysis.item_id == item.id)
@@ -1556,6 +1581,93 @@ async def _analyse_item(item, problem, db) -> dict | None:
 
 
 _FORM_TYPES = {"kanji_reading", "kanji_writing", "word_formation"}
+_NO_OPTION = "-"
+
+
+def _strip_json(raw: str):
+    text = raw.strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```[a-z]*\s*|\s*```$", "", text)
+    return json.loads(text)
+
+
+def _pinned(schema: dict, options: dict) -> dict:
+    """The schema with every option number limited to this question's own."""
+    schema = json.loads(json.dumps(schema))
+    keys = sorted(str(k) for k in options)
+    if not keys:
+        return schema
+    props = schema.get("properties", {})
+    opt = props.get("options_analysis", {}).get("items", {}).get("properties", {})
+    if "option" in opt:
+        opt["option"] = {"type": "string", "enum": keys}
+    know = props.get("knowledge", {}).get("items", {}).get("properties", {})
+    if "option" in know:
+        # an option's number, or 「-」 for a point from the sentence
+        know["option"] = {"type": "string", "enum": keys + [_NO_OPTION]}
+    return schema
+
+
+def _checked(data, item, problem_type: str) -> tuple[dict | None, list[str]]:
+    """An explanation put into the shape the pages rely on: what can be put
+    right is (option numbers, which option is right — from the answer key,
+    not the model —, at most one most-confusable, knowledge points), and what
+    can't is reported."""
+    if not isinstance(data, dict):
+        return None, ["not an object"]
+    options = {str(k): v for k, v in (item.options or {}).items()}
+    correct = str(item.correct_answer or "")
+    problems: list[str] = []
+    _option_keys(data, options)
+
+    rows = data.get("options_analysis")
+    if problem_type in _CHOICE_TYPES and options:
+        if not isinstance(rows, list):
+            return data, ["options_analysis missing"]
+        rows = [o for o in rows if isinstance(o, dict) and str(o.get("option")) in options]
+        seen = [str(o["option"]) for o in rows]
+        if sorted(set(seen)) != sorted(options) or len(seen) != len(set(seen)):
+            problems.append(f"options cover {sorted(seen)} not {sorted(options)}")
+        for o in rows:
+            o["option"] = str(o["option"])
+            if correct:
+                o["is_correct"] = o["option"] == correct
+            for f in ("explanation", "vs_correct", "translation"):
+                if f in o and o[f] is not None and not isinstance(o[f], str):
+                    o[f] = str(o[f])
+            if o.get("is_correct"):
+                o["vs_correct"] = None
+            o["most_confusable"] = bool(o.get("most_confusable")) and not o.get("is_correct")
+        confusable = [o for o in rows if o["most_confusable"]]
+        for o in confusable[1:]:
+            o["most_confusable"] = False
+        data["options_analysis"] = sorted(rows, key=lambda o: o["option"])
+
+    if "knowledge" in data or problem_type in _WORD_TYPES:
+        kept = []
+        for k in data.get("knowledge") or []:
+            if not isinstance(k, dict) or not str(k.get("key") or "").strip():
+                continue
+            if k.get("kind") not in ("vocab", "grammar") or k.get("from") not in ("option", "sentence"):
+                continue
+            opt = k.get("option")
+            k["option"] = None if opt in (None, "", _NO_OPTION) or k["from"] == "sentence" else str(opt)
+            if k["from"] == "option" and k["option"] not in options:
+                continue
+            k["key"] = str(k["key"]).strip()
+            k["meaning"] = str(k.get("meaning") or "")
+            for f in ("reading", "level"):
+                if k.get(f) is not None and not isinstance(k[f], str):
+                    k[f] = None
+            kept.append(k)
+        data["knowledge"] = kept
+        _tidy_knowledge(data, item, problem_type)
+        for k in kept:
+            k["exists"] = bool(k.get("exists", True))
+    for f in ("summary", "filled_sentence", "filled_translation", "stem_translation"):
+        if f in data and data[f] is not None and not isinstance(data[f], str):
+            data[f] = str(data[f])
+    return data, problems
 
 
 def _tidy_knowledge(data: dict | None, item, problem_type: str) -> dict | None:
@@ -1611,6 +1723,10 @@ def _option_keys(data: dict | None, options: dict) -> dict | None:
 # that is on its way waits for it instead of paying for it twice.
 _in_flight: dict[UUID, asyncio.Future] = {}
 _started: set = set()
+# Explanations that couldn't be made (the model failed twice); asked for again only on 重试
+_failed: set[UUID] = set()
+# Waiting their turn in a background pass (not yet in _in_flight)
+_queued: set[UUID] = set()
 
 
 async def prepare_analyses(item_ids: list[UUID], concurrency: int = 3) -> None:
@@ -1627,9 +1743,11 @@ async def prepare_analyses(item_ids: list[UUID], concurrency: int = 3) -> None:
     from app.models.db import async_session_factory
 
     gate = asyncio.Semaphore(concurrency)
+    _queued.update(item_ids)
 
     async def one(item_id: UUID) -> None:
         async with gate:
+            _queued.discard(item_id)
             try:
                 async with async_session_factory() as db:
                     item = await db.get(ExamItem, item_id)
@@ -1641,12 +1759,16 @@ async def prepare_analyses(item_ids: list[UUID], concurrency: int = 3) -> None:
                     cached = (await db.execute(
                         select(QuestionAnalysis).where(QuestionAnalysis.item_id == item_id)
                     )).scalar_one_or_none()
-                    if _is_current(cached, problem.type) or item_id in _in_flight:
+                    if _fits(cached, item, problem.type) or item_id in _in_flight:
                         return
                     done = asyncio.get_running_loop().create_future()
                     _in_flight[item_id] = done
+                    _failed.discard(item_id)
                     try:
                         await _analyse_item(item, problem, db)
+                    except Exception:
+                        _failed.add(item_id)
+                        raise
                     finally:
                         _in_flight.pop(item_id, None)
                         done.set_result(None)

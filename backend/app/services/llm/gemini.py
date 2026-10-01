@@ -46,15 +46,29 @@ class GeminiClient(LLMClient):
             logger.error("Gemini stream error: %s", e)
             raise
 
-    async def analyze(self, prompt: str, schema: dict) -> str:
-        """Single-shot call, return raw JSON string."""
+    async def analyze(self, prompt: str, schema: dict, enforce: bool = False) -> str:
+        """Single-shot call, return raw JSON string.
+
+        With `enforce`, the schema is given to the model as its output format
+        (not only described in the prompt), so the shape — enums included —
+        is guaranteed. Should the API refuse the schema, it falls back to
+        plain JSON and the caller's own checks."""
         try:
+            config = types.GenerateContentConfig(response_mime_type="application/json")
+            if enforce and schema:
+                try:
+                    response = await self._client.aio.models.generate_content(
+                        model=self._model_name, contents=prompt,
+                        config=types.GenerateContentConfig(response_mime_type="application/json",
+                                                           response_json_schema=schema),
+                    )
+                    return response.text or ""
+                except Exception as e:
+                    if "schema" not in str(e).lower():
+                        raise
+                    logger.warning("Gemini refused the output schema, asking without it: %s", e)
             response = await self._client.aio.models.generate_content(
-                model=self._model_name,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                ),
+                model=self._model_name, contents=prompt, config=config,
             )
             return response.text or ""
         except Exception as e:

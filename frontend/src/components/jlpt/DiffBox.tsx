@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { RotateCcw } from 'lucide-react'
 import type { ComparedPair, ItemAnalysis, KnowledgePoint } from '../../types'
 import { getItemAnalysis } from '../../services/api'
@@ -22,6 +22,7 @@ export function useItemAnalysis(itemId: string, enabled = true) {
   const [analysis, setAnalysis] = useState<ItemAnalysis | null>(null)
   const [failed, setFailed] = useState(false)
   const [attempt, setAttempt] = useState(0)
+  const retrying = useRef(false)
   useEffect(() => {
     if (!enabled) return
     let live = true
@@ -30,9 +31,12 @@ export function useItemAnalysis(itemId: string, enabled = true) {
     // Still being made: ask again, less often as time goes on; give up after
     // about three minutes (the retry button starts over)
     const ask = (n: number) => {
-      getItemAnalysis(itemId)
+      const again = n === 0 && retrying.current
+      retrying.current = false
+      getItemAnalysis(itemId, again)
         .then(r => {
           if (!live) return
+          if (r.failed) { setFailed(true); return }
           if (r.pending) {
             if (n >= 40) setFailed(true)
             else timer = setTimeout(() => ask(n + 1), Math.min(2000 + n * 500, 6000))
@@ -45,7 +49,7 @@ export function useItemAnalysis(itemId: string, enabled = true) {
     ask(0)
     return () => { live = false; clearTimeout(timer) }
   }, [itemId, enabled, attempt])
-  return { analysis, failed, retry: () => setAttempt(a => a + 1) }
+  return { analysis, failed, retry: () => { retrying.current = true; setAttempt(a => a + 1) } }
 }
 
 /** Two options as a pair to keep, when both are words / grammar points the analysis named. */
