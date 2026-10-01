@@ -1,42 +1,34 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import clsx from 'clsx'
-import { Loader2, Volume2 } from 'lucide-react'
+import { Eye, EyeOff, Loader2, Volume2 } from 'lucide-react'
 import type { Recitation, TokenInfo } from '../../types'
-import { finishRecitation, preprocessBatch, setRecitationProgress } from '../../services/api'
-import { isFunctionToken, tokensFor } from '../../utils/tokens'
+import { finishRecitation, preprocessBatch } from '../../services/api'
+import { tokensFor } from '../../utils/tokens'
 import { speak } from '../../utils/speech'
 import TokenText from '../shared/TokenText'
 import { useSettings } from '../../context/SettingsContext'
 import { Connected } from '../shared/Motion'
 
-/** The cues fade level by level: the whole text, then each word's first
- *  character, then only the Chinese. */
-export const LEVELS = ['读熟', '首字', '盲背'] as const
-const LAST = LEVELS.length - 1
-
 /**
- * Saying one passage by heart, the whole passage at a time. Each level
- * takes away more of the Japanese — first all of it is there to read and
- * listen to, then only each word's first character, then only the
- * Chinese. A hidden sentence can be tapped to peek at; a peeked sentence
- * is marked, showing where it stuck. Say it through, then go up a level
- * (or go through it again); through at 盲背, the passage is done.
+ * Saying one passage by heart: its sentences one under another, each with
+ * the Japanese above — blurred or shown, sentence by sentence or all at
+ * once, kana on or off — and the Chinese small beneath it.
  */
-export default function ReciteSession({ item, next, onFinished, onProgress }: {
+export default function ReciteSession({ item, next, onFinished }: {
   item: Recitation
   next: Recitation | null
   onFinished: (startNext: boolean) => void
   onProgress?: (progress: number) => void
 }) {
-  const [level, setLevel] = useState(Math.min(item.progress, LAST))
   const [stage, setStage] = useState<'say' | 'done'>('say')
-  const [peeked, setPeeked] = useState<Set<number>>(new Set())
   const { settings } = useSettings()
   const [kana, setKana] = useState(settings.reciteKana)
-  const [zh, setZh] = useState(false)
   const [tokens, setTokens] = useState<TokenInfo[][]>([])
-  const [speaking, setSpeaking] = useState(false)
+  const [shown, setShown] = useState<Set<number>>(new Set())
+  const [speaking, setSpeaking] = useState<number | 'all' | null>(null)
+  const all = item.sentences.map((_, i) => i)
+  const allShown = shown.size === item.sentences.length
 
   useEffect(() => {
     preprocessBatch(item.sentences.map(s => s.text))
@@ -44,36 +36,22 @@ export default function ReciteSession({ item, next, onFinished, onProgress }: {
       .catch(() => {})
   }, [item])
 
-  const goTo = (l: number) => {
-    setLevel(l)
-    setPeeked(new Set())
-    onProgress?.(l)
-    void setRecitationProgress(item.id, l).catch(() => {})
-    document.getElementById('recite-scroll')?.scrollTo({ top: 0 })
+  const toggle = (i: number) => setShown(prev => {
+    const x = new Set(prev)
+    if (x.has(i)) x.delete(i); else x.add(i)
+    return x
+  })
+
+  const listen = async (which: number | 'all') => {
+    if (speaking != null) return
+    setSpeaking(which)
+    try { await speak(which === 'all' ? item.sentences.map(x => x.text).join('') : item.sentences[which].text) } finally { setSpeaking(null) }
   }
 
   const finish = async () => {
     await finishRecitation(item.id).catch(() => {})
     setStage('done')
   }
-
-  const listen = async () => {
-    if (speaking) return
-    setSpeaking(true)
-    try { await speak(item.sentences.map(x => x.text).join('')) } finally { setSpeaking(false) }
-  }
-
-  const peek = (i: number) => setPeeked(prev => new Set(prev).add(i))
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
-      if (e.key === 'Enter' && stage === 'say') { e.preventDefault(); if (level < LAST) goTo(level + 1); else void finish() }
-      else if (e.key === 'r' || e.key === 'R') setPeeked(new Set())
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }) // eslint-disable-line react-hooks/exhaustive-deps
 
   const back = item.analysis_id && (
     <Link to={`/?analysis=${item.analysis_id}`} className="text-xs text-fg-muted hover:text-fg shrink-0">回到精读 ›</Link>
@@ -109,98 +87,54 @@ export default function ReciteSession({ item, next, onFinished, onProgress }: {
     )
   }
 
-  const showZh = level > 0 || zh
   return (
     <div className="flex-1 flex flex-col min-h-0">
       <div className="shrink-0 border-b border-border">
-        <div className="max-w-2xl mx-auto px-4 md:px-0 py-3 flex items-center gap-3">
-          <div role="tablist" aria-label="提示程度" className="flex rounded-full bg-accent-light p-1">
-            {LEVELS.map((l, i) => (
-              <button key={l} type="button" role="tab" aria-selected={i === level} onClick={() => goTo(i)}
-                      className={clsx('h-8 px-3.5 rounded-full text-sm transition-colors',
-                        i === level ? 'bg-surface text-fg font-semibold shadow-sm' : 'text-fg-muted hover:text-fg')}>
-                {l}
-              </button>
-            ))}
-          </div>
+        <div className="max-w-2xl mx-auto px-4 md:px-0 py-2.5 flex items-center gap-2">
+          <button type="button" onClick={() => setShown(allShown ? new Set() : new Set(all))} className="btn h-9 border border-border text-fg">
+            {allShown ? <><EyeOff className="w-4 h-4" />全部模糊</> : <><Eye className="w-4 h-4" />全部显示</>}
+          </button>
+          <label className="flex items-center gap-1.5 px-2 text-sm text-fg-muted cursor-pointer">
+            <input type="checkbox" checked={kana} onChange={e => setKana(e.target.checked)} className="accent-fg w-4 h-4" />假名
+          </label>
+          <button type="button" onClick={() => void listen('all')} disabled={speaking != null} className="btn h-9 border border-border text-fg">
+            {speaking === 'all' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Volume2 className="w-4 h-4" />}<span className="hidden sm:inline">听全文</span>
+          </button>
           <span className="ml-auto">{back}</span>
         </div>
       </div>
 
-      <div id="recite-scroll" className="flex-1 min-h-0 overflow-y-auto">
-        <div className="max-w-2xl mx-auto px-5 md:px-0 py-6 md:py-8 flex flex-col gap-5">
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        <ol className="max-w-2xl mx-auto px-5 md:px-0 py-6 md:py-8 flex flex-col gap-6">
           {item.sentences.map((x, i) => {
-            const open = level === 0 || peeked.has(i)
+            const open = shown.has(i)
             return (
-              <div key={i} className="flex flex-col gap-1">
-                {open ? (
-                  <p className={clsx('font-jp text-lg md:text-xl leading-[2] text-fg rounded-md -mx-1 px-1',
-                    level > 0 && 'bg-danger-light/60 animate-reveal')}>
-                    {level === 0
-                      ? <TokenText tokens={tokens[i] ?? []} fallback={x.text} furigana={kana} className="text-lg md:text-xl leading-[2.1]" />
-                      : x.text}
-                  </p>
-                ) : (
-                  <button type="button" onClick={() => peek(i)} title="看一眼"
-                          className="text-left font-jp text-lg md:text-xl leading-[2] text-fg rounded-md -mx-1 px-1 hover:bg-accent-light">
-                    {level === 1 ? <FirstChars tokens={tokens[i]} text={x.text} /> : (
-                      <span className="inline-block w-full h-[1.6em] align-middle rounded-md border border-dashed border-border bg-accent-light/40" />
-                    )}
+              <li key={i} className="flex gap-3">
+                <span className="shrink-0 w-5 pt-2 text-xs text-fg-subtle tabular-nums">{i + 1}</span>
+                <div className="flex-1 min-w-0 flex flex-col gap-1">
+                  <button type="button" onClick={() => toggle(i)} aria-pressed={open} title={open ? '模糊' : '显示'}
+                          className="text-left rounded-md -mx-1 px-1 hover:bg-accent-light/60">
+                    <span className={clsx('block transition-[filter] duration-200', !open && 'blur-[6px] select-none')}>
+                      <TokenText tokens={tokens[i] ?? []} fallback={x.text} furigana={kana} className="font-jp text-lg md:text-xl leading-[2.1] text-fg" />
+                    </span>
                   </button>
-                )}
-                {showZh && x.translation && (
-                  <p className={clsx('leading-relaxed', level === LAST ? 'text-base text-fg' : 'text-sm text-fg-muted')}>{x.translation}</p>
-                )}
-              </div>
+                  {x.translation && <p className="text-sm text-fg-muted leading-relaxed">{x.translation}</p>}
+                </div>
+                <button type="button" onClick={() => void listen(i)} disabled={speaking != null} aria-label="听这一句"
+                        className="shrink-0 self-start mt-1.5 p-1.5 text-fg-subtle hover:text-fg disabled:opacity-40">
+                  {speaking === i ? <Loader2 className="w-4 h-4 animate-spin" /> : <Volume2 className="w-4 h-4" />}
+                </button>
+              </li>
             )
           })}
-        </div>
+        </ol>
       </div>
 
       <footer className="shrink-0 border-t border-border">
-        <div className="max-w-2xl mx-auto px-4 md:px-0 py-3 flex items-center gap-2">
-          <button type="button" onClick={() => void listen()} disabled={speaking} aria-label="听全文"
-                  className="btn h-11 border border-border text-fg">
-            {speaking ? <Loader2 className="w-4 h-4 animate-spin" /> : <Volume2 className="w-4 h-4" />}<span className="hidden sm:inline">听全文</span>
-          </button>
-          {level === 0 ? (
-            <span className="flex items-center gap-3 text-sm text-fg-muted">
-              <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={kana} onChange={e => setKana(e.target.checked)} className="accent-fg w-4 h-4" />假名</label>
-              <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={zh} onChange={e => setZh(e.target.checked)} className="accent-fg w-4 h-4" />中文</label>
-            </span>
-          ) : (
-            <button type="button" disabled={peeked.size === 0} onClick={() => setPeeked(new Set())}
-                    className="btn h-11 border border-border text-fg disabled:opacity-40">
-              再来一遍{peeked.size > 0 && <span className="text-danger-fg tabular-nums">· 看了 {peeked.size} 句</span>}
-            </button>
-          )}
-          {level < LAST ? (
-            <button type="button" onClick={() => goTo(level + 1)} className="ml-auto btn-primary h-11 px-5 font-semibold">
-              {level === 0 ? '读熟了' : '背出来了'} · 下一级
-            </button>
-          ) : (
-            <button type="button" onClick={() => void finish()} className="ml-auto btn-primary h-11 px-5 font-semibold">全部背出来了</button>
-          )}
+        <div className="max-w-2xl mx-auto px-4 md:px-0 py-3 flex">
+          <button type="button" onClick={() => void finish()} className="ml-auto btn-primary h-11 px-6 font-semibold">背完了</button>
         </div>
       </footer>
     </div>
-  )
-}
-
-/** A sentence with each word down to its first character; particles and
- *  punctuation stay, so its shape is still there to hang the words on. */
-function FirstChars({ tokens, text }: { tokens?: TokenInfo[]; text: string }) {
-  if (!tokens?.length) return <span className="text-fg-subtle">{text.slice(0, 1)}{'＿'.repeat(Math.max(0, Math.min(text.length - 1, 12)))}</span>
-  return (
-    <>
-      {tokens.map((t, i) => isFunctionToken(t) || t.surface.length === 1
-        ? <span key={i} className="text-fg-muted">{t.surface}</span>
-        : (
-          <span key={i}>
-            {t.surface[0]}
-            <span aria-hidden="true" className="inline-block align-baseline border-b border-fg-subtle mx-[0.05em]" style={{ width: `${t.surface.length - 1}em` }} />
-          </span>
-        ))}
-    </>
   )
 }

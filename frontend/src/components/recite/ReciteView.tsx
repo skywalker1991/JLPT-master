@@ -5,7 +5,7 @@ import { ChevronLeft, ChevronUp, GripVertical, Loader2, Trash2 } from 'lucide-re
 import type { Recitation } from '../../types'
 import { getRecitations, reciteAgain, removeRecitation, reorderRecitations } from '../../services/api'
 import { useToast } from '../../context/ToastContext'
-import ReciteSession, { LEVELS } from './ReciteSession'
+import ReciteSession from './ReciteSession'
 
 const preview = (r: Recitation, len = 18) => {
   const t = r.sentences.map(s => s.text).join('')
@@ -68,7 +68,7 @@ export default function ReciteView({ onBack }: { onBack: () => void }) {
           <button type="button" onClick={() => i === 0 && setWorking(true)} className="flex-1 min-w-0 text-left flex flex-col gap-0.5">
             <span className="font-jp text-[0.9375rem] text-fg truncate">{preview(r)}</span>
             <span className="text-xs text-fg-subtle">
-              {r.sentences.length} 句{i === 0 ? ` · 到了「${LEVELS[Math.min(r.progress, LEVELS.length - 1)]}」` : ` · ${day(r.created_at)}`}
+              {r.sentences.length} 句{i === 0 ? '' : ` · ${day(r.created_at)}`}
             </span>
           </button>
           {i === 0 ? (
@@ -144,7 +144,7 @@ export default function ReciteView({ onBack }: { onBack: () => void }) {
             {first && (
               <footer className="shrink-0 px-4 py-3 border-t border-border">
                 <button type="button" onClick={() => setWorking(true)} className="btn-primary w-full h-12 justify-center text-base font-semibold">
-                  {first.progress > 0 ? '继续背第 1 段' : '开始背第 1 段'}
+                  背第 1 段
                 </button>
               </footer>
             )}
