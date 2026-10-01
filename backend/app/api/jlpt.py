@@ -112,11 +112,18 @@ async def overview(
     papers = (await db.execute(
         select(ExamPaper).where(func.upper(func.coalesce(ExamPaper.level, "N1")) == level).order_by(ExamPaper.source.desc())
     )).scalars().all()
+    latest = _latest(answers)
+    per_paper_total: dict[UUID, int] = defaultdict(int)
+    per_paper_done: dict[UUID, int] = defaultdict(int)
+    for item, _, _, paper in bank:
+        per_paper_total[paper.id] += 1
+        per_paper_done[paper.id] += int(item.id in latest)
     paper_rows = []
     for p in papers:
         a = latest_mock.get(p.id)
         row = {"id": str(p.id), "label": jp.paper_label(p.source, p.title), "level": p.level,
-               "status": "new", "attempt_id": None, "stage": None, "total": None}
+               "status": "new", "attempt_id": None, "stage": None, "total": None,
+               "questions": per_paper_total[p.id], "done": per_paper_done[p.id]}
         if a is not None:
             row["attempt_id"] = str(a.id)
             if a.status == "completed":
@@ -159,6 +166,7 @@ def _units(rows, level: str) -> list[list]:
 async def practice(
     category: str,
     level: str = Query(default="N1", pattern="^N[1-5]$"),
+    paper_id: UUID | None = Query(default=None, description="Only this paper, in its own order"),
     count: int | None = Query(default=None, ge=1, le=30),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(current_user),
@@ -168,6 +176,7 @@ async def practice(
     if category not in jp.GROUP_LABEL:
         raise HTTPException(status_code=404, detail="没有这一类")
     rows = [r for r in await _bank(db) if (r[3].level or "N1").upper() == level
+            and (paper_id is None or r[3].id == paper_id)
             and (c := jp.category_of(r[2].name, r[1].name, level)) and jp.group_of(c) == category]
     latest = _latest(await _answers(db, user.id))
 
@@ -178,9 +187,13 @@ async def practice(
         return 1 if any(s is False for s in seen) else 2
 
     units = _units(rows, level)
-    random.shuffle(units)
-    units.sort(key=rank)
-    units = units[: count or (3 if category in ("reading", "listening") else 10)]
+    if paper_id is not None:
+        # One paper's questions of this kind, all of them, as printed
+        units.sort(key=lambda u: (u[0][2].seq, u[0][1].seq, u[0][0].seq))
+    else:
+        random.shuffle(units)
+        units.sort(key=rank)
+        units = units[: count or (3 if category in ("reading", "listening") else 10)]
 
     # Practice shows the explanation right after each answer; start on them
     # now so most are ready by then. Explanations are shared and kept, so
@@ -700,3 +713,43 @@ async def mistakes(
     for g in out:
         g["items"].sort(key=lambda x: -x["misses"])
     return out
+
+
+
+@router.get("/jlpt/papers/{paper_id}")
+async def paper_overview(paper_id: UUID, db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
+    """One paper: how far each of its four kinds has been practised, and its mock exam."""
+    paper = await db.get(ExamPaper, paper_id)
+    if paper is None:
+        raise HTTPException(status_code=404, detail="没有这套试卷")
+    level = (paper.level or "N1").upper()
+    rows = [r for r in await _bank(db) if r[3].id == paper.id]
+    latest = _latest(await _answers(db, user.id))
+    kinds: dict[str, dict] = {}
+    for item, prob, sec, _ in rows:
+        cat = jp.category_of(sec.name, prob.name, level)
+        if cat is None:
+            continue
+        g = jp.group_of(cat)
+        k = kinds.setdefault(g, {"id": g, "label": jp.GROUP_LABEL[g], "total": 0, "answered": 0, "right": 0})
+        k["total"] += 1
+        if item.id in latest:
+            k["answered"] += 1
+            k["right"] += int(latest[item.id])
+    mock = (await db.execute(
+        select(ExamAttempt).where(ExamAttempt.user_id == user.id, ExamAttempt.paper_id == paper.id)
+        .order_by(ExamAttempt.started_at.desc())
+    )).scalars().all()
+    mock = next((a for a in mock if (a.meta or {}).get("mock")), None)
+    lv = jp.level_of(level)
+    return {
+        "id": str(paper.id), "label": jp.paper_label(paper.source, paper.title), "level": level,
+        "kinds": [kinds[g] for g, _ in jp.GROUPS if g in kinds],
+        "written_minutes": lv.written_minutes, "listening_minutes": lv.listening_minutes,
+        "mock": None if mock is None else {
+            "attempt_id": str(mock.id), "status": mock.status,
+            "stage": (mock.meta or {}).get("stage"),
+            "total": (mock.meta or {}).get("result", {}).get("total"),
+            "max_total": sum(p.max for p in lv.parts),
+        },
+    }

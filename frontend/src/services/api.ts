@@ -10,6 +10,7 @@ import {
   MockState,
   MockResult,
   ItemReview,
+  PaperOverview,
   ItemAskEntry,
   Recitation,
   KbOverview,
@@ -685,8 +686,12 @@ export async function getJlptOverview(level: string): Promise<JlptOverview> {
   return request<JlptOverview>(`/api/jlpt/overview?level=${level}`)
 }
 
-export async function getPractice(category: string, level: string): Promise<{ category: { id: string; label: string; part: string }; units: PracticeUnit[] }> {
-  return request(`/api/jlpt/practice/${category}?level=${level}`)
+export async function getPractice(category: string, level: string, paperId?: string | null): Promise<{ category: { id: string; label: string }; units: PracticeUnit[] }> {
+  return request(`/api/jlpt/practice/${category}?level=${level}${paperId ? `&paper_id=${paperId}` : ''}`)
+}
+
+export async function getPaperOverview(paperId: string): Promise<PaperOverview> {
+  return request<PaperOverview>(`/api/jlpt/papers/${paperId}`)
 }
 
 export async function answerPractice(itemId: string, answer: string): Promise<{ is_correct: boolean; correct_answer: string | null; answer_order: string | null }> {

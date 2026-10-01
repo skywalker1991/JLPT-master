@@ -9,15 +9,17 @@ import ReviewView from '../components/jlpt/ReviewView'
 import MistakesView from '../components/jlpt/MistakesView'
 import { getJlptOverview, startMock } from '../services/api'
 import { useSettings } from '../context/SettingsContext'
-import type { JlptCategory, JlptOverview } from '../types'
+import type { JlptOverview } from '../types'
+import PaperView from '../components/jlpt/PaperView'
 
 // ─── Page root ────────────────────────────────────────────────────────────────
 
 type View =
   | { kind: 'home' }
-  | { kind: 'practice'; category: JlptCategory }
-  | { kind: 'mock'; attemptId: string }
-  | { kind: 'result'; attemptId: string }
+  | { kind: 'paper'; paperId: string }
+  | { kind: 'practice'; paperId: string; category: string; label: string }
+  | { kind: 'mock'; attemptId: string; paperId: string }
+  | { kind: 'result'; attemptId: string; paperId: string }
   | { kind: 'review'; itemIds: string[]; attemptId: string | null; back: View; backLabel: string; startAt?: number }
   | { kind: 'mistakes' }
 
@@ -45,7 +47,8 @@ export default function JlptPage() {
     return (
       <>
         <div className={view.kind === 'practice' ? 'flex-1 min-h-0 flex flex-col' : 'hidden'}>
-          <PracticeSession category={practice.category.id} level={level} label={practice.category.label} onExit={home}
+          <PracticeSession category={practice.category} level={level} paperId={practice.paperId} label={practice.label}
+                           onExit={() => setView({ kind: 'paper', paperId: practice.paperId })}
                            onOpenAnalysis={(_, itemId) => setView({ kind: 'review', itemIds: [itemId], attemptId: null, back: practice, backLabel: '练习' })} />
         </div>
         {view.kind === 'review' && (
@@ -56,17 +59,35 @@ export default function JlptPage() {
   }
 
   if (view.kind === 'mock') {
-    return <MockExam attemptId={view.attemptId} onExit={home} onDone={() => setView({ kind: 'result', attemptId: view.attemptId })} />
+    return <MockExam attemptId={view.attemptId} onExit={() => setView({ kind: 'paper', paperId: view.paperId })}
+                     onDone={() => setView({ kind: 'result', attemptId: view.attemptId, paperId: view.paperId })} />
   }
 
   if (view.kind === 'result') {
-    return <MockResultView attemptId={view.attemptId} onBack={home}
+    return <MockResultView attemptId={view.attemptId} onBack={() => setView({ kind: 'paper', paperId: view.paperId })}
                            onReview={ids => setView({ kind: 'review', itemIds: ids, attemptId: view.attemptId, back: view, backLabel: '成绩' })} />
   }
 
   if (view.kind === 'review') {
     return <ReviewView key={view.itemIds.join()} itemIds={view.itemIds} attemptId={view.attemptId} backLabel={view.backLabel}
                        startAt={view.startAt} onBack={() => setView(view.back)} />
+  }
+
+  if (view.kind === 'paper') {
+    const paperId = view.paperId
+    return (
+      <PaperView paperId={paperId} onBack={home}
+                 onPractice={(category, label) => setView({ kind: 'practice', paperId, category, label })}
+                 onResult={attemptId => setView({ kind: 'result', attemptId, paperId })}
+                 onMock={async () => {
+                   try {
+                     const { attempt_id } = await startMock(paperId)
+                     setView({ kind: 'mock', attemptId: attempt_id, paperId })
+                   } catch (e) {
+                     setError(e instanceof Error ? e.message : '开始不了这套卷子')
+                   }
+                 }} />
+    )
   }
 
   if (view.kind === 'mistakes') {
@@ -80,16 +101,7 @@ export default function JlptPage() {
   return (
     <JlptHome
       data={overview}
-      onPractice={c => setView({ kind: 'practice', category: c })}
-      onPaper={async row => {
-        if (row.status === 'completed' && row.attempt_id) { setView({ kind: 'result', attemptId: row.attempt_id }); return }
-        try {
-          const { attempt_id } = await startMock(row.id)
-          setView({ kind: 'mock', attemptId: attempt_id })
-        } catch (e) {
-          setError(e instanceof Error ? e.message : '开始不了这套卷子')
-        }
-      }}
+      onPaper={row => setView({ kind: 'paper', paperId: row.id })}
       onMistakes={() => setView({ kind: 'mistakes' })}
       onLevel={l => { setOverview(null); updateSettings({ jlptLevel: l }) }}
     />

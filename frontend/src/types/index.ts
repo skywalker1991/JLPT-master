@@ -660,6 +660,19 @@ export interface JlptPaperRow {
   attempt_id: string | null
   stage: 'written' | 'listening' | null
   total: number | null
+  /** Questions in the paper, and how many have been answered (practice or mock) */
+  questions: number
+  done: number
+}
+
+export interface PaperOverview {
+  id: string
+  label: string
+  level: string
+  kinds: { id: JlptCategory['id']; label: string; total: number; answered: number; right: number }[]
+  written_minutes: number
+  listening_minutes: number
+  mock: { attempt_id: string; status: 'in_progress' | 'completed'; stage: string | null; total: number | null; max_total: number } | null
 }
 
 export interface JlptOverview {

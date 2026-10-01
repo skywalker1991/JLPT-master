@@ -16,9 +16,11 @@ interface Result { chosen: string; correct: string; right: boolean }
  * Practice one question type across papers: no clock, and each answer is
  * told at once — the right option, the one chosen, and 差在哪.
  */
-export default function PracticeSession({ category, level, label, onExit, onOpenAnalysis }: {
+export default function PracticeSession({ category, level, paperId, label, onExit, onOpenAnalysis }: {
   category: string
   level: string
+  /** One paper's questions of this kind, as printed (otherwise a mixed set) */
+  paperId?: string | null
   label: string
   onExit: () => void
   onOpenAnalysis?: (unit: PracticeUnit, itemId: string) => void
@@ -38,7 +40,7 @@ export default function PracticeSession({ category, level, label, onExit, onOpen
     drawn.current = key
     setUnits(null)
     setAt(0)
-    getPractice(category, level).then(r => setUnits(r.units)).catch(() => toast('题目没取到，稍后再试', 'error'))
+    getPractice(category, level, paperId).then(r => setUnits(r.units)).catch(() => toast('题目没取到，稍后再试', 'error'))
   }, [category, round, toast])
 
   const all = Object.values(results)
@@ -57,7 +59,7 @@ export default function PracticeSession({ category, level, label, onExit, onOpen
   const header = (
     <header className="h-14 shrink-0 flex items-center gap-3 px-3 md:px-6 border-b border-border">
       <button type="button" onClick={onExit} className="flex items-center gap-0.5 text-sm text-fg-muted hover:text-fg h-10 pr-2">
-        <ChevronLeft className="w-4 h-4" />结束练习
+        <ChevronLeft className="w-4 h-4" />{paperId ? '回到试卷' : '结束练习'}
       </button>
       <span className="text-xs font-semibold rounded-full border border-fg px-2.5 py-0.5 text-fg">练习 · {label}</span>
       {units && units.length > 0 && (
@@ -83,12 +85,12 @@ export default function PracticeSession({ category, level, label, onExit, onOpen
         <div className="flex-1 flex flex-col items-center justify-center gap-5 px-6 text-center">
           <Connected className="w-12 h-12" />
           <div className="flex flex-col gap-1">
-            <h2 className="text-xl font-bold text-fg">这组练完了</h2>
+            <h2 className="text-xl font-bold text-fg">{paperId ? '这一类做完了' : '这组练完了'}</h2>
             <p className="text-sm text-fg-muted">对 {right} 题，错 {all.length - right} 题。错的会在之后的练习里再出现。</p>
           </div>
           <div className="flex gap-3">
-            <button type="button" onClick={onExit} className="btn h-11 px-5 border border-border text-fg">回到 JLPT</button>
-            <button type="button" onClick={() => { setResults({}); setRound(r => r + 1) }} className="btn-primary h-11 px-5">再练一组</button>
+            <button type="button" onClick={onExit} className="btn h-11 px-5 border border-border text-fg">{paperId ? '回到试卷' : '回到 JLPT'}</button>
+            <button type="button" onClick={() => { setResults({}); setRound(r => r + 1) }} className="btn-primary h-11 px-5">{paperId ? '再做一遍' : '再练一组'}</button>
           </div>
         </div>
       </div>
