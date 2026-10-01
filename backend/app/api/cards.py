@@ -153,7 +153,7 @@ async def card_detail(body: CardDetailRequest, db: AsyncSession = Depends(get_db
     detail = None
     for attempt in range(2):  # the model now and then returns broken JSON
         try:
-            raw = await get_llm_client().analyze(prompt, schema)
+            raw = await get_llm_client().analyze(prompt, schema, think=False)
             detail = _clean(json.loads(_strip_fence(raw)))
             if detail["examples"]:
                 break

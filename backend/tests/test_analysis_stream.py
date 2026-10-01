@@ -66,7 +66,7 @@ class _SkippingLLM:
     def __init__(self):
         self.calls = 0
 
-    async def analyze_stream(self, prompt, schema, image_base64=None):
+    async def analyze_stream(self, prompt, schema, image_base64=None, **kwargs):
         self.calls += 1
         if self.calls == 1:
             payload = {"sentences": [
@@ -110,7 +110,7 @@ def test_every_input_sentence_is_emitted_once(monkeypatch):
 
 
 class _FailingLLM:
-    async def analyze_stream(self, prompt, schema, image_base64=None):
+    async def analyze_stream(self, prompt, schema, image_base64=None, **kwargs):
         raise RuntimeError("boom")
         yield  # pragma: no cover
 

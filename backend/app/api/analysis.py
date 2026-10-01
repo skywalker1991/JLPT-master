@@ -559,7 +559,7 @@ def _build_event_stream(request: AnalyzeRequest, analysis_id: UUID, db: AsyncSes
         async def run_pass(targets: dict[int, str]):
             buffer = ""
             seen = 0
-            async for chunk in llm.analyze_stream(_build_free_text_prompt(targets), _FREE_TEXT_SCHEMA):
+            async for chunk in llm.analyze_stream(_build_free_text_prompt(targets), _FREE_TEXT_SCHEMA, think=False):
                 buffer += chunk
                 new = _extract_completed_sentences(buffer, seen)
                 seen += len(new)
@@ -603,7 +603,7 @@ def _build_event_stream(request: AnalyzeRequest, analysis_id: UUID, db: AsyncSes
         emitted_sentences: list[dict] = []
 
         try:
-            async for chunk in llm.analyze_stream(prompt, schema, image_base64=request.image, image_mime=request.image_mime):
+            async for chunk in llm.analyze_stream(prompt, schema, image_base64=request.image, image_mime=request.image_mime, think=False):
                 full_json += chunk
                 yield {"event": "chunk", "data": chunk}
 
@@ -851,7 +851,7 @@ async def retry_sentence(
     llm = get_llm_client()
     buffer = ""
     try:
-        async for chunk in llm.analyze_stream(_build_free_text_prompt({index: text}), _FREE_TEXT_SCHEMA):
+        async for chunk in llm.analyze_stream(_build_free_text_prompt({index: text}), _FREE_TEXT_SCHEMA, think=False):
             buffer += chunk
     except Exception as e:
         logger.error("Retry of sentence %d in %s failed: %s", index, analysis_id, e)

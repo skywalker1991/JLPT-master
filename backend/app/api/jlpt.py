@@ -825,7 +825,7 @@ async def analyse_text(db: AsyncSession, text: str) -> list[dict]:
                 break
             buffer = ""
             try:
-                async for chunk in llm.analyze_stream(_build_free_text_prompt(missing), _FREE_TEXT_SCHEMA):
+                async for chunk in llm.analyze_stream(_build_free_text_prompt(missing), _FREE_TEXT_SCHEMA, think=False):
                     buffer += chunk
             except Exception:
                 pass

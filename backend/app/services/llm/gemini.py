@@ -9,6 +9,13 @@ from app.services.llm.base import LLMClient
 
 logger = logging.getLogger(__name__)
 
+# Thinking off. Measured on real passages and questions (2026-10-01): for
+# sentence analysis it cut the wait for the first sentence from 13–28 s to
+# about 1 s and the cost by 34–59% at the same quality; for JLPT
+# explanations it got answers wrong (an ordering question, a grammar
+# point), so those keep it.
+_NO_THINKING = types.ThinkingConfig(thinking_budget=0)
+
 
 class GeminiClient(LLMClient):
     def __init__(self, api_key: str, model: str = "gemini-2.0-flash"):
@@ -17,7 +24,7 @@ class GeminiClient(LLMClient):
 
     async def analyze_stream(
         self, prompt: str, schema: dict, image_base64: str | None = None,
-        image_mime: str = "image/png",
+        image_mime: str = "image/png", think: bool = True,
     ) -> AsyncIterator[str]:
         """Stream analysis, yield raw text chunks.
 
@@ -38,6 +45,7 @@ class GeminiClient(LLMClient):
             stream = await self._client.aio.models.generate_content_stream(
                 model=self._model_name,
                 contents=contents,
+                config=None if think else types.GenerateContentConfig(thinking_config=_NO_THINKING),
             )
             async for chunk in stream:
                 if chunk.text:
@@ -46,7 +54,7 @@ class GeminiClient(LLMClient):
             logger.error("Gemini stream error: %s", e)
             raise
 
-    async def analyze(self, prompt: str, schema: dict, enforce: bool = False) -> str:
+    async def analyze(self, prompt: str, schema: dict, enforce: bool = False, think: bool = True) -> str:
         """Single-shot call, return raw JSON string.
 
         With `enforce`, the schema is given to the model as its output format
@@ -54,13 +62,14 @@ class GeminiClient(LLMClient):
         is guaranteed. Should the API refuse the schema, it falls back to
         plain JSON and the caller's own checks."""
         try:
-            config = types.GenerateContentConfig(response_mime_type="application/json")
+            thinking = {} if think else {"thinking_config": _NO_THINKING}
+            config = types.GenerateContentConfig(response_mime_type="application/json", **thinking)
             if enforce and schema:
                 try:
                     response = await self._client.aio.models.generate_content(
                         model=self._model_name, contents=prompt,
                         config=types.GenerateContentConfig(response_mime_type="application/json",
-                                                           response_json_schema=schema),
+                                                           response_json_schema=schema, **thinking),
                     )
                     return response.text or ""
                 except Exception as e:
