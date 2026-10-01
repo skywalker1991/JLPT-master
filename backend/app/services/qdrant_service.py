@@ -137,5 +137,16 @@ class QdrantService:
         except Exception as e:
             logger.warning("Qdrant claim_unowned failed: %s", e)
 
+    async def reassign(self, old_user_id: UUID, new_user_id: UUID) -> None:
+        """Hand one account's grammar points to another (an admin changing address)."""
+        try:
+            await self._get_client().set_payload(
+                collection_name=get_settings().QDRANT_COLLECTION,
+                payload={"user_id": str(new_user_id)},
+                points=Filter(must=[FieldCondition(key="user_id", match=MatchValue(value=str(old_user_id)))]),
+            )
+        except Exception as e:
+            logger.warning("Qdrant reassign failed: %s", e)
+
 
 qdrant_service = QdrantService()
