@@ -30,7 +30,7 @@ export default function JlptHome({ data, onPaper, onMistakes, onLevel }: {
             ))}
           </div>
           <button type="button" onClick={onMistakes}
-                  className="ml-auto btn h-9 border border-border text-fg">
+                  className="ml-auto btn h-9 shrink-0 whitespace-nowrap border border-border text-fg">
             错题{data.mistakes > 0 && <span className="text-danger-fg tabular-nums">{data.mistakes}</span>}
             <ChevronRight className="w-4 h-4 text-fg-subtle" />
           </button>
