@@ -153,6 +153,10 @@ export default function MockExam({ attemptId, onExit, onDone }: {
     return (
       <div className="flex-1 min-h-0 flex flex-col">
         <header className="h-14 shrink-0 flex items-center gap-3 px-6 border-b border-border">
+          <button type="button" onClick={onExit} title="答案已保存，回来接着做；计时不会暂停"
+                  className="flex items-center gap-0.5 text-sm text-fg-muted hover:text-fg h-10 pr-2 -ml-2">
+            <ChevronLeft className="w-4 h-4" />离开
+          </button>
           <span className="text-xs font-semibold rounded-full bg-fg text-bg px-2.5 py-0.5">模拟考</span>
           <span className="font-bold text-fg">{state.label} {state.level}</span>
           <span className="text-sm text-fg-muted">{STAGE_LABEL[state.stage]}</span>
