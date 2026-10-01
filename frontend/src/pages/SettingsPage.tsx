@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import clsx from 'clsx'
+import { useLocation } from 'react-router-dom'
 import { Download } from 'lucide-react'
 import type { ReviewSettings } from '../types'
 import { getReviewSettings, updateReviewSettings } from '../services/api'
@@ -24,6 +25,13 @@ const speechSupported = typeof window !== 'undefined' &&
  * (threshold, furigana, translations) change only that one time.
  */
 export default function SettingsPage() {
+  // Opened at a section (/settings#review): go there
+  const { hash, pathname } = useLocation()
+  useEffect(() => {
+    if (!hash) return
+    const t = setTimeout(() => document.getElementById(hash.slice(1))?.scrollIntoView({ block: 'start' }), 50)
+    return () => clearTimeout(t)
+  }, [hash, pathname])
   const { settings, updateSettings } = useSettings()
   const { toast } = useToast()
   const [review, setReview] = useState<ReviewSettings | null>(null)
