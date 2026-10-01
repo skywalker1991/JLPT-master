@@ -47,9 +47,9 @@ export default function PaperView({ paperId, onBack, onPractice, onMock, onResul
                   <span className="h-1.5 rounded-full bg-border overflow-hidden">
                     <span className={clsx('block h-full', weak ? 'bg-danger' : 'bg-fg')} style={{ width: `${(k.answered / Math.max(1, k.total)) * 100}%` }} />
                   </span>
-                  <span className="text-sm text-fg-muted">
-                    {acc == null ? '还没做' : <>正确率 <b className={clsx('ml-1', weak ? 'text-danger-fg' : 'text-fg')}>{acc}%</b></>}
-                  </span>
+                  {acc != null && (
+                    <span className="text-sm text-fg-muted">正确率 <b className={clsx('ml-1', weak ? 'text-danger-fg' : 'text-fg')}>{acc}%</b></span>
+                  )}
                 </button>
               )
             })}
@@ -60,11 +60,12 @@ export default function PaperView({ paperId, onBack, onPractice, onMock, onResul
           <h2 className="text-sm font-semibold text-fg-muted">模拟考</h2>
           <div className="rounded-2xl border-[1.5px] border-fg bg-surface px-5 py-5 flex flex-wrap items-center gap-4">
             <div className="flex flex-col gap-1 flex-1 min-w-[12rem]">
-              <span className="text-lg font-bold text-fg">
-                {mock?.status === 'completed' && mock.total != null ? `上次 ${mock.total} / ${mock.max_total} 分`
-                  : mock?.status === 'in_progress' ? mockUnderway(mock.stage, mock.remaining) : '整套，按真实时间'}
-              </span>
-              <span className="text-xs text-fg-subtle">言語知識・読解 {p.written_minutes} 分钟　聴解 {p.listening_minutes} 分钟　交卷前不给答案</span>
+              {mock && (
+                <span className="text-lg font-bold text-fg">
+                  {mock.status === 'completed' && mock.total != null ? `上次 ${mock.total} / ${mock.max_total} 分` : mockUnderway(mock.stage, mock.remaining)}
+                </span>
+              )}
+              <span className={mock ? 'text-xs text-fg-subtle' : 'text-sm text-fg'}>言語知識・読解 {p.written_minutes} 分钟　聴解 {p.listening_minutes} 分钟</span>
             </div>
             {mock?.status === 'completed' && (
               <button type="button" onClick={() => onResult(mock.attempt_id)} className="btn h-11 px-5 border border-border text-fg">看成绩</button>

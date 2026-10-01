@@ -53,7 +53,7 @@ export default function JlptHome({ data, onPaper, onMistakes, onLevel }: {
                   </span>
                   <span className="text-xs text-fg-muted tabular-nums">
                     {p.status === 'in_progress' ? <span className="text-fg">{mockUnderway(p.stage, p.remaining, true)}</span>
-                      : p.done === 0 ? `${p.questions} 题 · 还没做` : `做了 ${p.done} / ${p.questions} 题`}
+                      : p.done === 0 ? `${p.questions} 题` : `做了 ${p.done} / ${p.questions} 题`}
                   </span>
                 </button>
               </li>
