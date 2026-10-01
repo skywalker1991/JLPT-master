@@ -19,6 +19,8 @@ export interface Settings {
   clozeAnswer: ClozeAnswer
   /** 背诵: start with the kana hint on */
   reciteKana: boolean
+  /** JLPT: the level being studied */
+  jlptLevel: string
   // Kept for older screens still reading them
   levelFilter: string[]
   hideJa: boolean
@@ -34,7 +36,7 @@ const Ctx = createContext<SettingsCtx | null>(null)
 
 const DEFAULTS: Settings = {
   theme: 'system', jpSize: 'md', markLevel: 'N3', hideFurigana: true, showTranslations: false,
-  clozeAnswer: 'self', reciteKana: false, levelFilter: [], hideJa: false, hideZh: false,
+  clozeAnswer: 'self', reciteKana: false, jlptLevel: 'N1', levelFilter: [], hideJa: false, hideZh: false,
 }
 
 /** Settings saved by earlier versions, read into today's shape. */

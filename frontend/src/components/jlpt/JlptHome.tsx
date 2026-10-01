@@ -10,8 +10,9 @@ const WEAK = 60
  * after each answer), mock exams on the right (a whole paper, timed, no
  * answers until it is handed in), and the mistakes gathered from both.
  */
-export default function JlptHome({ data, onPractice, onPaper, onMistakes }: {
+export default function JlptHome({ data, onPractice, onPaper, onMistakes, onLevel }: {
   data: JlptOverview
+  onLevel: (level: string) => void
   onPractice: (c: JlptCategory) => void
   onPaper: (p: JlptPaperRow) => void
   onMistakes: () => void
@@ -22,6 +23,18 @@ export default function JlptHome({ data, onPractice, onPaper, onMistakes }: {
   return (
     <div className="flex-1 min-h-0 overflow-y-auto md:overflow-hidden flex flex-col md:flex-row">
       <section className="md:flex-1 md:min-w-0 md:overflow-y-auto px-4 md:px-10 py-5 md:py-8 flex flex-col gap-4">
+        <div role="tablist" aria-label="等级" className="flex gap-1.5">
+          {data.levels.map(l => (
+            <button key={l.level} type="button" role="tab" aria-selected={l.level === data.level}
+                    disabled={l.papers === 0 && l.level !== data.level} onClick={() => onLevel(l.level)}
+                    title={l.papers === 0 ? '这个等级还没有真题' : `${l.papers} 套真题`}
+                    className={clsx('h-9 px-4 rounded-full text-sm font-semibold border transition-colors',
+                      l.level === data.level ? 'bg-fg text-bg border-fg' : 'border-border text-fg hover:border-fg-subtle',
+                      'disabled:opacity-35 disabled:hover:border-border')}>
+              {l.level}
+            </button>
+          ))}
+        </div>
         <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h1 className="text-2xl font-bold text-fg">练习</h1>
         </header>
@@ -53,7 +66,7 @@ export default function JlptHome({ data, onPractice, onPaper, onMistakes }: {
           <p className="flex flex-wrap items-baseline gap-x-3">
             <span className="text-xl font-bold text-fg">模拟考</span>
           </p>
-          <p className="text-xs text-fg-subtle">言語知識・読解 110 分钟　聴解 55 分钟</p>
+          <p className="text-xs text-fg-subtle">{data.level === 'N1' || data.level === 'N2' ? '言語知識・読解' : '言語知識・読解（两节）'} {data.written_minutes} 分钟　聴解 {data.listening_minutes} 分钟</p>
         </header>
         <ul className="rounded-xl border border-border bg-surface divide-y divide-border">
           {papers.map(p => (

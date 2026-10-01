@@ -16,8 +16,9 @@ interface Result { chosen: string; correct: string; right: boolean }
  * Practice one question type across papers: no clock, and each answer is
  * told at once — the right option, the one chosen, and 差在哪.
  */
-export default function PracticeSession({ category, label, onExit, onOpenAnalysis }: {
+export default function PracticeSession({ category, level, label, onExit, onOpenAnalysis }: {
   category: string
+  level: string
   label: string
   onExit: () => void
   onOpenAnalysis?: (unit: PracticeUnit, itemId: string) => void
@@ -37,7 +38,7 @@ export default function PracticeSession({ category, label, onExit, onOpenAnalysi
     drawn.current = key
     setUnits(null)
     setAt(0)
-    getPractice(category).then(r => setUnits(r.units)).catch(() => toast('题目没取到，稍后再试', 'error'))
+    getPractice(category, level).then(r => setUnits(r.units)).catch(() => toast('题目没取到，稍后再试', 'error'))
   }, [category, round, toast])
 
   const all = Object.values(results)

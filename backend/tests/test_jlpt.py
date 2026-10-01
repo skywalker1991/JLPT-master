@@ -10,10 +10,22 @@ def test_practice_category_by_section_and_number():
 
 
 def test_parts_and_scaling():
-    assert jp.part_of_section("言語知識（文法）") == "言語知識"
-    assert jp.part_of_section("読解") == "読解"
-    assert jp.scaled(22, 44) == 30 and jp.scaled(0, 0) == 0
+    assert jp.scaled(22, 44) == 30 and jp.scaled(0, 0) == 0 and jp.scaled(30, 60, 120) == 60
     assert jp.paper_label("2025年07月", "") == "2025年7月"
+    assert [p.name for p in jp.LEVELS["N4"].parts] == ["言語知識・読解", "聴解"]
+    assert (jp.LEVELS["N2"].written_minutes, jp.LEVELS["N2"].pass_total) == (105, 90)
+
+
+def test_each_level_numbers_its_own_way():
+    # N2 numbers the written booklet straight through
+    assert jp.category_of("読解", "問題14", "N2").label == "情報検索"
+    assert jp.category_of("言語知識（文字・語彙）", "問題3", "N2").label == "語形成"
+    # N3 starts again in each section of 言語知識
+    assert jp.category_of("言語知識（文字・語彙）", "問題1", "N3").label == "漢字読み"
+    assert jp.category_of("言語知識（文法）・読解", "問題1", "N3").label == "文法形式"
+    assert jp.category_of("言語知識（文法）・読解", "問題7", "N3").label == "情報検索"
+    assert jp.category_of("聴解", "問題4", "N3").label == "発話表現"
+    assert jp.category_of("聴解", "問題5", "N4") is None
 
 
 def test_clean_rejoins_printed_line_breaks():

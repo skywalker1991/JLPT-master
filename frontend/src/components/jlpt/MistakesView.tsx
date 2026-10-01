@@ -6,12 +6,13 @@ import { getJlptMistakes, type MistakeGroup } from '../../services/api'
  * The questions whose latest answer was wrong, from mock exams and practice,
  * by question type. Opening one reviews it with the rest of its type after it.
  */
-export default function MistakesView({ onBack, onOpen }: {
+export default function MistakesView({ level, onBack, onOpen }: {
+  level: string
   onBack: () => void
   onOpen: (itemIds: string[], startAt: number) => void
 }) {
   const [groups, setGroups] = useState<MistakeGroup[] | null>(null)
-  useEffect(() => { getJlptMistakes().then(setGroups).catch(() => setGroups([])) }, [])
+  useEffect(() => { getJlptMistakes(level).then(setGroups).catch(() => setGroups([])) }, [level])
   const total = groups?.reduce((n, g) => n + g.items.length, 0) ?? 0
 
   return (
@@ -19,7 +20,7 @@ export default function MistakesView({ onBack, onOpen }: {
       <div className="max-w-3xl mx-auto px-4 md:px-8 py-5 md:py-8 flex flex-col gap-5">
         <header className="flex items-center gap-2">
           <button type="button" onClick={onBack} aria-label="回到 JLPT" className="-ml-2 p-2 text-fg-muted hover:text-fg"><ChevronLeft className="w-5 h-5" /></button>
-          <h1 className="text-xl font-bold text-fg">错题</h1>
+          <h1 className="text-xl font-bold text-fg">{level} 错题</h1>
           {groups && <span className="text-sm text-fg-muted">{total} 题 · 最近一次做错的</span>}
         </header>
         {!groups ? <Loader2 className="w-5 h-5 animate-spin text-fg-subtle" /> : groups.length === 0 ? (

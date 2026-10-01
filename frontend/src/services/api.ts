@@ -681,12 +681,12 @@ export async function savePair(body: ComparedPair & {
 
 // ---- JLPT home & practice ----
 
-export async function getJlptOverview(): Promise<JlptOverview> {
-  return request<JlptOverview>('/api/jlpt/overview')
+export async function getJlptOverview(level: string): Promise<JlptOverview> {
+  return request<JlptOverview>(`/api/jlpt/overview?level=${level}`)
 }
 
-export async function getPractice(category: string): Promise<{ category: { id: string; label: string; part: string }; units: PracticeUnit[] }> {
-  return request(`/api/jlpt/practice/${category}`)
+export async function getPractice(category: string, level: string): Promise<{ category: { id: string; label: string; part: string }; units: PracticeUnit[] }> {
+  return request(`/api/jlpt/practice/${category}?level=${level}`)
 }
 
 export async function answerPractice(itemId: string, answer: string): Promise<{ is_correct: boolean; correct_answer: string | null; answer_order: string | null }> {
@@ -740,8 +740,8 @@ export interface MistakeGroup {
 }
 
 /** Questions last answered wrong, by question type. */
-export async function getJlptMistakes(): Promise<MistakeGroup[]> {
-  return request<MistakeGroup[]>('/api/jlpt/mistakes')
+export async function getJlptMistakes(level: string): Promise<MistakeGroup[]> {
+  return request<MistakeGroup[]>(`/api/jlpt/mistakes?level=${level}`)
 }
 
 // ---- Recitation (背诵) ----

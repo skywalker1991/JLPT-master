@@ -8,6 +8,7 @@ import MockResultView from '../components/jlpt/MockResultView'
 import ReviewView from '../components/jlpt/ReviewView'
 import MistakesView from '../components/jlpt/MistakesView'
 import { getJlptOverview, startMock } from '../services/api'
+import { useSettings } from '../context/SettingsContext'
 import type { JlptCategory, JlptOverview } from '../types'
 
 // ─── Page root ────────────────────────────────────────────────────────────────
@@ -26,11 +27,13 @@ export default function JlptPage() {
   const [view, setView] = useState<View>({ kind: 'home' })
   const [overview, setOverview] = useState<JlptOverview | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const { settings, updateSettings } = useSettings()
+  const level = settings.jlptLevel || 'N1'
 
   useEffect(() => {
     if (!active || view.kind !== 'home') return
-    getJlptOverview().then(setOverview).catch(e => setError(e.message))
-  }, [active, view.kind]) // eslint-disable-line react-hooks/exhaustive-deps
+    getJlptOverview(level).then(setOverview).catch(e => setError(e.message))
+  }, [active, view.kind, level]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const home = () => setView({ kind: 'home' })
 
@@ -42,7 +45,7 @@ export default function JlptPage() {
     return (
       <>
         <div className={view.kind === 'practice' ? 'flex-1 min-h-0 flex flex-col' : 'hidden'}>
-          <PracticeSession category={practice.category.id} label={practice.category.label} onExit={home}
+          <PracticeSession category={practice.category.id} level={level} label={practice.category.label} onExit={home}
                            onOpenAnalysis={(_, itemId) => setView({ kind: 'review', itemIds: [itemId], attemptId: null, back: practice, backLabel: '练习' })} />
         </div>
         {view.kind === 'review' && (
@@ -67,7 +70,7 @@ export default function JlptPage() {
   }
 
   if (view.kind === 'mistakes') {
-    return <MistakesView onBack={home}
+    return <MistakesView level={level} onBack={home}
                          onOpen={(ids, startAt) => setView({ kind: 'review', itemIds: ids, attemptId: null, back: view, backLabel: '错题', startAt })} />
   }
 
@@ -88,6 +91,7 @@ export default function JlptPage() {
         }
       }}
       onMistakes={() => setView({ kind: 'mistakes' })}
+      onLevel={l => { setOverview(null); updateSettings({ jlptLevel: l }) }}
     />
   )
 }

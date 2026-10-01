@@ -665,11 +665,15 @@ export interface JlptPaperRow {
 }
 
 export interface JlptOverview {
+  level: string
+  /** Every level and how many papers it has (0 = nothing to practise yet) */
+  levels: { level: string; papers: number }[]
   categories: JlptCategory[]
   papers: JlptPaperRow[]
   mistakes: number
   pass_line: number
-  part_min: number
+  written_minutes: number
+  listening_minutes: number
 }
 
 export interface PracticeUnit {
@@ -733,10 +737,10 @@ export interface MockResult {
   minutes: number
   date: string | null
   total: number
+  max_total: number
   pass_line: number
-  part_min: number
   passed: boolean
-  parts: { part: string; score: number; max: number; correct: number; total: number; wrong: number; passed_min: boolean }[]
+  parts: { part: string; score: number; max: number; min: number; correct: number; total: number; wrong: number; passed_min: boolean }[]
   categories: { id: string; label: string; part: string; correct: number; total: number }[]
   wrong: number
   /** In the order to look at them: weakest question type first */

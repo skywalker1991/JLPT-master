@@ -35,10 +35,10 @@ export default function MockResultView({ attemptId, onBack, onReview }: {
           </span>
         </header>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div className={clsx('grid grid-cols-1 gap-3', r.parts.length === 3 ? 'md:grid-cols-4' : 'md:grid-cols-3')}>
           <div className="rounded-2xl bg-fg text-bg p-5 flex flex-col gap-1.5">
             <span className="text-xs opacity-70">综合（估算）</span>
-            <span><b className="text-4xl tabular-nums">{r.total}</b><span className="opacity-70"> / 180</span></span>
+            <span><b className="text-4xl tabular-nums">{r.total}</b><span className="opacity-70"> / {r.max_total}</span></span>
             <span className="text-xs opacity-80">合格线 {r.pass_line} · 按正确率估算，不是官方换算</span>
           </div>
           {r.parts.map(p => (
@@ -46,13 +46,13 @@ export default function MockResultView({ attemptId, onBack, onReview }: {
               <span className="flex items-baseline text-sm font-semibold text-fg">
                 {p.part}
                 <span className={clsx('ml-auto text-xs font-normal', p.passed_min ? 'text-success-fg' : 'text-danger-fg')}>
-                  {p.passed_min ? '过' : '未过'}基准点 {r.part_min}
+                  {p.passed_min ? '过' : '未过'}基准点 {p.min}
                 </span>
               </span>
               <span><b className="text-2xl text-fg tabular-nums">{p.score}</b><span className="text-sm text-fg-muted"> / {p.max}</span></span>
               <span className="relative h-1.5 rounded-full bg-border">
                 <span className="absolute inset-y-0 left-0 rounded-full bg-fg" style={{ width: `${(p.score / p.max) * 100}%` }} />
-                <span className="absolute -top-1 -bottom-1 w-0.5 bg-danger" style={{ left: `${(r.part_min / p.max) * 100}%` }} />
+                <span className="absolute -top-1 -bottom-1 w-0.5 bg-danger" style={{ left: `${(p.min / p.max) * 100}%` }} />
               </span>
               <span className="text-xs text-fg-muted">错 {p.wrong} 题</span>
             </div>

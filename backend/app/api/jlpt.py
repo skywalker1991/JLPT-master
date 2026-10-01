@@ -13,7 +13,7 @@ import asyncio
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import current_user
@@ -62,14 +62,23 @@ def _latest(answers) -> dict[UUID, bool]:
 
 
 @router.get("/jlpt/overview")
-async def overview(db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
-    bank = await _bank(db)
+async def overview(
+    level: str = Query(default="N1", pattern="^N[1-5]$"),
+    db: AsyncSession = Depends(get_db), user: User = Depends(current_user),
+):
+    """One level's practice types, papers and mistakes, and which levels have papers at all."""
+    every = await _bank(db)
+    papers_by_level: dict[str, set] = defaultdict(set)
+    for _, _, _, paper in every:
+        papers_by_level[(paper.level or "N1").upper()].add(paper.id)
+    bank = [r for r in every if (r[3].level or "N1").upper() == level]
+    lv = jp.level_of(level)
     answers = await _answers(db, user.id)
     category_of_item: dict[UUID, str] = {}
     items_per_cat: dict[str, int] = defaultdict(int)
     papers_per_cat: dict[str, set] = defaultdict(set)
     for item, prob, sec, paper in bank:
-        cat = jp.category_of(sec.name, prob.name)
+        cat = jp.category_of(sec.name, prob.name, level)
         if cat is None:
             continue
         category_of_item[item.id] = cat.id
@@ -89,7 +98,7 @@ async def overview(db: AsyncSession = Depends(get_db), user: User = Depends(curr
         "per_paper": round(items_per_cat[c.id] / max(1, len(papers_per_cat[c.id]))),
         "answered": tried[c.id],
         "accuracy": round(right[c.id] / tried[c.id] * 100) if tried[c.id] else None,
-    } for c in jp.N1 if items_per_cat[c.id]]
+    } for c in lv.categories if items_per_cat[c.id]]
 
     mocks = (await db.execute(
         select(ExamAttempt).where(ExamAttempt.user_id == user.id).order_by(ExamAttempt.started_at.desc())
@@ -99,7 +108,9 @@ async def overview(db: AsyncSession = Depends(get_db), user: User = Depends(curr
         if (a.meta or {}).get("mock") and a.paper_id not in latest_mock:
             latest_mock[a.paper_id] = a
 
-    papers = (await db.execute(select(ExamPaper).order_by(ExamPaper.source.desc()))).scalars().all()
+    papers = (await db.execute(
+        select(ExamPaper).where(func.upper(func.coalesce(ExamPaper.level, "N1")) == level).order_by(ExamPaper.source.desc())
+    )).scalars().all()
     paper_rows = []
     for p in papers:
         a = latest_mock.get(p.id)
@@ -115,9 +126,14 @@ async def overview(db: AsyncSession = Depends(get_db), user: User = Depends(curr
                 row["stage"] = (a.meta or {}).get("stage", "written")
         paper_rows.append(row)
 
-    wrong_now = sum(1 for ok in _latest(answers).values() if not ok)
-    return {"categories": categories, "papers": paper_rows, "mistakes": wrong_now,
-            "pass_line": jp.PASS_TOTAL, "part_min": jp.PART_MIN}
+    in_level = {r[0].id for r in bank}
+    wrong_now = sum(1 for i, ok in _latest(answers).items() if not ok and i in in_level)
+    return {
+        "level": level,
+        "levels": [{"level": lvl, "papers": len(papers_by_level.get(lvl, ()))} for lvl in jp.LEVEL_ORDER],
+        "categories": categories, "papers": paper_rows, "mistakes": wrong_now,
+        "pass_line": lv.pass_total, "written_minutes": lv.written_minutes, "listening_minutes": lv.listening_minutes,
+    }
 
 
 def _units(rows, grouped: bool) -> list[list]:
@@ -138,16 +154,18 @@ def _units(rows, grouped: bool) -> list[list]:
 @router.get("/jlpt/practice/{category}")
 async def practice(
     category: str,
+    level: str = Query(default="N1", pattern="^N[1-5]$"),
     count: int | None = Query(default=None, ge=1, le=30),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(current_user),
 ):
     """Questions of one type from all papers: ones never answered first, then
     ones last answered wrong, then the rest — each group shuffled."""
-    cat = jp.BY_ID.get(category)
+    cat = jp.category_by_id(level, category)
     if cat is None:
         raise HTTPException(status_code=404, detail="没有这个题型")
-    rows = [r for r in await _bank(db) if (c := jp.category_of(r[2].name, r[1].name)) and c.id == cat.id]
+    rows = [r for r in await _bank(db) if (r[3].level or "N1").upper() == level
+            and (c := jp.category_of(r[2].name, r[1].name, level)) and c.id == cat.id]
     latest = _latest(await _answers(db, user.id))
 
     def rank(unit) -> int:
@@ -204,7 +222,9 @@ from datetime import datetime, timezone  # noqa: E402
 
 from app.api.exam import build_paper_detail  # noqa: E402
 
-STAGE_SECONDS = {"written": 110 * 60, "listening": 55 * 60}
+def _stage_seconds(level: str | None, stage: str) -> int:
+    lv = jp.level_of(level)
+    return 60 * (lv.listening_minutes if stage == "listening" else lv.written_minutes)
 
 
 def _stage_of(section_name: str) -> str:
@@ -214,7 +234,7 @@ def _stage_of(section_name: str) -> str:
 def _remaining(meta: dict) -> int:
     started = datetime.fromisoformat(meta["stage_started_at"])
     elapsed = (datetime.now(timezone.utc) - started).total_seconds()
-    return max(0, int(STAGE_SECONDS[meta["stage"]] - elapsed))
+    return max(0, int(meta.get("stage_seconds", _stage_seconds("N1", meta["stage"])) - elapsed))
 
 
 async def _own_mock(db: AsyncSession, attempt_id: UUID, user: User) -> ExamAttempt:
@@ -227,7 +247,8 @@ async def _own_mock(db: AsyncSession, attempt_id: UUID, user: User) -> ExamAttem
 @router.post("/jlpt/mock/{paper_id}")
 async def start_mock(paper_id: UUID, db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
     """Start a mock exam on this paper, or pick up the one left unfinished."""
-    if await db.get(ExamPaper, paper_id) is None:
+    paper = await db.get(ExamPaper, paper_id)
+    if paper is None:
         raise HTTPException(status_code=404, detail="没有这套试卷")
     for a in (await db.execute(
         select(ExamAttempt).where(ExamAttempt.user_id == user.id, ExamAttempt.paper_id == paper_id,
@@ -237,6 +258,7 @@ async def start_mock(paper_id: UUID, db: AsyncSession = Depends(get_db), user: U
             return {"attempt_id": str(a.id)}
     a = ExamAttempt(paper_id=paper_id, user_id=user.id, meta={
         "mock": True, "stage": "written", "stage_started_at": datetime.now(timezone.utc).isoformat(), "flags": [],
+        "stage_seconds": _stage_seconds(paper.level, "written"),
     })
     db.add(a)
     await db.commit()
@@ -285,18 +307,20 @@ async def _result(db: AsyncSession, a: ExamAttempt) -> dict:
     """Score per scored part (scaled to 60), against 基準点 and the pass line,
     and per question type."""
     bank = [r for r in await _bank(db) if r[3].id == a.paper_id]
+    level = (bank[0][3].level if bank else None) or "N1"
+    lv = jp.level_of(level)
     given = {x.item_id: x for x in (await db.execute(
         select(AttemptAnswer).where(AttemptAnswer.attempt_id == a.id)
     )).scalars()}
-    parts = {p: {"correct": 0, "total": 0} for p in jp.PARTS}
+    parts = {p.name: {"correct": 0, "total": 0} for p in lv.parts}
     cats: dict[str, dict] = {}
     wrong = []
     for item, prob, sec, _ in bank:
-        part = jp.part_of_section(sec.name)
+        cat = jp.category_of(sec.name, prob.name, level)
+        part = cat.part if cat else ("聴解" if "聴解" in sec.name else lv.parts[0].name)
         right = item.id in given and given[item.id].is_correct
         parts[part]["total"] += 1
         parts[part]["correct"] += int(right)
-        cat = jp.category_of(sec.name, prob.name)
         if cat:
             c = cats.setdefault(cat.id, {"id": cat.id, "label": cat.label, "part": cat.part, "correct": 0, "total": 0})
             c["total"] += 1
@@ -304,15 +328,16 @@ async def _result(db: AsyncSession, a: ExamAttempt) -> dict:
         if not right:
             wrong.append(str(item.id))
     out_parts = []
-    for name in jp.PARTS:
-        p = parts[name]
-        score = jp.scaled(p["correct"], p["total"])
-        out_parts.append({"part": name, "score": score, "max": jp.PART_MAX, "correct": p["correct"],
-                          "total": p["total"], "wrong": p["total"] - p["correct"], "passed_min": score >= jp.PART_MIN})
+    for part in lv.parts:
+        p = parts[part.name]
+        score = jp.scaled(p["correct"], p["total"], part.max)
+        out_parts.append({"part": part.name, "score": score, "max": part.max, "min": part.min,
+                          "correct": p["correct"], "total": p["total"], "wrong": p["total"] - p["correct"],
+                          "passed_min": score >= part.min})
     total = sum(p["score"] for p in out_parts)
-    return {"total": total, "pass_line": jp.PASS_TOTAL, "part_min": jp.PART_MIN,
-            "passed": total >= jp.PASS_TOTAL and all(p["passed_min"] for p in out_parts),
-            "parts": out_parts, "categories": [cats[c.id] for c in jp.N1 if c.id in cats],
+    return {"total": total, "max_total": sum(p.max for p in lv.parts), "pass_line": lv.pass_total,
+            "passed": total >= lv.pass_total and all(p["passed_min"] for p in out_parts),
+            "parts": out_parts, "categories": [cats[c.id] for c in lv.categories if c.id in cats],
             "wrong": len(wrong), "wrong_items": wrong}
 
 
@@ -325,7 +350,9 @@ async def hand_in(attempt_id: UUID, db: AsyncSession = Depends(get_db), user: Us
         raise HTTPException(status_code=409, detail="已经交卷了")
     meta = dict(a.meta or {})
     if meta.get("stage") == "written":
-        meta.update(stage="listening", stage_started_at=datetime.now(timezone.utc).isoformat())
+        paper = await db.get(ExamPaper, a.paper_id)
+        meta.update(stage="listening", stage_started_at=datetime.now(timezone.utc).isoformat(),
+                    stage_seconds=_stage_seconds(paper.level if paper else None, "listening"))
         a.meta = meta
         await db.commit()
         return {"stage": "listening"}
@@ -353,7 +380,7 @@ async def mock_result(attempt_id: UUID, db: AsyncSession = Depends(get_db), user
     rate = {c["id"]: c["correct"] / c["total"] for c in result["categories"] if c["total"]}
     order = {}
     for item, prob, sec, _ in [r for r in await _bank(db) if r[3].id == a.paper_id]:
-        cat = jp.category_of(sec.name, prob.name)
+        cat = jp.category_of(sec.name, prob.name, paper.level)
         order[str(item.id)] = (rate.get(cat.id if cat else "", 1), sec.seq, prob.seq, item.seq)
     result["wrong_items"].sort(key=lambda i: order.get(i, (1, 0, 0, 0)))
     minutes = int(((a.completed_at or a.started_at) - a.started_at).total_seconds() // 60)
@@ -387,7 +414,7 @@ async def mock_answer(attempt_id: UUID, body: MockAnswerBody, db: AsyncSession =
     if _stage_of(sec.name) != meta.get("stage"):
         raise HTTPException(status_code=409, detail="这一部分已经交了")
     elapsed = (datetime.now(timezone.utc) - datetime.fromisoformat(meta["stage_started_at"])).total_seconds()
-    if elapsed > STAGE_SECONDS[meta["stage"]] + 30:  # a little grace for the last click in flight
+    if elapsed > meta.get("stage_seconds", _stage_seconds("N1", meta["stage"])) + 30:  # a little grace for the last click in flight
         raise HTTPException(status_code=409, detail="时间到了")
     right = item.correct_answer is not None and body.answer == item.correct_answer
     existing = (await db.execute(select(AttemptAnswer).where(
@@ -454,7 +481,7 @@ async def review_item(
         chosen = {k: (v[0], v[1]) for k, v in latest.items()}
 
     detail = await problem_detail(db, prob, with_answers=True)
-    cat = jp.category_of(sec.name, prob.name)
+    cat = jp.category_of(sec.name, prob.name, paper.level)
     asks = (await db.execute(
         select(ItemAsk).where(ItemAsk.user_id == user.id, ItemAsk.item_id == item_id).order_by(ItemAsk.created_at)
     )).scalars().all()
@@ -638,7 +665,10 @@ async def item_reading(item_id: UUID, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/jlpt/mistakes")
-async def mistakes(db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
+async def mistakes(
+    level: str = Query(default="N1", pattern="^N[1-5]$"),
+    db: AsyncSession = Depends(get_db), user: User = Depends(current_user),
+):
     """Questions whose most recent answer was wrong — from mock exams and
     practice — grouped by question type, most often missed first."""
     answers = await _answers(db, user.id)
@@ -652,14 +682,16 @@ async def mistakes(db: AsyncSession = Depends(get_db), user: User = Depends(curr
     for item, prob, sec, paper in await _bank(db):
         if item.id not in wrong:
             continue
-        cat = jp.category_of(sec.name, prob.name)
+        if (paper.level or "N1").upper() != level:
+            continue
+        cat = jp.category_of(sec.name, prob.name, level)
         if cat is None:
             continue
         g = groups.setdefault(cat.id, {"id": cat.id, "label": cat.label, "part": cat.part, "items": []})
         g["items"].append({"item_id": str(item.id), "paper": jp.paper_label(paper.source, paper.title),
                            "num": item.num, "stem": (item.stem or "").replace("__", "")[:60],
                            "misses": misses[item.id]})
-    out = [groups[c.id] for c in jp.N1 if c.id in groups]
+    out = [groups[c.id] for c in jp.level_of(level).categories if c.id in groups]
     for g in out:
         g["items"].sort(key=lambda x: -x["misses"])
     return out

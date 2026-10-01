@@ -1,9 +1,15 @@
-"""The question types a learner practises, and what makes one practice unit.
+"""Each level's question types, timing and scoring, and what one practice unit is.
 
-The test's own numbering names them: in N1, 問題1–7 are 言語知識, 8–13 読解,
-and 聴解 starts again at 問題1. 読解 and 聴解 are one stored type each
-(reading_comp, listening), but a learner thinks of 内容理解（短文）and 統合理解
-as different things to practise, and they are — so practice goes by number.
+The test's own numbering names the types, but differently per level. N1 and
+N2 number the whole written booklet straight through (N1 問題1–13, N2 問題1–14).
+N3–N5 split it into 文字・語彙 and 文法・読解, each starting again at 問題1.
+聴解 always starts again. So a type is identified by which numbering it is in
+(`section`) and its number:
+
+    w  — the written booklet numbered straight through (N1, N2)
+    v  — 言語知識（文字・語彙）(N3–N5)
+    g  — 言語知識（文法）・読解 (N3–N5)
+    l  — 聴解
 
 A unit is what is answered together: one question for most of 言語知識, a
 whole text with its questions for 文章の文法 and 読解, one 番 for 聴解.
@@ -18,34 +24,103 @@ from dataclasses import dataclass
 class Category:
     id: str
     label: str
-    part: str        # 言語知識 / 読解 / 聴解 — the scored part it counts towards
-    listening: bool
+    part: str        # the scored part it counts towards
+    section: str     # w / v / g / l, see above
     number: int
     grouped: bool    # answered as a passage / 番 with its questions
 
+    @property
+    def listening(self) -> bool:
+        return self.section == "l"
 
-N1: list[Category] = [
-    Category("q1", "漢字読み", "言語知識", False, 1, False),
-    Category("q2", "文脈規定", "言語知識", False, 2, False),
-    Category("q3", "言い換え類義", "言語知識", False, 3, False),
-    Category("q4", "用法", "言語知識", False, 4, False),
-    Category("q5", "文法形式", "言語知識", False, 5, False),
-    Category("q6", "文の組み立て", "言語知識", False, 6, False),
-    Category("q7", "文章の文法", "言語知識", False, 7, True),
-    Category("q8", "内容理解（短文）", "読解", False, 8, True),
-    Category("q9", "内容理解（中文）", "読解", False, 9, True),
-    Category("q10", "内容理解（長文）", "読解", False, 10, True),
-    Category("q11", "統合理解", "読解", False, 11, True),
-    Category("q12", "主張理解", "読解", False, 12, True),
-    Category("q13", "情報検索", "読解", False, 13, True),
-    Category("l1", "課題理解", "聴解", True, 1, True),
-    Category("l2", "ポイント理解", "聴解", True, 2, True),
-    Category("l3", "概要理解", "聴解", True, 3, True),
-    Category("l4", "即時応答", "聴解", True, 4, True),
-    Category("l5", "統合理解", "聴解", True, 5, True),
-]
 
-BY_ID = {c.id: c for c in N1}
+@dataclass(frozen=True)
+class Part:
+    name: str
+    max: int
+    min: int         # 基準点: below this in any part fails the whole test
+
+
+@dataclass(frozen=True)
+class Level:
+    written_minutes: int
+    listening_minutes: int
+    pass_total: int
+    parts: tuple[Part, ...]
+    categories: tuple[Category, ...]
+
+
+def _c(section: str, number: int, label: str, part: str, grouped: bool = False) -> Category:
+    return Category(f"{section}{number}", label, part, section, number, grouped)
+
+
+_LISTEN_N1N2 = (
+    _c("l", 1, "課題理解", "聴解", True), _c("l", 2, "ポイント理解", "聴解", True),
+    _c("l", 3, "概要理解", "聴解", True), _c("l", 4, "即時応答", "聴解", True),
+    _c("l", 5, "統合理解", "聴解", True),
+)
+_THREE_PARTS = (Part("言語知識", 60, 19), Part("読解", 60, 19), Part("聴解", 60, 19))
+_TWO_PARTS = (Part("言語知識・読解", 120, 38), Part("聴解", 60, 19))
+
+LEVELS: dict[str, Level] = {
+    "N1": Level(110, 55, 100, _THREE_PARTS, (
+        _c("w", 1, "漢字読み", "言語知識"), _c("w", 2, "文脈規定", "言語知識"),
+        _c("w", 3, "言い換え類義", "言語知識"), _c("w", 4, "用法", "言語知識"),
+        _c("w", 5, "文法形式", "言語知識"), _c("w", 6, "文の組み立て", "言語知識"),
+        _c("w", 7, "文章の文法", "言語知識", True),
+        _c("w", 8, "内容理解（短文）", "読解", True), _c("w", 9, "内容理解（中文）", "読解", True),
+        _c("w", 10, "内容理解（長文）", "読解", True), _c("w", 11, "統合理解", "読解", True),
+        _c("w", 12, "主張理解", "読解", True), _c("w", 13, "情報検索", "読解", True),
+    ) + _LISTEN_N1N2),
+    "N2": Level(105, 50, 90, _THREE_PARTS, (
+        _c("w", 1, "漢字読み", "言語知識"), _c("w", 2, "表記", "言語知識"),
+        _c("w", 3, "語形成", "言語知識"), _c("w", 4, "文脈規定", "言語知識"),
+        _c("w", 5, "言い換え類義", "言語知識"), _c("w", 6, "用法", "言語知識"),
+        _c("w", 7, "文法形式", "言語知識"), _c("w", 8, "文の組み立て", "言語知識"),
+        _c("w", 9, "文章の文法", "言語知識", True),
+        _c("w", 10, "内容理解（短文）", "読解", True), _c("w", 11, "内容理解（中文）", "読解", True),
+        _c("w", 12, "統合理解", "読解", True), _c("w", 13, "主張理解", "読解", True),
+        _c("w", 14, "情報検索", "読解", True),
+    ) + _LISTEN_N1N2),
+    "N3": Level(100, 40, 95, _THREE_PARTS, (
+        _c("v", 1, "漢字読み", "言語知識"), _c("v", 2, "表記", "言語知識"),
+        _c("v", 3, "文脈規定", "言語知識"), _c("v", 4, "言い換え類義", "言語知識"),
+        _c("v", 5, "用法", "言語知識"),
+        _c("g", 1, "文法形式", "言語知識"), _c("g", 2, "文の組み立て", "言語知識"),
+        _c("g", 3, "文章の文法", "言語知識", True),
+        _c("g", 4, "内容理解（短文）", "読解", True), _c("g", 5, "内容理解（中文）", "読解", True),
+        _c("g", 6, "内容理解（長文）", "読解", True), _c("g", 7, "情報検索", "読解", True),
+        _c("l", 1, "課題理解", "聴解", True), _c("l", 2, "ポイント理解", "聴解", True),
+        _c("l", 3, "概要理解", "聴解", True), _c("l", 4, "発話表現", "聴解", True),
+        _c("l", 5, "即時応答", "聴解", True),
+    )),
+    "N4": Level(80, 35, 90, _TWO_PARTS, (
+        _c("v", 1, "漢字読み", "言語知識・読解"), _c("v", 2, "表記", "言語知識・読解"),
+        _c("v", 3, "文脈規定", "言語知識・読解"), _c("v", 4, "言い換え類義", "言語知識・読解"),
+        _c("v", 5, "用法", "言語知識・読解"),
+        _c("g", 1, "文法形式", "言語知識・読解"), _c("g", 2, "文の組み立て", "言語知識・読解"),
+        _c("g", 3, "文章の文法", "言語知識・読解", True),
+        _c("g", 4, "内容理解（短文）", "言語知識・読解", True), _c("g", 5, "内容理解（中文）", "言語知識・読解", True),
+        _c("g", 6, "情報検索", "言語知識・読解", True),
+        _c("l", 1, "課題理解", "聴解", True), _c("l", 2, "ポイント理解", "聴解", True),
+        _c("l", 3, "発話表現", "聴解", True), _c("l", 4, "即時応答", "聴解", True),
+    )),
+    "N5": Level(60, 30, 80, _TWO_PARTS, (
+        _c("v", 1, "漢字読み", "言語知識・読解"), _c("v", 2, "表記", "言語知識・読解"),
+        _c("v", 3, "文脈規定", "言語知識・読解"), _c("v", 4, "言い換え類義", "言語知識・読解"),
+        _c("g", 1, "文法形式", "言語知識・読解"), _c("g", 2, "文の組み立て", "言語知識・読解"),
+        _c("g", 3, "文章の文法", "言語知識・読解", True),
+        _c("g", 4, "内容理解（短文）", "言語知識・読解", True), _c("g", 5, "内容理解（中文）", "言語知識・読解", True),
+        _c("g", 6, "情報検索", "言語知識・読解", True),
+        _c("l", 1, "課題理解", "聴解", True), _c("l", 2, "ポイント理解", "聴解", True),
+        _c("l", 3, "発話表現", "聴解", True), _c("l", 4, "即時応答", "聴解", True),
+    )),
+}
+LEVEL_ORDER = ["N1", "N2", "N3", "N4", "N5"]
+
+
+def level_of(level: str | None) -> Level:
+    return LEVELS.get((level or "N1").upper(), LEVELS["N1"])
 
 
 def problem_number(name: str) -> int | None:
@@ -53,34 +128,32 @@ def problem_number(name: str) -> int | None:
     return int(digits) if digits else None
 
 
-def category_of(section_name: str, problem_name: str) -> Category | None:
-    """The practice category of a 問題, from its section and number."""
+def section_kind(level: str | None, section_name: str) -> str:
+    name = section_name or ""
+    if "聴解" in name:
+        return "l"
+    if (level or "N1").upper() in ("N1", "N2"):
+        return "w"
+    return "v" if ("文字" in name or "語彙" in name) and "文法" not in name else "g"
+
+
+def category_of(section_name: str, problem_name: str, level: str | None = "N1") -> Category | None:
+    """The practice category of a 問題, from its level, section and number."""
     number = problem_number(problem_name)
     if number is None:
         return None
-    listening = "聴解" in (section_name or "")
-    return BY_ID.get(f"{'l' if listening else 'q'}{number}")
+    cid = f"{section_kind(level, section_name)}{number}"
+    return next((c for c in level_of(level).categories if c.id == cid), None)
 
 
-# Each scored part of N1 is out of 60, with a minimum of 19; 100 of 180 passes.
-PART_MAX = 60
-PART_MIN = 19
-PASS_TOTAL = 100
-PARTS = ("言語知識", "読解", "聴解")
+def category_by_id(level: str | None, cid: str) -> Category | None:
+    return next((c for c in level_of(level).categories if c.id == cid), None)
 
 
-def scaled(correct: int, total: int) -> int:
-    """A part's raw share scaled to its 60 points. The official conversion is
+def scaled(correct: int, total: int, maximum: int = 60) -> int:
+    """A part's raw share scaled to its points. The official conversion is
     not published; this is an estimate and is shown as one."""
-    return round(PART_MAX * correct / total) if total else 0
-
-
-def part_of_section(section_name: str) -> str:
-    if "聴解" in section_name:
-        return "聴解"
-    if "読解" in section_name:
-        return "読解"
-    return "言語知識"
+    return round(maximum * correct / total) if total else 0
 
 
 def paper_label(source: str | None, title: str) -> str:
