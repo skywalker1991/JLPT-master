@@ -7,6 +7,10 @@ import {
   ComparedPair,
   JlptOverview,
   PracticeUnit,
+  MockState,
+  MockResult,
+  ItemReview,
+  ItemAskEntry,
   CreateAtomRequest,
   CreateAtomResponse,
   AddPropertiesRequest,
@@ -686,4 +690,38 @@ export async function getPractice(category: string): Promise<{ category: { id: s
 
 export async function answerPractice(itemId: string, answer: string): Promise<{ is_correct: boolean; correct_answer: string | null; answer_order: string | null }> {
   return request('/api/jlpt/practice/answer', { method: 'POST', body: JSON.stringify({ item_id: itemId, answer }) })
+}
+
+// ---- Mock exam ----
+
+export async function startMock(paperId: string): Promise<{ attempt_id: string }> {
+  return request(`/api/jlpt/mock/${paperId}`, { method: 'POST' })
+}
+
+export async function getMock(attemptId: string): Promise<MockState> {
+  return request<MockState>(`/api/jlpt/mock/${attemptId}`)
+}
+
+export async function answerMock(attemptId: string, itemId: string, answer: string): Promise<void> {
+  await request(`/api/jlpt/mock/${attemptId}/answer`, { method: 'POST', body: JSON.stringify({ item_id: itemId, answer }) })
+}
+
+export async function flagMock(attemptId: string, itemId: string, flagged: boolean): Promise<{ flags: string[] }> {
+  return request(`/api/jlpt/mock/${attemptId}/flag`, { method: 'POST', body: JSON.stringify({ item_id: itemId, flagged }) })
+}
+
+export async function handInMock(attemptId: string): Promise<{ stage: 'listening' | 'done' }> {
+  return request(`/api/jlpt/mock/${attemptId}/hand-in`, { method: 'POST' })
+}
+
+export async function getMockResult(attemptId: string): Promise<MockResult> {
+  return request<MockResult>(`/api/jlpt/mock/${attemptId}/result`)
+}
+
+export async function getItemReview(itemId: string, attemptId?: string | null): Promise<ItemReview> {
+  return request<ItemReview>(`/api/jlpt/review/${itemId}${attemptId ? `?attempt_id=${attemptId}` : ''}`)
+}
+
+export async function askItem(itemId: string, body: { question: string; targets: string[]; chosen?: string | null }): Promise<ItemAskEntry> {
+  return request<ItemAskEntry>(`/api/jlpt/items/${itemId}/ask`, { method: 'POST', body: JSON.stringify(body) })
 }

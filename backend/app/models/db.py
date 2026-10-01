@@ -642,6 +642,22 @@ class PracticeAnswer(Base):
     )
 
 
+class ItemAsk(Base):
+    """A follow-up question about an exam question — one person's own thread."""
+
+    __tablename__ = "item_asks"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    item_id = Column(UUID(as_uuid=True), ForeignKey("exam_items.id", ondelete="CASCADE"), nullable=False)
+    question = Column(Text, nullable=False)
+    targets = Column(JSONB, nullable=True)
+    result = Column(JSONB, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+
+    __table_args__ = (Index("ix_item_asks_user_item", "user_id", "item_id", "created_at"),)
+
+
 class ExamAttempt(Base):
     __tablename__ = "exam_attempts"
 

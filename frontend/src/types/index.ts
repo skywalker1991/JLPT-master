@@ -731,3 +731,48 @@ export interface ItemAnalysis {
   key_sentence?: string
   [k: string]: unknown
 }
+
+export interface MockState {
+  attempt_id: string
+  status: 'in_progress' | 'completed'
+  label: string
+  level: string
+  stage: 'written' | 'listening' | 'done'
+  /** Seconds left on the current part's clock */
+  remaining: number
+  flags: string[]
+  answers: Record<string, string>
+  sections: SectionDetail[]
+}
+
+export interface MockResult {
+  label: string
+  level: string
+  minutes: number
+  date: string | null
+  total: number
+  pass_line: number
+  part_min: number
+  passed: boolean
+  parts: { part: string; score: number; max: number; correct: number; total: number; wrong: number; passed_min: boolean }[]
+  categories: { id: string; label: string; part: string; correct: number; total: number }[]
+  wrong: number
+  /** In the order to look at them: weakest question type first */
+  wrong_items: string[]
+}
+
+export interface ItemAskEntry {
+  question: string
+  targets: string[] | null
+  result: { response: string; new_items?: AskNewItem[]; pair?: ComparedPair | null }
+}
+
+export interface ItemReview {
+  paper: string
+  section: string
+  category: { id: string; label: string } | null
+  problem: ProblemDetail & { passage_translation: string | null }
+  item_id: string
+  answers: Record<string, { chosen: string; right: boolean }>
+  asks: ItemAskEntry[]
+}
