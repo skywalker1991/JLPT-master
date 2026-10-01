@@ -47,7 +47,12 @@ class _FakeDB:
     async def commit(self):
         pass
 
+    async def rollback(self):
+        pass
+
     async def execute(self, stmt):
+        if stmt.is_select:  # owner lookup for noting known words: nobody here
+            return SimpleNamespace(scalar_one_or_none=lambda: None)
         data = stmt.compile().params.get("session_data")
         if stmt.compile().params.get("status") == "completed":
             self.saved = data

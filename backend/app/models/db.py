@@ -89,6 +89,9 @@ class Atom(Base):
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
     type = Column(String(20), nullable=False)
     key = Column(Text, nullable=False)
+    # Words only: with the dictionary form it identifies the word, so 市場
+    # いちば and 市場 しじょう stay two entries.
+    reading = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
 
     properties = relationship("AtomProperty", back_populates="atom", cascade="all, delete-orphan")
@@ -100,8 +103,9 @@ class Atom(Base):
     occurrences = relationship("AtomOccurrence", back_populates="atom", cascade="all, delete-orphan")
 
     __table_args__ = (
-        # Unique per dictionary, not globally: two people can both keep 得る.
-        UniqueConstraint("user_id", "type", "key", name="uq_atoms_user_type_key"),
+        # Unique per dictionary (two people can both keep 得る), and per reading.
+        Index("uq_atoms_user_type_key_reading", "user_id", "type", "key",
+              text("coalesce(reading, '')"), unique=True),
         Index("ix_atoms_user_id", "user_id"),
         Index("ix_atoms_type", "type"),
         Index("ix_atoms_key", "key"),
@@ -340,6 +344,21 @@ class ExamProblem(Base):
         Index("ix_exam_problems_type", "type"),
         UniqueConstraint("section_id", "seq", name="uq_exam_problems_section_seq"),
     )
+
+
+class CardDetail(Base):
+    """The generic part of a word / grammar card, generated when first opened:
+    example sentences, other spellings, how a pattern attaches, usage rules.
+    The same for everyone, so it is made once per (type, key, reading)."""
+
+    __tablename__ = "card_details"
+
+    type = Column(String(20), primary_key=True)
+    key = Column(Text, primary_key=True)
+    reading = Column(Text, primary_key=True, server_default=text("''"))
+    detail = Column(JSONB, nullable=False)
+    model = Column(String(100), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
 
 
 class ExamItem(Base):

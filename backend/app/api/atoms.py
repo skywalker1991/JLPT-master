@@ -21,6 +21,7 @@ from app.schemas.atoms import (
     AtomListItem,
     AtomDetail,
     SimilarCandidate,
+    AddOccurrenceRequest,
 )
 from app.services import atom_service
 from app.services.qdrant_service import qdrant_service
@@ -130,11 +131,17 @@ async def create_atom(request: CreateAtomRequest, db: AsyncSession = Depends(get
         else:
             keys_to_try.append("〜" + key)
 
+    reading = None
+    if atom_type == "vocabulary":
+        reading = next((p.value.strip() for p in request.properties if p.kind == "reading" and p.value.strip()), None)
+
     existing = None
     for k in keys_to_try:
-        existing = await atom_service.get_atom_by_key(db, atom_type, k, user_id=user.id)
+        existing = await atom_service.get_atom_by_key(db, atom_type, k, user_id=user.id, reading=reading)
         if existing is not None:
             break
+    if existing is not None and reading and not existing.reading:
+        existing.reading = reading
 
     if existing is not None:
         props = await atom_service.get_properties(db, existing.id)
@@ -156,6 +163,18 @@ async def create_atom(request: CreateAtomRequest, db: AsyncSession = Depends(get
             status="exists",
             existing_properties=prop_responses,
         )
+
+    # Step 3a: the same word written another way (分かる / わかる) — ask first
+    if atom_type == "vocabulary" and reading and not request.force_create:
+        others = await atom_service.find_other_spellings(db, key, reading, user_id=user.id)
+        if others:
+            candidates = []
+            for other in others[:3]:
+                meaning = next((p.value for p in await atom_service.get_properties(db, other.id)
+                                if p.kind == "meaning"), None)
+                candidates.append(SimilarCandidate(atom_id=other.id, key=other.key, meaning=meaning,
+                                                   score=1.0, reading=other.reading))
+            return CreateAtomResponse(atom_id=None, status="other_spelling", candidates=candidates)
 
     # Step 3: Qdrant semantic search for grammar atoms
     if atom_type == "grammar" and not request.force_create:
@@ -214,7 +233,7 @@ async def create_atom(request: CreateAtomRequest, db: AsyncSession = Depends(get
             )
 
     # Step 4: Create atom
-    atom = await atom_service.create_atom(db, atom_type, key, user_id=user.id)
+    atom = await atom_service.create_atom(db, atom_type, key, user_id=user.id, reading=reading)
 
     # Add properties
     if request.properties:
@@ -240,6 +259,35 @@ async def create_atom(request: CreateAtomRequest, db: AsyncSession = Depends(get
         await qdrant_service.upsert_grammar_atom(atom.id, key, meaning, user.id)
 
     return CreateAtomResponse(atom_id=atom.id, status="created")
+
+
+@router.post("/atoms/{atom_id}/occurrences", status_code=201)
+async def add_occurrence(
+    atom_id: UUID, body: AddOccurrenceRequest,
+    db: AsyncSession = Depends(get_db), user: User = Depends(current_user),
+):
+    """Keep this sentence under an entry already in the dictionary, noting the
+    spelling it was written in when that differs."""
+    atom = await atom_service.get_atom_by_id(db, atom_id, user_id=user.id)
+    if atom is None:
+        raise HTTPException(status_code=404, detail="Atom not found")
+    analysis_id = body.analysis_id
+    if analysis_id is not None:
+        owned = await db.execute(select(Analysis.id).where(Analysis.id == analysis_id, Analysis.user_id == user.id))
+        if owned.first() is None:
+            analysis_id = None
+    occ = body.occurrence
+    await atom_service.record_occurrence(
+        db, atom.id, occ.sentence_text, analysis_id=analysis_id, sentence_index=occ.sentence_index,
+        sentence_text_translation=occ.sentence_translation, surface=occ.surface, surface_meaning=occ.surface_meaning,
+    )
+    variant = (body.variant or "").strip()
+    if variant and variant != atom.key:
+        known = {p.value for p in await atom_service.get_properties(db, atom.id) if p.kind == "variant"}
+        if variant not in known:
+            db.add(AtomProperty(atom_id=atom.id, kind="variant", value=variant, source_type="user"))
+    await db.commit()
+    return {"atom_id": str(atom.id)}
 
 
 # ---------------------------------------------------------------------------

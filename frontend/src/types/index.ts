@@ -135,9 +135,10 @@ export interface CreateAtomRequest {
 
 export interface CreateAtomResponse {
   atom_id: string | null
-  status: 'created' | 'exists' | 'similar'
+  /** similar: grammar close in meaning; other_spelling: the same word written differently */
+  status: 'created' | 'exists' | 'similar' | 'other_spelling'
   existing_properties?: PropertyResponse[]
-  candidates?: { atom_id: string; key: string; meaning: string | null; score: number }[]
+  candidates?: { atom_id: string; key: string; meaning: string | null; score: number; reading?: string | null }[]
 }
 
 export interface AddPropertiesRequest {
@@ -628,4 +629,16 @@ export interface BankOverview {
   types: TypeTotal[]
   /** Every sitting the test has held, and what the bank has of it. */
   coverage: Coverage[]
+}
+
+/** The generic part of a word / grammar card (examples mark the target with ⟦ ⟧) */
+export interface CardDetail {
+  examples: { ja: string; zh: string; point: string }[]
+  usage_hint: string | null
+  /** words */
+  dictionary_meaning?: string
+  variants?: string[]
+  /** grammar */
+  connection?: string[]
+  conjugation?: string | null
 }

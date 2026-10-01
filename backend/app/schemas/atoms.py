@@ -1,6 +1,6 @@
 from uuid import UUID
 from datetime import datetime
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class PropertyInput(BaseModel):
@@ -94,10 +94,22 @@ class SimilarCandidate(BaseModel):
     key: str
     meaning: str | None
     score: float
+    reading: str | None = None
 
 
 class CreateAtomResponse(BaseModel):
     atom_id: UUID | None
-    status: str  # 'created' | 'exists' | 'similar'
+    # 'created' | 'exists' | 'similar' (grammar close in meaning) |
+    # 'other_spelling' (a word with the same reading written differently)
+    status: str
     existing_properties: list[PropertyResponse] | None = None
     candidates: list[SimilarCandidate] | None = None
+
+
+class AddOccurrenceRequest(BaseModel):
+    """Count this encounter towards an existing entry — e.g. 分かる met in a
+    text, kept under the わかる already in the dictionary."""
+    occurrence: OccurrenceInput
+    analysis_id: UUID | None = None
+    # The spelling met in the text, when it differs from the entry's
+    variant: str | None = Field(default=None, max_length=100)

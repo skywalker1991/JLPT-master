@@ -2,6 +2,8 @@ import {
   AnalyzeRequest,
   PreprocessResponse,
   SentenceAnalysis,
+  CardDetail,
+  OccurrenceInput,
   CreateAtomRequest,
   CreateAtomResponse,
   AddPropertiesRequest,
@@ -653,4 +655,18 @@ export async function lookupAtoms(vocab: string[], grammar: string[]): Promise<{
 /** Analyse one sentence again after the first run left it without a result. */
 export async function retrySentence(analysisId: string, index: number): Promise<SentenceAnalysis> {
   return request<SentenceAnalysis>(`/api/analyses/${analysisId}/sentences/${index}/retry`, { method: 'POST' })
+}
+
+/** Examples, other spellings and usage rules for a card; generated once, then cached. */
+export async function getCardDetail(req: {
+  type: 'vocabulary' | 'grammar'; key: string; reading?: string | null; meaning?: string | null
+}): Promise<CardDetail> {
+  return request<CardDetail>('/api/cards/detail', { method: 'POST', body: JSON.stringify(req) })
+}
+
+/** Keep this sentence under an entry already in the library (noting another spelling, if any). */
+export async function addOccurrence(atomId: string, body: {
+  occurrence: OccurrenceInput; analysis_id?: string | null; variant?: string | null
+}): Promise<{ atom_id: string }> {
+  return request(`/api/atoms/${atomId}/occurrences`, { method: 'POST', body: JSON.stringify(body) })
 }

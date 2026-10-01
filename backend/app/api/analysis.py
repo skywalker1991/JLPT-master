@@ -28,6 +28,7 @@ from app.schemas.analysis import (
     ExampleResult,
 )
 from app.services.preprocessor import preprocessor
+from app.services import atom_service
 from app.services.llm.factory import get_llm_client
 from app.prompts.templates import (
     FREE_TEXT_ANALYSIS,
@@ -286,6 +287,22 @@ def _extract_completed_sentences(buffer: str, already_emitted: int) -> list[dict
     return results[already_emitted:]
 
 
+async def _note_known(db: AsyncSession, analysis_id: UUID, sentences: list[dict]) -> None:
+    """Words of this passage already in the owner's dictionary get the
+    sentence noted under them, without the owner tapping anything."""
+    try:
+        owner = (await db.execute(select(Analysis.user_id).where(Analysis.id == analysis_id))).scalar_one_or_none()
+        if owner is None:
+            return
+        count = await atom_service.record_known_occurrences(db, owner, analysis_id, sentences)
+        await db.commit()
+        if count:
+            logger.info("Analysis %s: noted %d sentences under known words", analysis_id, count)
+    except Exception as e:
+        await db.rollback()
+        logger.error("Could not note known words for analysis %s: %s", analysis_id, e)
+
+
 def _normalize_sentence(raw: dict, idx: int, text: str) -> dict:
     """A sentence as the model returned it, pinned to the source text and index."""
     sentence = {
@@ -512,6 +529,8 @@ def _build_event_stream(request: AnalyzeRequest, analysis_id: UUID, db: AsyncSes
             await db.commit()
         except Exception as save_err:
             logger.error("Failed to save analysis %s: %s", analysis_id, save_err)
+            return
+        await _note_known(db, analysis_id, (session_data or {}).get("sentences") or [])
 
     async def text_event_generator():
         """
@@ -823,6 +842,7 @@ async def retry_sentence(
     data["sentences"] = sentences
     await db.execute(update(Analysis).where(Analysis.id == analysis_id).values(session_data=data))
     await db.commit()
+    await _note_known(db, analysis_id, [sentence])
     return sentence
 
 

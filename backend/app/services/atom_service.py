@@ -58,12 +58,53 @@ VALID_KINDS = {
 VALID_RELATION_TYPES = {"synonym", "formal_casual", "derivative", "contrast", "nuance", "confusable"}
 
 
-async def get_atom_by_key(db: AsyncSession, type: str, key: str, *, user_id: UUID) -> Atom | None:
-    """Look up an atom by (type, key) in one person's dictionary."""
-    result = await db.execute(
-        select(Atom).where(and_(Atom.user_id == user_id, Atom.type == type, Atom.key == key))
+async def get_atom_by_key(
+    db: AsyncSession, type: str, key: str, *, user_id: UUID, reading: str | None = None,
+) -> Atom | None:
+    """Look up an atom by (type, key) in one person's dictionary.
+
+    For words the reading tells same-spelt words apart (市場 いちば / しじょう).
+    An entry with no reading recorded matches any reading, and a lookup with
+    no reading takes the first entry with that spelling.
+    """
+    query = select(Atom).where(and_(Atom.user_id == user_id, Atom.type == type, Atom.key == key))
+    if reading:
+        query = query.where(or_(Atom.reading == reading, Atom.reading.is_(None)))
+    result = await db.execute(query.order_by(Atom.reading.is_(None), Atom.created_at).limit(1))
+    return result.scalars().first()
+
+
+_KANJI = re.compile(r"[\u4E00-\u9FFF\u3400-\u4DBF々]")
+_KANA_ONLY = re.compile(r"^[\u3040-\u30FFー]+$")
+
+
+def _to_hiragana(s: str) -> str:
+    return "".join(chr(ord(c) - 0x60) if "ァ" <= c <= "ヶ" else c for c in s)
+
+
+def same_word_other_spelling(key: str, reading: str, other_key: str, other_reading: str | None) -> bool:
+    """Is `other` plausibly the same word written another way?
+
+    Same reading, and either one of them is written in kana (分かる / わかる)
+    or they share a kanji (落ち着く / 落着く). Homophones that share neither
+    (橋 / 箸) are different words.
+    """
+    if not reading or not other_reading or key == other_key:
+        return False
+    if _to_hiragana(reading) != _to_hiragana(other_reading):
+        return False
+    if _KANA_ONLY.match(key) or _KANA_ONLY.match(other_key):
+        return True
+    return bool(set(_KANJI.findall(key)) & set(_KANJI.findall(other_key)))
+
+
+async def find_other_spellings(db: AsyncSession, key: str, reading: str, *, user_id: UUID) -> list[Atom]:
+    """Words in the dictionary that look like `key` written differently."""
+    rows = await db.execute(
+        select(Atom).where(Atom.user_id == user_id, Atom.type == "vocabulary", Atom.key != key,
+                           Atom.reading.is_not(None))
     )
-    return result.scalar_one_or_none()
+    return [a for a in rows.scalars().all() if same_word_other_spelling(key, reading, a.key, a.reading)]
 
 
 async def get_atom_by_id(db: AsyncSession, atom_id: UUID, *, user_id: UUID) -> Atom | None:
@@ -73,9 +114,11 @@ async def get_atom_by_id(db: AsyncSession, atom_id: UUID, *, user_id: UUID) -> A
     return result.scalar_one_or_none()
 
 
-async def create_atom(db: AsyncSession, type: str, key: str, *, user_id: UUID) -> Atom:
+async def create_atom(
+    db: AsyncSession, type: str, key: str, *, user_id: UUID, reading: str | None = None,
+) -> Atom:
     """Create and persist a new atom. Does NOT commit — caller controls transaction."""
-    atom = Atom(type=type, key=key, user_id=user_id)
+    atom = Atom(type=type, key=key, user_id=user_id, reading=reading or None)
     db.add(atom)
     await db.flush()  # get generated id without committing
     return atom
@@ -344,3 +387,65 @@ async def remove_tag(db: AsyncSession, atom_id: UUID, tag: str) -> bool:
     await db.delete(existing)
     await db.flush()
     return True
+
+
+async def record_known_occurrences(
+    db: AsyncSession, user_id: UUID, analysis_id: UUID | None, sentences: list[dict],
+) -> int:
+    """Note down, for every word and grammar point of these sentences that is
+    already in the person's dictionary, the sentence it was met in.
+
+    Meeting a known word again is the point of keeping it; the person should
+    not have to tap anything for that. Returns how many were recorded.
+    """
+    vocab_keys = {(v.get("base") or v.get("surface") or "").strip()
+                  for s in sentences for v in (s.get("vocab") or []) if isinstance(v, dict)}
+    grammar_keys = {re.sub(r"[~～]", "〜", (g.get("pattern") or "")).strip()
+                    for s in sentences for g in (s.get("grammar") or []) if isinstance(g, dict)}
+    vocab_keys.discard("")
+    grammar_keys.discard("")
+    if not vocab_keys and not grammar_keys:
+        return 0
+    rows = await db.execute(
+        select(Atom).where(
+            Atom.user_id == user_id,
+            or_(and_(Atom.type == "vocabulary", Atom.key.in_(vocab_keys or {""})),
+                and_(Atom.type == "grammar", Atom.key.in_(grammar_keys or {""}))),
+        )
+    )
+    atoms = rows.scalars().all()
+    vocab = {}
+    for a in atoms:
+        if a.type == "vocabulary":
+            vocab.setdefault(a.key, []).append(a)
+    grammar = {a.key: a for a in atoms if a.type == "grammar"}
+
+    recorded = 0
+    for s in sentences:
+        text_ = s.get("text") or ""
+        if not text_ or s.get("failed"):
+            continue
+        for v in s.get("vocab") or []:
+            key = (v.get("base") or v.get("surface") or "").strip()
+            reading = _to_hiragana(v.get("reading") or "")
+            candidates = vocab.get(key) or []
+            match = next((a for a in candidates if not a.reading or not reading
+                          or _to_hiragana(a.reading) == reading), None)
+            if match is None:
+                continue
+            await record_occurrence(
+                db, match.id, text_, analysis_id=analysis_id, sentence_index=s.get("index"),
+                sentence_text_translation=s.get("translation") or None,
+                surface=v.get("surface"), surface_meaning=v.get("surface_meaning") or v.get("meaning"),
+            )
+            recorded += 1
+        for g in s.get("grammar") or []:
+            atom = grammar.get(re.sub(r"[~～]", "〜", (g.get("pattern") or "")).strip())
+            if atom is None:
+                continue
+            await record_occurrence(
+                db, atom.id, text_, analysis_id=analysis_id, sentence_index=s.get("index"),
+                sentence_text_translation=s.get("translation") or None,
+            )
+            recorded += 1
+    return recorded
