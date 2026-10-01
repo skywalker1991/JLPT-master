@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import clsx from 'clsx'
-import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Loader2, Trash2 } from 'lucide-react'
 import type { PaperOverview, PaperRecord } from '../../types'
-import { getPaperOverview } from '../../services/api'
+import { deleteRecord, getPaperOverview } from '../../services/api'
+import { useUndo } from '../shared/useUndo'
 
 const WEAK = 60
 const SHOWN = 5
@@ -22,10 +23,23 @@ export default function PaperView({ paperId, onBack, onPractice, onMock, onRecor
 }) {
   const [p, setP] = useState<PaperOverview | null>(null)
   const [all, setAll] = useState(false)
-  useEffect(() => { getPaperOverview(paperId).then(setP).catch(() => {}) }, [paperId])
+  const [hidden, setHidden] = useState<string[]>([])
+  const { schedule, toast } = useUndo()
+  const load = () => getPaperOverview(paperId).then(setP).catch(() => {})
+  useEffect(() => { void load() }, [paperId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const remove = (r: PaperRecord) => {
+    setHidden(h => [...h, r.id])
+    schedule({
+      label: `已删除 ${when(r.at)} 的${r.type === 'mock' ? '模拟考' : r.label}`,
+      commit: async () => { await deleteRecord(r.type, r.id); await load() },
+      undo: () => setHidden(h => h.filter(x => x !== r.id)),
+    })
+  }
   if (!p) return <div className="flex-1 flex items-center justify-center"><Loader2 className="w-5 h-5 animate-spin text-fg-subtle" /></div>
 
-  const records = all ? p.records : p.records.slice(0, SHOWN)
+  const kept = p.records.filter(r => !hidden.includes(r.id))
+  const records = all ? kept : kept.slice(0, SHOWN)
   return (
     <div className="flex-1 min-h-0 overflow-y-auto">
       <div className="max-w-4xl mx-auto px-4 md:px-8 py-5 md:py-8 flex flex-col gap-6">
@@ -42,7 +56,7 @@ export default function PaperView({ paperId, onBack, onPractice, onMock, onRecor
               const acc = k.answered ? Math.round((k.right / k.answered) * 100) : null
               const weak = acc != null && acc < WEAK
               return (
-                <button key={k.id} type="button" onClick={() => onPractice(k.id, k.label, k.run_id)}
+                <button key={k.id} type="button" onClick={() => onPractice(k.id, k.label, k.run_id && !hidden.includes(k.run_id) ? k.run_id : null)}
                         className="text-left rounded-2xl border border-border bg-surface px-5 py-4 flex flex-col gap-3 hover:border-fg-subtle hover:-translate-y-0.5 transition-[border-color,transform] duration-150">
                   <span className="flex flex-wrap items-baseline gap-x-2">
                     <span className="font-jp text-lg md:text-xl text-fg whitespace-nowrap">{k.label}</span>
@@ -60,14 +74,14 @@ export default function PaperView({ paperId, onBack, onPractice, onMock, onRecor
           </div>
         </section>
 
-        {p.records.length > 0 && (
+        {kept.length > 0 && (
           <section className="flex flex-col gap-2">
             <h2 className="text-sm font-semibold text-fg-muted">记录</h2>
             <ul className="rounded-2xl border border-border bg-surface divide-y divide-border">
               {records.map(r => (
-                <li key={r.id}>
+                <li key={r.id} className="group flex items-center hover:bg-accent-light/60 transition-colors first:rounded-t-2xl last:rounded-b-2xl">
                   <button type="button" onClick={() => onRecord(r)}
-                          className="w-full flex items-center gap-3 sm:gap-4 px-4 sm:px-5 py-3 text-left hover:bg-accent-light/60 transition-colors">
+                          className="flex-1 min-w-0 flex items-center gap-3 sm:gap-4 pl-4 sm:pl-5 pr-1 py-3 text-left">
                     <span className="sm:w-32 shrink-0 text-sm text-fg-muted tabular-nums whitespace-nowrap">{when(r.at)}</span>
                     <span className={clsx('w-14 sm:w-24 shrink-0 text-sm whitespace-nowrap', r.type === 'mock' ? 'font-semibold text-fg' : 'font-jp text-fg')}>
                       {r.type === 'mock' ? '模拟考' : r.label}
@@ -75,17 +89,22 @@ export default function PaperView({ paperId, onBack, onPractice, onMock, onRecor
                     <span className="flex-1 min-w-0 text-sm tabular-nums text-right leading-snug">{outcome(r)}</span>
                     <ChevronRight className="w-4 h-4 shrink-0 text-fg-subtle" />
                   </button>
+                  <button type="button" onClick={() => remove(r)} aria-label="删除这条记录" title="删除"
+                          className="shrink-0 w-10 h-10 mr-1 sm:mr-2 flex items-center justify-center rounded-lg text-fg-subtle hover:text-danger-fg md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100 transition-opacity">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </li>
               ))}
             </ul>
-            {p.records.length > SHOWN && (
+            {kept.length > SHOWN && (
               <button type="button" onClick={() => setAll(a => !a)} className="self-start text-sm text-fg-muted hover:text-fg">
-                {all ? '收起' : `全部 ${p.records.length} 条`}
+                {all ? '收起' : `全部 ${kept.length} 条`}
               </button>
             )}
           </section>
         )}
       </div>
+      {toast}
     </div>
   )
 }

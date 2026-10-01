@@ -694,6 +694,10 @@ export async function getPractice(category: string, level: string, runId?: strin
   return request(`/api/jlpt/practice/${category}?level=${level}${runId ? `&run_id=${runId}` : ''}`)
 }
 
+export async function deleteRecord(type: 'practice' | 'mock', id: string): Promise<void> {
+  await request(type === 'mock' ? `/api/jlpt/mock/${id}` : `/api/jlpt/runs/${id}`, { method: 'DELETE' })
+}
+
 export async function startRun(paperId: string, kind: string): Promise<{ run_id: string }> {
   return request(`/api/jlpt/papers/${paperId}/runs`, { method: 'POST', body: JSON.stringify({ kind }) })
 }

@@ -14,6 +14,7 @@ import asyncio
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
+from sqlalchemy import delete as sa_delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import current_user
@@ -236,6 +237,14 @@ async def _own_run(db: AsyncSession, run_id: UUID, user: User) -> PracticeRun:
     return run
 
 
+@router.delete("/jlpt/runs/{run_id}", status_code=204)
+async def delete_run(run_id: UUID, db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
+    """Delete a pass, and its answers with it."""
+    run = await _own_run(db, run_id, user)
+    await db.execute(sa_delete(PracticeRun).where(PracticeRun.id == run.id))  # answers go by ON DELETE CASCADE
+    await db.commit()
+
+
 class RunBody(BaseModel):
     kind: str
 
@@ -428,6 +437,14 @@ async def hand_in(attempt_id: UUID, db: AsyncSession = Depends(get_db), user: Us
     _background.add(task := asyncio.create_task(prepare_analyses(ids)))
     task.add_done_callback(_background.discard)
     return {"stage": "done"}
+
+
+@router.delete("/jlpt/mock/{attempt_id}", status_code=204)
+async def delete_mock(attempt_id: UUID, db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
+    """Delete a mock exam, and its answers with it."""
+    a = await _own_mock(db, attempt_id, user)
+    await db.execute(sa_delete(ExamAttempt).where(ExamAttempt.id == a.id))  # answers go by ON DELETE CASCADE
+    await db.commit()
 
 
 @router.get("/jlpt/mock/{attempt_id}/result")
