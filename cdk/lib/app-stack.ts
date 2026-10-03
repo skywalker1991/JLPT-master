@@ -24,6 +24,7 @@ export class AppStack extends cdk.Stack {
       allowAllOutbound: true,
     });
     sg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80), 'HTTP');
+    sg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'HTTPS');
 
     // EC2 instance role: SSM access only
     const instanceRole = new iam.Role(this, 'InstanceRole', {

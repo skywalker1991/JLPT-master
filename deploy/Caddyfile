@@ -1,0 +1,17 @@
+# HTTPS in front of the app. Caddy gets and renews the certificate for the
+# domain by itself (Let's Encrypt), once the domain points here and port 443
+# is open.
+
+jp-master.com {
+	encode zstd gzip
+	reverse_proxy frontend:80
+}
+
+www.jp-master.com {
+	redir https://jp-master.com{uri} permanent
+}
+
+# Anything else — the bare IP — is served as before, over plain HTTP.
+:80 {
+	reverse_proxy frontend:80
+}

@@ -61,10 +61,27 @@ services:
       dockerfile: Dockerfile
     depends_on:
       - backend
+    expose:
+      - "80"
+    restart: unless-stopped
+
+  # HTTPS: takes ports 80 and 443 and hands requests to the frontend
+  caddy:
+    image: caddy:2-alpine
+    depends_on:
+      - frontend
     ports:
       - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
     restart: unless-stopped
 
 volumes:
   postgres_data:
   qdrant_data:
+  caddy_data:
+  caddy_config:
