@@ -47,6 +47,7 @@ export default function JlptHome({ data, onPaper, onMistakes, onLevel }: {
                   <span className="flex items-baseline gap-3">
                     <span className="text-lg font-bold text-fg">{p.label}</span>
                     {p.status === 'completed' && p.total != null && <span className="text-sm text-fg-muted">模拟考 {p.total} 分</span>}
+                    {!p.is_open && <span className="ml-auto text-xs text-fg-subtle">未开放</span>}
                   </span>
                   <span className="h-1.5 rounded-full bg-border overflow-hidden">
                     <span className="block h-full bg-fg" style={{ width: `${pct}%` }} />

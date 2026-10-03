@@ -674,12 +674,15 @@ export interface JlptPaperRow {
   /** Questions in the paper, and how many have been answered (practice or mock) */
   questions: number
   done: number
+  /** Learners see it; an admin sees closed papers too */
+  is_open: boolean
 }
 
 export interface PaperOverview {
   id: string
   label: string
   level: string
+  is_open: boolean
   /** Each kind as its latest pass left it; run_id is that pass when unfinished */
   kinds: { id: JlptCategory['id']; label: string; total: number; answered: number; right: number | null; run_id: string | null; open_answered: number | null }[]
   /** Every pass and mock exam at this paper, newest first */

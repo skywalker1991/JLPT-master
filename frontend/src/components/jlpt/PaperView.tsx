@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import clsx from 'clsx'
 import { ChevronLeft, ChevronRight, Loader2, Trash2 } from 'lucide-react'
 import type { PaperOverview, PaperRecord } from '../../types'
-import { deleteRecord, getPaperOverview } from '../../services/api'
+import { deleteRecord, getPaperOverview, setPaperOpen } from '../../services/api'
+import { useAuth } from '../../context/AuthContext'
 import { useUndo } from '../shared/useUndo'
 
 const WEAK = 60
@@ -25,6 +26,7 @@ export default function PaperView({ paperId, onBack, onPractice, onMock, onRecor
   const [all, setAll] = useState(false)
   const [hidden, setHidden] = useState<string[]>([])
   const { schedule, toast } = useUndo()
+  const { isAdmin } = useAuth()
   const load = () => getPaperOverview(paperId).then(setP).catch(() => {})
   useEffect(() => { void load() }, [paperId]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -46,7 +48,13 @@ export default function PaperView({ paperId, onBack, onPractice, onMock, onRecor
         <header className="flex items-center gap-2">
           <button type="button" onClick={onBack} aria-label="回到试卷列表" className="-ml-2 p-2 text-fg-muted hover:text-fg"><ChevronLeft className="w-5 h-5" /></button>
           <h1 className="text-2xl font-bold text-fg">{p.label} {p.level}</h1>
-          <button type="button" onClick={onMock} className="ml-auto btn-primary h-10 px-5 font-semibold">模拟考</button>
+          {isAdmin && (
+            <button type="button" onClick={async () => { await setPaperOpen(p.id, !p.is_open); await load() }}
+                    className={clsx('ml-auto h-10 px-4 rounded-lg border text-sm', p.is_open ? 'border-border text-fg-muted hover:text-fg' : 'border-fg text-fg')}>
+              {p.is_open ? '已开放 · 关闭' : '未开放 · 开放'}
+            </button>
+          )}
+          <button type="button" onClick={onMock} className={clsx(!isAdmin && 'ml-auto', 'btn-primary h-10 px-5 font-semibold')}>模拟考</button>
         </header>
 
         <section className="flex flex-col gap-3">

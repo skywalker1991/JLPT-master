@@ -18,7 +18,7 @@ from sqlalchemy import func, select
 from sqlalchemy import delete as sa_delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import current_user
+from app.api.deps import current_user, require_admin, sees_paper
 from app.api.exam import prepare_analyses, problem_detail
 from app.models.db import (
     AttemptAnswer, ExamAttempt, ExamItem, ExamPaper, ExamProblem, ExamSection, PracticeAnswer, PracticeRun, User, get_db,
@@ -31,14 +31,26 @@ router = APIRouter(tags=["jlpt"])
 _background: set = set()
 
 
-async def _bank(db: AsyncSession):
-    """Every question with its 問題, section and paper: (item, problem, section, paper)."""
-    return (await db.execute(
+async def _bank(db: AsyncSession, user: User | None = None):
+    """Every question with its 問題, section and paper: (item, problem, section, paper).
+    Given a person, only the papers they may see."""
+    query = (
         select(ExamItem, ExamProblem, ExamSection, ExamPaper)
         .join(ExamProblem, ExamProblem.id == ExamItem.problem_id)
         .join(ExamSection, ExamSection.id == ExamProblem.section_id)
         .join(ExamPaper, ExamPaper.id == ExamSection.paper_id)
-    )).all()
+    )
+    if user is not None and user.role != "admin":
+        query = query.where(ExamPaper.is_open.is_(True))
+    return (await db.execute(query)).all()
+
+
+async def _paper_for(db: AsyncSession, paper_id: UUID, user: User) -> ExamPaper:
+    """The paper, if this person may see it; otherwise the same 404 as none."""
+    paper = await db.get(ExamPaper, paper_id)
+    if paper is None or not sees_paper(user, paper):
+        raise HTTPException(status_code=404, detail="没有这套试卷")
+    return paper
 
 
 async def _answers(db: AsyncSession, user_id: UUID) -> list[tuple[UUID, bool, object]]:
@@ -73,7 +85,7 @@ async def overview(
     db: AsyncSession = Depends(get_db), user: User = Depends(current_user),
 ):
     """One level's practice types, papers and mistakes, and which levels have papers at all."""
-    every = await _bank(db)
+    every = await _bank(db, user)
     papers_by_level: dict[str, set] = defaultdict(set)
     for _, _, _, paper in every:
         papers_by_level[(paper.level or "N1").upper()].add(paper.id)
@@ -115,9 +127,9 @@ async def overview(
         if (a.meta or {}).get("mock") and a.paper_id not in latest_mock:
             latest_mock[a.paper_id] = a
 
-    papers = (await db.execute(
+    papers = [p for p in (await db.execute(
         select(ExamPaper).where(func.upper(func.coalesce(ExamPaper.level, "N1")) == level).order_by(ExamPaper.source.desc())
-    )).scalars().all()
+    )).scalars().all() if sees_paper(user, p)]
     latest = _latest(answers)
     per_paper_total: dict[UUID, int] = defaultdict(int)
     per_paper_done: dict[UUID, int] = defaultdict(int)
@@ -129,7 +141,7 @@ async def overview(
         a = latest_mock.get(p.id)
         row = {"id": str(p.id), "label": jp.paper_label(p.source, p.title), "level": p.level,
                "status": "new", "attempt_id": None, "stage": None, "total": None,
-               "questions": per_paper_total[p.id], "done": per_paper_done[p.id]}
+               "questions": per_paper_total[p.id], "done": per_paper_done[p.id], "is_open": p.is_open}
         if a is not None:
             row["attempt_id"] = str(a.id)
             if a.status == "completed":
@@ -190,7 +202,7 @@ async def practice(
         level = (paper.level or "N1").upper()
     if category not in jp.GROUP_LABEL:
         raise HTTPException(status_code=404, detail="没有这一类")
-    rows = [r for r in await _bank(db) if (r[3].level or "N1").upper() == level
+    rows = [r for r in await _bank(db, user) if (r[3].level or "N1").upper() == level
             and (paper_id is None or r[3].id == paper_id)
             and (c := jp.category_of(r[2].name, r[1].name, level)) and jp.group_of(c) == category]
     latest = _latest(await _answers(db, user.id))
@@ -365,8 +377,7 @@ class RunBody(BaseModel):
 @router.post("/jlpt/papers/{paper_id}/runs")
 async def start_run(paper_id: UUID, body: RunBody, db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
     """Start a new pass through this paper's questions of one kind."""
-    if await db.get(ExamPaper, paper_id) is None:
-        raise HTTPException(status_code=404, detail="没有这套试卷")
+    await _paper_for(db, paper_id, user)
     if body.kind not in jp.GROUP_LABEL:
         raise HTTPException(status_code=404, detail="没有这一类")
     run = PracticeRun(user_id=user.id, paper_id=paper_id, kind=body.kind)
@@ -436,9 +447,7 @@ async def _own_mock(db: AsyncSession, attempt_id: UUID, user: User) -> ExamAttem
 @router.post("/jlpt/mock/{paper_id}")
 async def start_mock(paper_id: UUID, db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
     """Start a mock exam on this paper, or pick up the one left unfinished."""
-    paper = await db.get(ExamPaper, paper_id)
-    if paper is None:
-        raise HTTPException(status_code=404, detail="没有这套试卷")
+    paper = await _paper_for(db, paper_id, user)
     for a in (await db.execute(
         select(ExamAttempt).where(ExamAttempt.user_id == user.id, ExamAttempt.paper_id == paper_id,
                                   ExamAttempt.status == "in_progress")
@@ -961,9 +970,7 @@ async def mistakes(
 @router.get("/jlpt/papers/{paper_id}")
 async def paper_overview(paper_id: UUID, db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
     """One paper: how far each of its four kinds has been practised, and its mock exam."""
-    paper = await db.get(ExamPaper, paper_id)
-    if paper is None:
-        raise HTTPException(status_code=404, detail="没有这套试卷")
+    paper = await _paper_for(db, paper_id, user)
     level = (paper.level or "N1").upper()
     rows = [r for r in await _bank(db) if r[3].id == paper.id]
     kind_of: dict[UUID, str] = {}
@@ -1025,6 +1032,22 @@ async def paper_overview(paper_id: UUID, db: AsyncSession = Depends(get_db), use
     records.sort(key=lambda r: r["at"], reverse=True)
     return {
         "id": str(paper.id), "label": jp.paper_label(paper.source, paper.title), "level": level,
+        "is_open": paper.is_open,
         "kinds": kinds, "records": records,
         "written_minutes": lv.written_minutes, "listening_minutes": lv.listening_minutes,
     }
+
+
+class OpenBody(BaseModel):
+    is_open: bool
+
+
+@router.patch("/jlpt/papers/{paper_id}", dependencies=[Depends(require_admin)])
+async def set_paper_open(paper_id: UUID, body: OpenBody, db: AsyncSession = Depends(get_db)):
+    """Open a paper to learners, or take it back."""
+    paper = await db.get(ExamPaper, paper_id)
+    if paper is None:
+        raise HTTPException(status_code=404, detail="没有这套试卷")
+    paper.is_open = body.is_open
+    await db.commit()
+    return {"id": str(paper.id), "is_open": paper.is_open}

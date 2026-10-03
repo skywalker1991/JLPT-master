@@ -23,6 +23,11 @@ async def current_user(request: Request, db: AsyncSession = Depends(get_db)) -> 
     return user
 
 
+def sees_paper(user: User, paper) -> bool:
+    """Learners see the open papers; an admin sees them all."""
+    return bool(paper.is_open) or user.role == "admin"
+
+
 async def require_admin(user: User = Depends(current_user)) -> User:
     if user.role != "admin":
         raise HTTPException(status_code=403, detail="需要管理员权限")

@@ -722,6 +722,10 @@ export async function startRun(paperId: string, kind: string): Promise<{ run_id:
   return request(`/api/jlpt/papers/${paperId}/runs`, { method: 'POST', body: JSON.stringify({ kind }) })
 }
 
+export async function setPaperOpen(paperId: string, isOpen: boolean): Promise<void> {
+  await request(`/api/jlpt/papers/${paperId}`, { method: 'PATCH', body: JSON.stringify({ is_open: isOpen }) })
+}
+
 export async function getPaperOverview(paperId: string): Promise<PaperOverview> {
   return request<PaperOverview>(`/api/jlpt/papers/${paperId}`)
 }

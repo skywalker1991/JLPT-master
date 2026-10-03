@@ -27,6 +27,7 @@ ADMIN_ONLY_EXAM = {
     ("GET", "/api/exam/items/{item_id}/revisions"),
     ("GET", "/api/exam/reports"),
     ("POST", "/api/exam/reports/{report_id}/resolve"),
+    ("PATCH", "/api/jlpt/papers/{paper_id}"),     # opening a paper to learners
 }
 
 
@@ -111,3 +112,12 @@ def test_invite_codes_are_typeable_and_read_back_however_typed():
     assert not set(code.replace("-", "")) & set("01ILO")  # nothing to misread
     assert normalize_code(code.lower().replace("-", " ")) == code
     assert normalize_code(" k7q3m9xa ") == "K7Q3-M9XA"
+
+
+def test_learners_see_only_open_papers():
+    from types import SimpleNamespace as NS
+    from app.api.deps import sees_paper
+    learner, admin = NS(role="user"), NS(role="admin")
+    open_, closed = NS(is_open=True), NS(is_open=False)
+    assert sees_paper(learner, open_) and not sees_paper(learner, closed)
+    assert sees_paper(admin, closed)

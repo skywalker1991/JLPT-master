@@ -296,6 +296,9 @@ class ExamPaper(Base):
     title = Column(Text, nullable=False)
     level = Column(String(5), nullable=False)
     source = Column(Text, nullable=True)
+    #: Whether learners see it. An admin sees every paper; during the beta only
+    #: a few are open, and more are opened from the paper's page.
+    is_open = Column(Boolean, nullable=False, server_default=text("true"))
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
 
     sections = relationship("ExamSection", back_populates="paper", cascade="all, delete-orphan",

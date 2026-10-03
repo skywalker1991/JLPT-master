@@ -6,7 +6,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
 
-from app.api.deps import current_user, require_admin
+from app.api.deps import current_user, require_admin, sees_paper
 from sqlalchemy import delete, distinct, select, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -804,7 +804,7 @@ _PASSAGE_FILL_PROBLEM_PROMPT = """\
 # ── 试卷列表 ──────────────────────────────────────────────────────────────────
 
 @router.get("/exams", response_model=list[ExamPaperList])
-async def list_exams(db: AsyncSession = Depends(get_db)):
+async def list_exams(db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
     result = await db.execute(
         select(
             ExamPaper,
@@ -824,7 +824,7 @@ async def list_exams(db: AsyncSession = Depends(get_db)):
             source=paper.source, section_count=sc, item_count=ic,
             created_at=paper.created_at,
         )
-        for paper, sc, ic in rows
+        for paper, sc, ic in rows if sees_paper(user, paper)
     ]
 
 
@@ -941,9 +941,9 @@ async def build_paper_detail(
 
 
 @router.get("/exams/{paper_id}", response_model=ExamPaperDetail)
-async def get_exam(paper_id: UUID, db: AsyncSession = Depends(get_db)):
+async def get_exam(paper_id: UUID, db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
     paper = await db.get(ExamPaper, paper_id)
-    if paper is None:
+    if paper is None or not sees_paper(user, paper):
         raise HTTPException(status_code=404, detail="Exam paper not found")
     return await build_paper_detail(db, paper)
 
@@ -971,7 +971,8 @@ async def start_attempt(
     `problem_ids` is what this run set out to cover. Omitted, the run covers
     the whole paper — which is what starting one used to mean.
     """
-    if not await db.get(ExamPaper, paper_id):
+    paper = await db.get(ExamPaper, paper_id)
+    if paper is None or not sees_paper(user, paper):
         raise HTTPException(status_code=404, detail="Exam paper not found")
     scope = [str(p) for p in (body.problem_ids if body else None) or []] or None
     attempt = ExamAttempt(paper_id=paper_id, scope=scope, user_id=user.id)
