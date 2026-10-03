@@ -47,6 +47,10 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://jlpt:jlpt@postgres:5432/jlpt
       QDRANT_URL: http://qdrant:6333
+      # Served over HTTPS only (Caddy redirects plain HTTP), so the session
+      # cookie need never travel unencrypted. Browsers still accept it on
+      # http://localhost.
+      COOKIE_SECURE: "true"
     env_file:
       - .env
     ports:

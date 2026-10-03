@@ -11,7 +11,8 @@ www.jp-master.com {
 	redir https://jp-master.com{uri} permanent
 }
 
-# Anything else — the bare IP — is served as before, over plain HTTP.
+# Anything else — the bare IP, old bookmarks — goes to the site by its name,
+# where the connection is encrypted and the session cookie is sent.
 :80 {
-	reverse_proxy frontend:80
+	redir https://jp-master.com{uri} permanent
 }
