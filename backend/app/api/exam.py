@@ -29,7 +29,7 @@ from app.services.llm.factory import get_llm_client
 from app.services import exam_edit
 from app.services.exam_listening import dialogue_for
 from app.services.exam_rulings import AI, PROBLEM_FIELDS, RULED, RULED_FIELDS, record, with_ruling
-from app.services.tts import TTSUnavailable, speak
+from app.services.tts import TTSUnavailable, media_type_of, speak
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["exam"])
@@ -1806,7 +1806,7 @@ async def make_audio(item_id: UUID, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=400, detail="这道题没有听力原文，无法合成")
 
     try:
-        audio = await speak(text)
+        audio = await speak(text, item.options)
     except TTSUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
@@ -1822,7 +1822,7 @@ async def get_media(media_id: UUID, db: AsyncSession = Depends(get_db)):
     media = await db.get(ExamMedia, media_id)
     if media is None or media.data is None:
         raise HTTPException(status_code=404, detail="Media not found")
-    kind = "audio/wav" if media.media_type == "audio" else "image/png"
+    kind = media_type_of(media.data) if media.media_type == "audio" else "image/png"
     # Immutable once written, so it is worth caching in the browser.
     return Response(
         content=media.data, media_type=kind,

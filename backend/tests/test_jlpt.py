@@ -82,3 +82,21 @@ def test_checked_puts_an_explanation_into_shape():
     assert _checked({"options_analysis": [{"option": "1"}]}, item, "grammar_fill")[1]
     schema = {"properties": {"options_analysis": {"items": {"properties": {"option": {"type": "string"}}}}}}
     assert _pinned(schema, item.options)["properties"]["options_analysis"]["items"]["properties"]["option"]["enum"] == ["1", "2", "3", "4"]
+
+
+def test_listening_blocks_follow_the_test():
+    from app.services.tts import blocks_for
+    # role in brackets, a speaker change mid-line, the question asked again at the end
+    b = blocks_for("問題：店で男の人と店長が話しています。男の人はこの後まず、\n何をしますか。\n男：おはようございます。\n女（店長）：今日はね、棚を並べて。 男：はい。")
+    assert [x.speaker for x in b] == [None, "男", "女", "男", None]
+    assert b[0].text.startswith("店で") and b[-1].text == "男の人はこの後まず、何をしますか。"
+    # three speakers; 質問1/2 are narration, with a pause between
+    b = blocks_for("部長と部員が話しています\n女1：どうしようか。\n男：取材は？\n女2：いいですね。\n質問1 何を書きますか。\n質問2 誰が書きますか。")
+    assert [x.speaker for x in b] == [None, "女1", "男", "女2", None, None]
+    assert b[-1].pause_before > b[-2].pause_before > 0
+    # 即時応答: the line, then 1・2・3 read out
+    b = blocks_for("レポート、簡単には書けそうもないよね。", {"1": "大変だね。", "2": "難しい？", "3": "簡単だね。"})
+    assert [x.text for x in b] == ["レポート、簡単には書けそうもないよね。", "1、大変だね。", "2、難しい？", "3、簡単だね。"]
+    # a monologue: scene, talk, the question at the end
+    b = blocks_for("ラジオでアナウンサーが話しています。\n学生寮に注目が集まっています。\nアナウンサーは主に何について話していますか。")
+    assert [x.speaker for x in b] == [None, "男", None]
