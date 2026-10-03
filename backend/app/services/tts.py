@@ -240,7 +240,22 @@ async def _request(client: httpx.AsyncClient, key: str, parts: list[dict], speec
         meta = data.get("usageMetadata", {})
         usage["in"] = usage.get("in", 0) + meta.get("promptTokenCount", 0)
         usage["out"] = usage.get("out", 0) + meta.get("candidatesTokenCount", 0)
-    return base64.b64decode(pcm)
+    return _samples(base64.b64decode(pcm))
+
+
+def _samples(audio: bytes) -> bytes:
+    """The bare samples. The model answers with a whole WAV file — a header in
+    front and a metadata chunk after the sound — and joined as they are, both
+    play as a burst of noise at each end of every piece."""
+    if audio[:4] != b"RIFF" or audio[8:12] != b"WAVE":
+        return audio
+    at = 12
+    while at + 8 <= len(audio):
+        kind, size = audio[at:at + 4], int.from_bytes(audio[at + 4:at + 8], "little")
+        if kind == b"data":
+            return audio[at + 8:at + 8 + size]
+        at += 8 + size + (size & 1)
+    raise TTSUnavailable("合成返回的音频里没有声音数据")
 
 
 async def _say(client, key, text, voice, style, usage) -> bytes:

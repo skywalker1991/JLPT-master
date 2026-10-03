@@ -100,3 +100,14 @@ def test_listening_blocks_follow_the_test():
     # a monologue: scene, talk, the question at the end
     b = blocks_for("ラジオでアナウンサーが話しています。\n学生寮に注目が集まっています。\nアナウンサーは主に何について話していますか。")
     assert [x.speaker for x in b] == [None, "男", None]
+
+
+def test_listening_keeps_only_the_sound_of_a_returned_wav():
+    from app.services.tts import _samples
+    sound = b"\x01\x02" * 50
+    wav = (b"RIFF" + (4 + 8 + 16 + 8 + len(sound) + 8 + 6).to_bytes(4, "little") + b"WAVE"
+           + b"fmt " + (16).to_bytes(4, "little") + bytes(16)
+           + b"data" + len(sound).to_bytes(4, "little") + sound
+           + b"LIST" + (6).to_bytes(4, "little") + b"Lavf61")
+    assert _samples(wav) == sound
+    assert _samples(sound) == sound            # bare samples pass through
